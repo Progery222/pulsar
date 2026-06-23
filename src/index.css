@@ -57,3 +57,20 @@ body {
     @apply bg-bg-secondary;
   }
 }
+
+/* Пульсирующий круг ProcessingScreen (§5.4). */
+@keyframes pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.25);
+    opacity: 0.55;
+  }
+}
+
+.animate-pulse-circle {
+  animation: pulse 1.2s ease-in-out infinite;
+}
