@@ -33,12 +33,17 @@ protocol.registerSchemesAsPrivileged([
 let win: BrowserWindow | null = null;
 
 function createWindow() {
+  const iconPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', 'icon.png')
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'assets', 'icon.png');
+
   win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 1024,
     minHeight: 600,
     backgroundColor: '#0D0D0D',
+    icon: iconPath,
     show: false,
     autoHideMenuBar: true,
     webPreferences: {
