@@ -41,7 +41,8 @@ export default function ExportModal() {
         setExportProgress(p)
       );
       if (ok) {
-        showToast('Видео сохранено!', {
+        const count = useProjectStore.getState().uniqualizerCount;
+        showToast(count > 1 ? `Сохранено ${count} видео!` : 'Видео сохранено!', {
           actionLabel: 'Открыть папку',
           onAction: () => window.electronAPI.openFolder(folder),
         });

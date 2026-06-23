@@ -30,6 +30,7 @@ export async function buildAndRender(
       volumeOriginal: project.volumeOriginal,
       volumeMusic: project.volumeMusic,
       uniqualizer: project.uniqualizerSettings,
+      count: project.uniqualizerCount,
       quality,
       outputPath,
     };

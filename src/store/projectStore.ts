@@ -52,6 +52,7 @@ export interface ProjectState {
 
   // Уникализатор экспорта
   uniqualizerSettings: UniqualizerSettings;
+  uniqualizerCount: number; // сколько уникальных копий создавать при экспорте
 }
 
 // Экшены store (Шаг 2 плана).
@@ -76,6 +77,7 @@ export interface ProjectActions {
   setVolumeOriginal: (value: number) => void;
   setVolumeMusic: (value: number) => void;
   setUniqualizerSettings: (settings: Partial<UniqualizerSettings>) => void;
+  setUniqualizerCount: (count: number) => void;
 }
 
 const initialEffects = EFFECT_NAMES.reduce(
@@ -125,6 +127,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
     cropEdges: true,
     audioShift: true,
   },
+  uniqualizerCount: 1,
 
   // --- Экшены ---
   setCurrentScreen: (screen) => set({ currentScreen: screen }),
@@ -153,4 +156,5 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   setVolumeMusic: (value) => set({ volumeMusic: value }),
   setUniqualizerSettings: (settings) =>
     set((state) => ({ uniqualizerSettings: { ...state.uniqualizerSettings, ...settings } })),
+  setUniqualizerCount: (count) => set({ uniqualizerCount: count }),
 }));

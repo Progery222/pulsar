@@ -12,9 +12,13 @@ const OPTIONS: { key: CheckKey; label: string; desc: string }[] = [
   { key: 'audioShift', label: 'Аудио сдвиг', desc: 'Сдвинуть аудиодорожку на 10–50ms' },
 ];
 
+const COUNTS = [1, 10, 20, 40, 50, 100];
+
 export default function UniqualizerPanel() {
   const settings = useProjectStore((s) => s.uniqualizerSettings);
   const setSettings = useProjectStore((s) => s.setUniqualizerSettings);
+  const count = useProjectStore((s) => s.uniqualizerCount);
+  const setCount = useProjectStore((s) => s.setUniqualizerCount);
 
   return (
     <div className="mb-4 border-t border-border pt-4">
@@ -49,6 +53,32 @@ export default function UniqualizerPanel() {
         className="overflow-hidden transition-all duration-200"
         style={{ maxHeight: settings.enabled ? 600 : 0, opacity: settings.enabled ? 1 : 0 }}
       >
+        {/* Количество уникальных копий */}
+        <div className="mb-3">
+          <div className="mb-1 text-text-primary" style={{ fontSize: 13 }}>
+            Количество уникальных роликов
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {COUNTS.map((c) => {
+              const sel = c === count;
+              return (
+                <button
+                  key={c}
+                  onClick={() => setCount(c)}
+                  className="rounded-el px-3 py-1 font-semibold"
+                  style={{
+                    fontSize: 13,
+                    backgroundColor: sel ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                    color: sel ? '#000' : 'var(--text-primary)',
+                  }}
+                >
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Блок «Авто» */}
         <p className="mb-3 text-text-secondary" style={{ fontSize: 11 }}>
           Метаданные, хэш файла и технические параметры изменяются автоматически

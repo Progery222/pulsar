@@ -36,6 +36,7 @@ export interface RenderRequest {
   volumeOriginal: number; // громкость оригинального звука видео (0..1)
   volumeMusic: number; // громкость музыки (0..1)
   uniqualizer: UniqualizerSettings;
+  count: number; // сколько уникальных копий создать
   quality: Quality;
   outputPath: string;
 }
@@ -131,6 +132,14 @@ async function randomizeMetadata(outputPath: string, hooks: RenderHooks): Promis
   );
   fs.rmSync(outputPath, { force: true });
   fs.renameSync(tmp, outputPath);
+}
+
+// Имя файла копии: name_01.mp4 ... name_NN.mp4 (ширина по числу копий).
+function suffixPath(p: string, idx: number, total: number): string {
+  const ext = path.extname(p);
+  const baseName = p.slice(0, p.length - ext.length);
+  const width = String(total).length;
+  return `${baseName}_${String(idx).padStart(width, '0')}${ext}`;
 }
 
 // Уникализатор §2: дозапись 512–2048 случайных байт в конец файла (меняет хэш).
@@ -285,45 +294,63 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     }
     progress(74);
 
-    // Этап 6: финальный экспорт — видео (+ video fade + фильтры уникализатора) + аудио.
+    // Этап 6a: базовый монтаж (видео + fade + аудио) БЕЗ уникализатора — один раз.
     if (cancelled()) throw new Error('Экспорт отменён');
-    // Фильтры уникализатора добавляются В КОНЕЦ vf/af (после EDIT и FILTERS).
-    const uniq = buildUniqualizerFilters(req.uniqualizer, w, h);
+    const count = Math.max(1, Math.floor(req.count || 1));
+    const single = count === 1;
+    const baseEnd = single ? 80 : 50;
 
     const videoFades: string[] = [];
     if (req.fade === 'in' || req.fade === 'all') videoFades.push('fade=t=in:st=0:d=0.5');
     if (req.fade === 'out' || req.fade === 'all') videoFades.push(`fade=t=out:st=${fadeOutStart}:d=0.5`);
-    const finalVf = [...videoFades, ...uniq.vf];
 
-    const final = ffmpeg().input(videoSource);
-    const outOptions = [
+    const basePath = path.join(tmpDir, 'base.mp4');
+    const baseCmd = ffmpeg().input(videoSource);
+    const baseOut = [
       '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
       '-t', String(req.duration), '-pix_fmt', 'yuv420p',
     ];
     if (audioTrack) {
-      final.input(audioTrack);
-      outOptions.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-shortest');
-      if (uniq.af.length) final.audioFilters(uniq.af);
+      baseCmd.input(audioTrack);
+      baseOut.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-shortest');
     } else {
-      outOptions.push('-an');
+      baseOut.push('-an');
     }
-    if (finalVf.length) final.videoFilters(finalVf);
-
+    if (videoFades.length) baseCmd.videoFilters(videoFades);
     await runCommand(
-      final
-        .outputOptions(outOptions)
-        .output(req.outputPath)
-        .on('progress', (p) => progress(Math.min(85, 74 + ((p.percent ?? 0) / 100) * 11))),
+      baseCmd
+        .outputOptions(baseOut)
+        .output(basePath)
+        .on('progress', (p) => progress(Math.min(baseEnd, 74 + ((p.percent ?? 0) / 100) * (baseEnd - 74)))),
       hooks
     );
 
-    // После рендеринга: метаданные (85–95%) и дозапись случайных байт (95–100%).
-    if (req.uniqualizer.enabled) {
+    // Этап 6b: N уникальных копий. Каждая — свежие фильтры/метаданные/байты.
+    const baseHasAudio = !!audioTrack;
+    for (let i = 0; i < count; i++) {
       if (cancelled()) throw new Error('Экспорт отменён');
-      progress(88);
-      await randomizeMetadata(req.outputPath, hooks);
-      progress(96);
-      await appendRandomBytes(req.outputPath);
+      const out = single ? req.outputPath : suffixPath(req.outputPath, i + 1, count);
+      const u = buildUniqualizerFilters(req.uniqualizer, w, h);
+
+      const cmd = ffmpeg(basePath);
+      const oo = [
+        '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p',
+      ];
+      if (baseHasAudio) {
+        oo.push('-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k');
+        if (u.af.length) cmd.audioFilters(u.af);
+      } else {
+        oo.push('-an');
+      }
+      if (u.vf.length) cmd.videoFilters(u.vf);
+      await runCommand(cmd.outputOptions(oo).output(out), hooks);
+
+      // Метаданные + дозапись байт (уникальный хэш).
+      if (req.uniqualizer.enabled) {
+        await randomizeMetadata(out, hooks);
+        await appendRandomBytes(out);
+      }
+      progress(baseEnd + ((i + 1) / count) * (100 - baseEnd));
     }
 
     progress(100);
