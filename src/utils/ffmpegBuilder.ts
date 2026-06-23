@@ -27,6 +27,8 @@ export async function buildAndRender(
       fade: project.fade,
       filter: project.activeFilter,
       filterIntensity: project.filterIntensity,
+      volumeOriginal: project.volumeOriginal,
+      volumeMusic: project.volumeMusic,
       quality,
       outputPath,
     };

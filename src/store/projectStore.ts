@@ -27,6 +27,10 @@ export interface ProjectState {
   format: '9:16' | '1:1' | '16:9';
   fade: 'none' | 'in' | 'out' | 'all';
 
+  // Громкости аудио-микса (0..1)
+  volumeOriginal: number; // оригинальный звук видео
+  volumeMusic: number; // выбранный трек
+
   // Эффекты
   activeEffects: Record<EffectName, 0 | 1 | 2>; // 0 = выкл, 1/2 = уровень
   activeFilter: FilterName | null;
@@ -65,6 +69,8 @@ export interface ProjectActions {
   setExportProgress: (progress: number) => void;
   setSegmentStart: (value: number) => void;
   setTweakOverride: (key: string, value: TweakOverride) => void;
+  setVolumeOriginal: (value: number) => void;
+  setVolumeMusic: (value: number) => void;
 }
 
 const initialEffects = EFFECT_NAMES.reduce(
@@ -87,6 +93,9 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   duration: 15,
   format: '9:16',
   fade: 'none',
+
+  volumeOriginal: 0.5,
+  volumeMusic: 1.0,
 
   activeEffects: initialEffects,
   activeFilter: null,
@@ -125,4 +134,6 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   setSegmentStart: (value) => set({ segmentStart: value }),
   setTweakOverride: (key, value) =>
     set((state) => ({ tweakOverrides: { ...state.tweakOverrides, [key]: value } })),
+  setVolumeOriginal: (value) => set({ volumeOriginal: value }),
+  setVolumeMusic: (value) => set({ volumeMusic: value }),
 }));

@@ -30,6 +30,8 @@ export interface RenderRequest {
   fade: 'none' | 'in' | 'out' | 'all';
   filter: FilterName | null;
   filterIntensity: number;
+  volumeOriginal: number; // громкость оригинального звука видео (0..1)
+  volumeMusic: number; // громкость музыки (0..1)
   quality: Quality;
   outputPath: string;
 }
@@ -125,24 +127,43 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     const [w, h] = dimensions(req.format, req.quality);
     const scaleChain = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
 
+    // Оригинальный звук сохраняем во фрагментах только если он нужен в миксе.
+    const useOriginal = req.volumeOriginal > 0;
+
     // Этап 1–2: нарезка фрагментов + эффекты (глобальный фильтр — отдельным этапом).
     const fragments: string[] = [];
     for (let i = 0; i < req.clips.length; i++) {
       if (cancelled()) throw new Error('Экспорт отменён');
       const clip = req.clips[i];
       const fragPath = path.join(tmpDir, `fragment_${i}.mp4`);
-      const filters = [scaleChain, ...effectFilters(clip.effects, w, h)];
+      const vchain = [scaleChain, ...effectFilters(clip.effects, w, h)].join(',');
 
-      await runCommand(
-        ffmpeg(clip.sourceFile)
+      let fragCmd: ffmpeg.FfmpegCommand;
+      if (useOriginal) {
+        // Видео-граф + аудио (тишина гарантирует дорожку, реальный звук
+        // подмешивается через amix; normalize=0 сохраняет уровень оригинала).
+        fragCmd = ffmpeg(clip.sourceFile)
           .seekInput(clip.startTime)
           .duration(clip.duration)
-          .videoFilters(filters)
+          .input('anullsrc=channel_layout=stereo:sample_rate=44100')
+          .inputOptions(['-f', 'lavfi', '-t', String(clip.duration)])
+          .complexFilter([
+            `[0:v]${vchain}[v]`,
+            `[1:a][0:a]amix=inputs=2:duration=first:normalize=0[a]`,
+          ])
+          .outputOptions([
+            '-map', '[v]', '-map', '[a]', '-pix_fmt', 'yuv420p', '-r', '30',
+            '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
+          ]);
+      } else {
+        fragCmd = ffmpeg(clip.sourceFile)
+          .seekInput(clip.startTime)
+          .duration(clip.duration)
+          .videoFilters([scaleChain, ...effectFilters(clip.effects, w, h)])
           .noAudio()
-          .outputOptions(['-pix_fmt', 'yuv420p', '-r', '30'])
-          .output(fragPath),
-        hooks
-      );
+          .outputOptions(['-pix_fmt', 'yuv420p', '-r', '30']);
+      }
+      await runCommand(fragCmd.output(fragPath), hooks);
       fragments.push(fragPath);
       progress((i / req.clips.length) * 55);
     }
@@ -153,18 +174,20 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       listPath,
       fragments.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n')
     );
-    let videoSource = path.join(tmpDir, 'concat.mp4');
+    const concatPath = path.join(tmpDir, 'concat.mp4');
+    let videoSource = concatPath;
     await runCommand(
       ffmpeg()
         .input(listPath)
         .inputOptions(['-f', 'concat', '-safe', '0'])
         .outputOptions(['-c', 'copy'])
-        .output(videoSource),
+        .output(concatPath),
       hooks
     );
     progress(62);
 
     // Этап 3: глобальный фильтр с учётом filterIntensity (blend по K = intensity/100).
+    // Видео-стрим без аудио (оригинальный звук берём отдельно из concat).
     if (cancelled()) throw new Error('Экспорт отменён');
     const gFilter = req.filterIntensity > 0 ? globalFilter(req.filter) : null;
     if (gFilter) {
@@ -179,36 +202,70 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
           ['out']
         );
       }
-      await runCommand(cmd.outputOptions(['-pix_fmt', 'yuv420p']).output(filteredPath), hooks);
+      await runCommand(cmd.noAudio().outputOptions(['-pix_fmt', 'yuv420p']).output(filteredPath), hooks);
       videoSource = filteredPath;
     }
-    progress(70);
+    progress(68);
 
-    // Этап 5–6: аудио + fade + финальный экспорт H.264/AAC.
-    if (cancelled()) throw new Error('Экспорт отменён');
-    const final = ffmpeg().input(videoSource);
-
-    const videoFades: string[] = [];
-    const audioFades: string[] = [];
     const fadeOutStart = Math.max(0, req.duration - 0.5);
-    if (req.fade === 'in' || req.fade === 'all') {
-      videoFades.push('fade=t=in:st=0:d=0.5');
-      audioFades.push('afade=t=in:st=0:d=0.5');
-    }
-    if (req.fade === 'out' || req.fade === 'all') {
-      videoFades.push(`fade=t=out:st=${fadeOutStart}:d=0.5`);
-      audioFades.push(`afade=t=out:st=${fadeOutStart}:d=0.5`);
-    }
+    const audioFades: string[] = [];
+    if (req.fade === 'in' || req.fade === 'all') audioFades.push('afade=t=in:st=0:d=0.5');
+    if (req.fade === 'out' || req.fade === 'all') audioFades.push(`afade=t=out:st=${fadeOutStart}:d=0.5`);
 
+    // Этап 5: аудио-дорожка — микс оригинала (concat) и музыки по громкостям.
+    if (cancelled()) throw new Error('Экспорт отменён');
+    const useMusic = !!req.audioFile && req.volumeMusic > 0;
+    let audioTrack: string | null = null;
+    if (useOriginal || useMusic) {
+      audioTrack = path.join(tmpDir, 'audio.m4a');
+      const acmd = ffmpeg();
+      const graph: string[] = [];
+      let n = 0;
+      if (useOriginal) {
+        acmd.input(concatPath);
+        graph.push(`[${n}:a]volume=${req.volumeOriginal.toFixed(2)}[ao]`);
+        n++;
+      }
+      if (useMusic) {
+        acmd.input(req.audioFile as string).inputOptions(['-ss', String(req.segmentStart)]);
+        graph.push(`[${n}:a]volume=${req.volumeMusic.toFixed(2)}[am]`);
+        n++;
+      }
+      let label: string;
+      if (useOriginal && useMusic) {
+        graph.push('[ao][am]amix=inputs=2:duration=first:normalize=0[mx]');
+        label = 'mx';
+      } else {
+        label = useOriginal ? 'ao' : 'am';
+      }
+      if (audioFades.length) {
+        graph.push(`[${label}]${audioFades.join(',')}[fa]`);
+        label = 'fa';
+      }
+      await runCommand(
+        acmd
+          .complexFilter(graph, [label])
+          .outputOptions(['-c:a', 'aac', '-b:a', '192k', '-t', String(req.duration)])
+          .output(audioTrack),
+        hooks
+      );
+    }
+    progress(74);
+
+    // Этап 6: финальный экспорт — видео (+ video fade) + аудио-дорожка.
+    if (cancelled()) throw new Error('Экспорт отменён');
+    const videoFades: string[] = [];
+    if (req.fade === 'in' || req.fade === 'all') videoFades.push('fade=t=in:st=0:d=0.5');
+    if (req.fade === 'out' || req.fade === 'all') videoFades.push(`fade=t=out:st=${fadeOutStart}:d=0.5`);
+
+    const final = ffmpeg().input(videoSource);
     const outOptions = [
-      '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+      '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
       '-t', String(req.duration), '-pix_fmt', 'yuv420p',
     ];
-
-    if (req.audioFile) {
-      final.input(req.audioFile).inputOptions(['-ss', String(req.segmentStart)]);
-      outOptions.push('-c:a', 'aac', '-b:a', '192k', '-map', '0:v:0', '-map', '1:a:0', '-shortest');
-      if (audioFades.length) final.audioFilters(audioFades);
+    if (audioTrack) {
+      final.input(audioTrack);
+      outOptions.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-shortest');
     } else {
       outOptions.push('-an');
     }
@@ -218,7 +275,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       final
         .outputOptions(outOptions)
         .output(req.outputPath)
-        .on('progress', (p) => progress(70 + ((p.percent ?? 0) / 100) * 30)),
+        .on('progress', (p) => progress(74 + ((p.percent ?? 0) / 100) * 26)),
       hooks
     );
 
