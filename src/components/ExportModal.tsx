@@ -48,10 +48,12 @@ export default function ExportModal() {
         });
       }
       // При отмене (ok === false) — тихо, без уведомления.
-    } catch {
-      // §14: ошибка FFmpeg — диалоговое окно.
+    } catch (err) {
+      // §14: ошибка FFmpeg — диалоговое окно (с технической причиной для диагностики).
+      const detail = err instanceof Error ? err.message : String(err);
       window.alert(
-        'Ошибка при обработке видео. Попробуйте другой файл или проверьте, что видеофайл не повреждён.'
+        'Ошибка при обработке видео. Попробуйте другой файл или проверьте, что видеофайл не повреждён.\n\n' +
+          `Детали: ${detail}`
       );
     } finally {
       setIsExporting(false);

@@ -60,7 +60,7 @@ export default function VideoPreview({
     <div
       ref={containerRef}
       className="flex h-full w-full items-center justify-center"
-      style={{ background: '#000000' }}
+      style={{ background: 'var(--bg-primary)' }}
     >
       {hasClips ? (
         <div className="relative overflow-hidden" style={{ width: box.w, height: box.h }}>

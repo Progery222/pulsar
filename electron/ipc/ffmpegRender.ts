@@ -1,5 +1,6 @@
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -13,6 +14,21 @@ import { buildUniqualizerFilters, randomMetadata } from '../../src/utils/uniqual
 // Bundled FFmpeg (§2 ТЗ). В упакованном приложении бинарник распакован из asar.
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
+const ffprobePath = ffprobeStatic.path?.replace('app.asar', 'app.asar.unpacked');
+if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
+
+// Есть ли в файле аудиодорожка (для подстановки тишины источникам без звука).
+function hasAudio(file: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    ffmpeg.ffprobe(file, (err, data) => {
+      if (err || !data) {
+        resolve(false);
+        return;
+      }
+      resolve((data.streams ?? []).some((s) => s.codec_type === 'audio'));
+    });
+  });
+}
 
 export type Quality = '720p' | '1080p' | '4k';
 export type Format = '9:16' | '1:1' | '16:9';
@@ -172,6 +188,14 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     // Оригинальный звук сохраняем во фрагментах только если он нужен в миксе.
     const useOriginal = req.volumeOriginal > 0;
 
+    // Определяем наличие аудио у каждого исходника (иначе подставим тишину).
+    const audioMap = new Map<string, boolean>();
+    if (useOriginal) {
+      for (const src of new Set(req.clips.map((c) => c.sourceFile))) {
+        audioMap.set(src, await hasAudio(src));
+      }
+    }
+
     // Этап 1–2: нарезка фрагментов + эффекты (глобальный фильтр — отдельным этапом).
     const fragments: string[] = [];
     for (let i = 0; i < req.clips.length; i++) {
@@ -182,21 +206,30 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
 
       let fragCmd: ffmpeg.FfmpegCommand;
       if (useOriginal) {
-        // Видео-граф + аудио (тишина гарантирует дорожку, реальный звук
-        // подмешивается через amix; normalize=0 сохраняет уровень оригинала).
-        fragCmd = ffmpeg(clip.sourceFile)
-          .seekInput(clip.startTime)
-          .duration(clip.duration)
-          .input('anullsrc=channel_layout=stereo:sample_rate=44100')
-          .inputOptions(['-f', 'lavfi', '-t', String(clip.duration)])
-          .complexFilter([
-            `[0:v]${vchain}[v]`,
-            `[1:a][0:a]amix=inputs=2:duration=first:normalize=0[a]`,
-          ])
-          .outputOptions([
-            '-map', '[v]', '-map', '[a]', '-pix_fmt', 'yuv420p', '-r', '30',
-            '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
-          ]);
+        const srcHasAudio = audioMap.get(clip.sourceFile) ?? false;
+        if (srcHasAudio) {
+          // Реальный звук источника.
+          fragCmd = ffmpeg(clip.sourceFile)
+            .seekInput(clip.startTime)
+            .duration(clip.duration)
+            .complexFilter([`[0:v]${vchain}[v]`])
+            .outputOptions([
+              '-map', '[v]', '-map', '0:a:0', '-pix_fmt', 'yuv420p', '-r', '30',
+              '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
+            ]);
+        } else {
+          // У источника нет аудио — подставляем тишину (концат остаётся консистентным).
+          fragCmd = ffmpeg(clip.sourceFile)
+            .seekInput(clip.startTime)
+            .duration(clip.duration)
+            .input('anullsrc=channel_layout=stereo:sample_rate=44100')
+            .inputOptions(['-f', 'lavfi', '-t', String(clip.duration)])
+            .complexFilter([`[0:v]${vchain}[v]`])
+            .outputOptions([
+              '-map', '[v]', '-map', '1:a:0', '-pix_fmt', 'yuv420p', '-r', '30',
+              '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
+            ]);
+        }
       } else {
         fragCmd = ffmpeg(clip.sourceFile)
           .seekInput(clip.startTime)
@@ -298,7 +331,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     if (cancelled()) throw new Error('Экспорт отменён');
     const count = Math.max(1, Math.floor(req.count || 1));
     const single = count === 1;
-    const baseEnd = single ? 80 : 50;
+    const baseEnd = single ? 80 : 76; // монотонный прогресс (предыдущие этапы дошли до 74)
 
     const videoFades: string[] = [];
     if (req.fade === 'in' || req.fade === 'all') videoFades.push('fade=t=in:st=0:d=0.5');
@@ -321,7 +354,10 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       baseCmd
         .outputOptions(baseOut)
         .output(basePath)
-        .on('progress', (p) => progress(Math.min(baseEnd, 74 + ((p.percent ?? 0) / 100) * (baseEnd - 74)))),
+        .on('progress', (p) => {
+          const pct = Number.isFinite(p.percent) ? (p.percent as number) : 0;
+          progress(Math.min(baseEnd, 74 + (pct / 100) * (baseEnd - 74)));
+        }),
       hooks
     );
 

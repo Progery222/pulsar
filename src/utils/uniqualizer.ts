@@ -4,7 +4,8 @@ import type { UniqualizerSettings } from '../types/uniqualizer';
 // с файлом (метаданные через FFmpeg, дозапись байт) выполняются в main-процессе.
 
 const ENCODERS = ['Lavf58.76.100', 'Lavf59.16.100', 'Lavf60.3.100', 'Lavf57.83.100'];
-const BRANDS = ['isom', 'mp42', 'M4V ', 'qt  '];
+// Бренды без пробелов: fluent-ffmpeg разбивает аргументы по пробелам.
+const BRANDS = ['isom', 'mp42', 'mp41', 'avc1', 'iso2', 'isov'];
 const SPEEDS = [
   0.995, 0.996, 0.997, 0.998, 0.999, 1.001, 1.002, 1.003, 1.004, 1.005, 1.01, 1.015, 1.02,
 ];

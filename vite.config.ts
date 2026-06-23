@@ -20,7 +20,7 @@ export default defineConfig({
           build: {
             outDir: 'dist-electron',
             rollupOptions: {
-              external: ['fluent-ffmpeg', 'ffmpeg-static'],
+              external: ['fluent-ffmpeg', 'ffmpeg-static', 'ffprobe-static'],
             },
           },
         },
