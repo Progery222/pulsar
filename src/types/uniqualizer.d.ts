@@ -6,6 +6,8 @@ export interface UniqualizerSettings {
   speed: boolean;
   cropEdges: boolean;
   audioShift: boolean;
+  // Режим «видимая вариация»: каждая копия с заметно разным фильтром/зумом/отражением.
+  visibleVariation: boolean;
 }
 
 export interface UniqualizerResult {

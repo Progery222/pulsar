@@ -9,7 +9,7 @@ import { EFFECTS } from '../../src/data/effects';
 import { FILTERS } from '../../src/data/filters';
 import type { EffectName, FilterName } from '../../src/types';
 import type { UniqualizerSettings } from '../../src/types/uniqualizer';
-import { buildUniqualizerFilters, randomMetadata, uniqualizerEncoding } from '../../src/utils/uniqualizer';
+import { buildUniqualizerFilters, buildVisibleVariation, randomMetadata, uniqualizerEncoding } from '../../src/utils/uniqualizer';
 
 // Bundled FFmpeg (§2 ТЗ). В упакованном приложении бинарник распакован из asar.
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
@@ -113,14 +113,56 @@ function globalFilter(filter: FilterName | null): string | null {
   return meta?.ffmpeg || null;
 }
 
+// Если FFmpeg не выдаёт ни прогресса, ни вывода дольше этого времени — считаем,
+// что процесс завис (типичная причина «застревания» на аудио-этапе), и прерываем.
+const STALL_MS = 90_000;
+
 function runCommand(cmd: ffmpeg.FfmpegCommand, hooks: RenderHooks): Promise<void> {
   return new Promise((resolve, reject) => {
     hooks.setCommand?.(cmd);
+
+    // -nostdin: запрещаем FFmpeg читать stdin (без этого процесс может зависнуть,
+    // ожидая ввод, при spawn без терминала — частая причина зависания экспорта).
+    cmd.inputOptions(['-nostdin']);
+
+    let stderrTail = '';
+    let lastActivity = Date.now();
+    const beat = () => {
+      lastActivity = Date.now();
+    };
+
+    const watchdog = setInterval(() => {
+      if (Date.now() - lastActivity > STALL_MS) {
+        cleanupTimers();
+        hooks.setCommand?.(null);
+        try {
+          cmd.kill('SIGKILL');
+        } catch {
+          /* noop */
+        }
+        reject(
+          new Error(
+            `FFmpeg завис (нет активности ${STALL_MS / 1000}с). Последний вывод:\n${stderrTail.slice(-500)}`
+          )
+        );
+      }
+    }, 5_000);
+
+    const cleanupTimers = () => clearInterval(watchdog);
+
+    cmd.on('progress', beat);
+    cmd.on('stderr', (line: string) => {
+      beat();
+      stderrTail += line + '\n';
+      if (stderrTail.length > 4000) stderrTail = stderrTail.slice(-4000);
+    });
     cmd.on('end', () => {
+      cleanupTimers();
       hooks.setCommand?.(null);
       resolve();
     });
     cmd.on('error', (err) => {
+      cleanupTimers();
       hooks.setCommand?.(null);
       reject(err);
     });
@@ -323,7 +365,11 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
         acmd
           .complexFilter(graph, [label])
           .outputOptions(['-c:a', 'aac', '-b:a', '192k', '-t', String(req.duration)])
-          .output(audioTrack),
+          .output(audioTrack)
+          .on('progress', (p) => {
+            const pct = Number.isFinite(p.percent) ? (p.percent as number) : 0;
+            progress(Math.min(74, 68 + (pct / 100) * 6));
+          }),
         hooks
       );
     }
@@ -369,6 +415,11 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       if (cancelled()) throw new Error('Экспорт отменён');
       const out = single ? req.outputPath : suffixPath(req.outputPath, i + 1, count);
       const u = buildUniqualizerFilters(req.uniqualizer, w, h);
+      // Режим «видимая вариация»: сильные заметные фильтры, свои для каждой копии.
+      const visVf =
+        req.uniqualizer.enabled && req.uniqualizer.visibleVariation
+          ? buildVisibleVariation(i, w, h)
+          : [];
       // Вариация кодирования (CRF/GOP/битрейт/faststart) — структурный fingerprint.
       const enc = req.uniqualizer.enabled ? uniqualizerEncoding() : null;
 
@@ -385,7 +436,8 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       } else {
         oo.push('-an');
       }
-      if (u.vf.length) cmd.videoFilters(u.vf);
+      const vfAll = [...visVf, ...u.vf];
+      if (vfAll.length) cmd.videoFilters(vfAll);
       await runCommand(cmd.outputOptions(oo).output(out), hooks);
 
       // Метаданные + дозапись байт (уникальный хэш).

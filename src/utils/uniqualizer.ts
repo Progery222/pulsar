@@ -119,3 +119,40 @@ export function buildUniqualizerFilters(
 
   return { vf, af };
 }
+
+// Набор «видимых» цветовых грейдов для режима видимой вариации (каждый явно отличается).
+const LOOKS = [
+  'eq=brightness=0.05:saturation=1.45:contrast=1.08:gamma=0.95', // тёплый/насыщенный
+  'colorbalance=rs=-0.12:bs=0.18,eq=saturation=1.15', // холодный
+  'curves=preset=vintage', // винтаж
+  'hue=s=0,eq=contrast=1.2', // чёрно-белый
+  'colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131', // сепия
+  'eq=contrast=1.45:brightness=-0.04:saturation=1.25', // высокий контраст
+  'curves=preset=lighter,eq=saturation=1.3', // светлый/воздушный
+  'eq=saturation=1.85:contrast=1.1', // ультра-насыщенный
+];
+
+// Режим «видимая вариация»: для копии index возвращает СИЛЬНЫЕ, заметные глазу
+// видеофильтры (грейд + зум + отражение + поворот оттенка). Каждая копия очевидно разная.
+export function buildVisibleVariation(index: number, w: number, h: number): string[] {
+  const vf: string[] = [];
+
+  // Зеркало на нечётных копиях — самое заметное отличие.
+  if (index % 2 === 1) vf.push('hflip');
+
+  // Заметный зум, разный по копиям: 1.08–1.28.
+  const zoom = (1.08 + (index % 5) * 0.05).toFixed(3);
+  vf.push(`crop=iw/${zoom}:ih/${zoom},scale=${w}:${h}`);
+
+  // Цветовой грейд из набора.
+  const look = LOOKS[index % LOOKS.length];
+  vf.push(look);
+
+  // Поворот оттенка (кроме ч/б-грейда).
+  if (!look.startsWith('hue=s=0')) {
+    const hue = (index * 47) % 360;
+    if (hue) vf.push(`hue=h=${hue}`);
+  }
+
+  return vf;
+}

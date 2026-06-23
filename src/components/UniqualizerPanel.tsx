@@ -84,6 +84,27 @@ export default function UniqualizerPanel() {
           Метаданные, хэш файла и технические параметры изменяются автоматически
         </p>
 
+        {/* Режим «Видимая вариация» */}
+        <label
+          className="mb-3 flex cursor-pointer items-start gap-2 rounded-el p-2"
+          style={{ backgroundColor: 'var(--bg-tertiary)' }}
+        >
+          <input
+            type="checkbox"
+            checked={settings.visibleVariation}
+            onChange={(e) => setSettings({ visibleVariation: e.target.checked })}
+            className="mt-0.5 accent-[var(--accent-green)]"
+          />
+          <span>
+            <span className="block font-semibold text-text-primary" style={{ fontSize: 13 }}>
+              Видимая вариация
+            </span>
+            <span className="block text-text-secondary" style={{ fontSize: 11 }}>
+              Каждая копия с заметно разным фильтром, зумом и отражением — реально разные ролики, а не только разный хэш
+            </span>
+          </span>
+        </label>
+
         {/* Блок «Дополнительно» */}
         <div className="flex flex-col gap-2">
           {OPTIONS.map((opt) => (

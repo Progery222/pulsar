@@ -1,13 +1,23 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
+import path from 'node:path';
 import type ffmpeg from 'fluent-ffmpeg';
 import { renderProject, type RenderRequest } from './ffmpegRender';
 
 let currentCommand: ffmpeg.FfmpegCommand | null = null;
 let cancelled = false;
 
+// Резолв относительного пути аудио (assets/music/...) от корня приложения/ресурсов —
+// без этого встроенные треки не находятся (CWD ≠ каталог ресурсов в собранном приложении).
+function resolveAudioPath(audioPath: string | null): string | null {
+  if (!audioPath || path.isAbsolute(audioPath)) return audioPath;
+  const base = app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd());
+  return path.join(base, audioPath);
+}
+
 export function registerFfmpegHandlers() {
   ipcMain.handle('ffmpeg:render', async (event, req: RenderRequest) => {
     cancelled = false;
+    req.audioFile = resolveAudioPath(req.audioFile);
     const sender = BrowserWindow.fromWebContents(event.sender);
     try {
       await renderProject(req, {
