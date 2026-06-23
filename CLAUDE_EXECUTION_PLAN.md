@@ -7,7 +7,7 @@
 - [x] Шаг 1: Инициализация проекта
 - [x] Шаг 2: Дизайн-система, роутинг, State Management
 - [x] Шаг 3: Экраны MediaPicker и MusicPicker
-- [ ] Шаг 4: Beat Detection (Python + IPC)
+- [x] Шаг 4: Beat Detection (Python + IPC)
 - [ ] Шаг 5: Алгоритм нарезки и генерации монтажа
 - [ ] Шаг 6: Главный экран редактора (Layout)
 - [ ] Шаг 7: Вкладка TOOLS (все 7 инструментов)
