@@ -6,6 +6,13 @@ import path from 'node:path';
 import { buildVubPlan } from '../../src/vub/ffmpegBuild';
 import type { VubProcessRequest, VubVideo } from '../../src/vub/types';
 
+// Одна задача очереди = конкретная вариация конкретного видео.
+interface VubTask {
+  id: string; // уникальный id строки прогресса (videoId#index)
+  video: VubVideo;
+  outName: string; // имя выходного файла
+}
+
 // Bundled FFmpeg (распаковка из asar в упакованном приложении).
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
@@ -30,18 +37,20 @@ function probe(file: string): Promise<{ duration: number; hasAudio: boolean }> {
 }
 
 function processOne(
-  video: VubVideo,
+  task: VubTask,
   req: VubProcessRequest,
   send: (status: 'processing' | 'done' | 'error', percent: number, error?: string) => void
 ): Promise<void> {
+  const video = task.video;
   return new Promise((resolve) => {
     probe(video.path).then(({ duration, hasAudio }) => {
       if (cancelled) {
         resolve();
         return;
       }
+      // Каждая вариация — свой случайный набор значений из заданных диапазонов.
       const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata);
-      const out = path.join(req.outputDir, `${path.parse(video.name).name}_unique.mp4`);
+      const out = path.join(req.outputDir, task.outName);
 
       const cmd = ffmpeg(video.path).addInputOption('-nostdin');
 
@@ -122,8 +131,22 @@ export function registerVubHandlers() {
     const emit = (id: string, status: string, percent: number, error?: string) =>
       sender?.webContents.send('vub-progress', { id, status, percent, error });
 
-    await runPool(req.videos, req.threads, (video) =>
-      processOne(video, req, (status, percent, error) => emit(video.id, status, percent, error))
+    // Разворачиваем очередь: каждое видео -> N уникальных вариаций.
+    const variations = Math.max(1, req.variations || 1);
+    const tasks: VubTask[] = [];
+    for (const video of req.videos) {
+      const base = path.parse(video.name).name;
+      for (let i = 0; i < variations; i++) {
+        tasks.push({
+          id: variations > 1 ? `${video.id}#${i}` : video.id,
+          video,
+          outName: variations > 1 ? `${base}_unique_${i + 1}.mp4` : `${base}_unique.mp4`,
+        });
+      }
+    }
+
+    await runPool(tasks, req.threads, (task) =>
+      processOne(task, req, (status, percent, error) => emit(task.id, status, percent, error))
     );
     return { ok: true };
   });

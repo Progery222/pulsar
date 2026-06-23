@@ -7,7 +7,7 @@ const cores = navigator.hardwareConcurrency || 4;
 // Вкладка 8: Производительность и Сохранение (§4.9 ТЗ).
 export default function PerformanceTab() {
   const {
-    threads, setThreads, outputDir, setOutputDir,
+    threads, setThreads, variations, setVariations, outputDir, setOutputDir,
     videos, params, effects, watermark, text, template, cleanMetadata,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
   } = useVubStore();
@@ -24,7 +24,19 @@ export default function PerformanceTab() {
 
   async function start() {
     if (!videos.length || !outputDir || isProcessing) return;
-    const initial: FileProgress[] = videos.map((v) => ({ id: v.id, name: v.name, status: 'queued', percent: 0 }));
+    // Разворачиваем строки прогресса: каждое видео -> N вариаций (id совпадает со схемой в main).
+    const initial: FileProgress[] = [];
+    for (const v of videos) {
+      const base = v.name.replace(/\.[^.]+$/, '');
+      for (let i = 0; i < variations; i++) {
+        initial.push({
+          id: variations > 1 ? `${v.id}#${i}` : v.id,
+          name: variations > 1 ? `${base} — вариация ${i + 1}` : v.name,
+          status: 'queued',
+          percent: 0,
+        });
+      }
+    }
     setProgress(initial);
     setIsProcessing(true);
     try {
@@ -37,6 +49,7 @@ export default function PerformanceTab() {
         template,
         cleanMetadata,
         threads,
+        variations,
         outputDir,
       });
     } finally {
@@ -63,8 +76,26 @@ export default function PerformanceTab() {
       </h2>
 
       <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <span style={{ fontSize: 14 }}>Вариаций на видео</span>
+          <input
+            type="number"
+            min={1}
+            max={100}
+            value={variations}
+            onChange={(e) => setVariations(Number(e.target.value))}
+            style={{ width: 80, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 4, padding: '4px 8px', fontSize: 13, textAlign: 'center' }}
+          />
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0 }}>
+          Каждая вариация получает свои случайные значения из заданных диапазонов.
+          {videos.length > 0 && ` Будет создано ${videos.length * variations} файлов.`}
+        </p>
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 8 }}>
-          <span style={{ fontSize: 14 }}>Количество потоков</span>
+          <span style={{ fontSize: 14 }}>Количество потоков (параллельно)</span>
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{threads} / {cores}</span>
         </div>
         <Slider min={1} max={cores} value={threads} onChange={setThreads} />

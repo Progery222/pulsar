@@ -56,6 +56,8 @@ interface VubState {
 
   threads: number;
   setThreads: (value: number) => void;
+  variations: number; // сколько уникальных вариаций создавать на каждое видео
+  setVariations: (value: number) => void;
   outputDir: string | null;
   setOutputDir: (value: string | null) => void;
 
@@ -120,6 +122,8 @@ export const useVubStore = create<VubState>((set) => ({
 
   threads: Math.max(1, Math.floor((navigator.hardwareConcurrency || 4) / 2)),
   setThreads: (value) => set({ threads: value }),
+  variations: 1,
+  setVariations: (value) => set({ variations: Math.max(1, value) }),
   outputDir: null,
   setOutputDir: (value) => set({ outputDir: value }),
 

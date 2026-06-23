@@ -85,6 +85,7 @@ export interface VubProcessRequest {
   template: VubTemplate;
   cleanMetadata: boolean;
   threads: number;
+  variations: number; // количество уникальных вариаций на каждое видео
   outputDir: string;
 }
 
