@@ -9,12 +9,21 @@ function scriptPath(): string {
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', 'beat_detect.py');
 }
 
+// Резолв относительного пути аудио (assets/music/...) от корня приложения/ресурсов.
+function resolveAudioPath(audioPath: string): string {
+  if (path.isAbsolute(audioPath)) return audioPath;
+  const base = app.isPackaged
+    ? process.resourcesPath
+    : (process.env.APP_ROOT ?? process.cwd());
+  return path.join(base, audioPath);
+}
+
 // IPC-канал analyze-audio: запуск beat_detect.py через spawn, парсинг JSON, таймаут 30с.
 export function registerAudioHandlers() {
   ipcMain.handle('analyze-audio', async (_event, audioPath: string) => {
     return new Promise((resolve) => {
       const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-      const child = spawn(pythonCmd, [scriptPath(), audioPath]);
+      const child = spawn(pythonCmd, [scriptPath(), resolveAudioPath(audioPath)]);
 
       let stdout = '';
       let stderr = '';

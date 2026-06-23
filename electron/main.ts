@@ -1,6 +1,7 @@
-import { app, BrowserWindow, net, protocol } from 'electron';
+import { app, BrowserWindow, protocol } from 'electron';
+import fs from 'node:fs';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { Readable } from 'node:stream';
 import { registerFileHandlers } from './ipc/files';
 import { registerAudioHandlers } from './ipc/audio';
 import { registerFfmpegHandlers } from './ipc/ffmpeg';
@@ -21,8 +22,6 @@ protocol.registerSchemesAsPrivileged([
   {
     scheme: 'media',
     privileges: {
-      standard: true,
-      secure: true,
       supportFetchAPI: true,
       stream: true,
       bypassCSP: true,
@@ -59,12 +58,63 @@ function createWindow() {
   }
 }
 
+const MIME: Record<string, string> = {
+  '.mp4': 'video/mp4',
+  '.mov': 'video/quicktime',
+  '.avi': 'video/x-msvideo',
+  '.webm': 'video/webm',
+  '.mkv': 'video/x-matroska',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.aac': 'audio/aac',
+};
+
 app.whenReady().then(() => {
-  // media:///<encoded-abs-path> -> отдаём локальный файл
-  protocol.handle('media', (request) => {
-    const url = new URL(request.url);
-    const filePath = decodeURIComponent(url.pathname.replace(/^\//, ''));
-    return net.fetch(pathToFileURL(filePath).toString());
+  // media:///<encoded-abs-path> -> потоковая отдача локального файла с поддержкой Range.
+  protocol.handle('media', async (request) => {
+    const encoded = request.url.slice('media://'.length).replace(/^\/+/, '');
+    let filePath = decodeURIComponent(encoded);
+    // Относительные пути (assets/music/...) резолвим от корня приложения/ресурсов.
+    if (!path.isAbsolute(filePath)) {
+      const base = app.isPackaged
+        ? process.resourcesPath
+        : (process.env.APP_ROOT ?? process.cwd());
+      filePath = path.join(base, filePath);
+    }
+    try {
+      const stat = await fs.promises.stat(filePath);
+      const total = stat.size;
+      const type = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+      const rangeHeader = request.headers.get('Range');
+
+      if (rangeHeader) {
+        const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+        const start = match ? parseInt(match[1], 10) : 0;
+        const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+        const stream = fs.createReadStream(filePath, { start, end });
+        return new Response(Readable.toWeb(stream) as ReadableStream, {
+          status: 206,
+          headers: {
+            'Content-Type': type,
+            'Content-Length': String(end - start + 1),
+            'Content-Range': `bytes ${start}-${end}/${total}`,
+            'Accept-Ranges': 'bytes',
+          },
+        });
+      }
+
+      const stream = fs.createReadStream(filePath);
+      return new Response(Readable.toWeb(stream) as ReadableStream, {
+        status: 200,
+        headers: {
+          'Content-Type': type,
+          'Content-Length': String(total),
+          'Accept-Ranges': 'bytes',
+        },
+      });
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
   });
 
   registerFileHandlers();

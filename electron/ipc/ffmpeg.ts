@@ -19,6 +19,7 @@ export function registerFfmpegHandlers() {
       });
       return { ok: true };
     } catch (err) {
+      if (cancelled) return { cancelled: true };
       return { error: err instanceof Error ? err.message : String(err) };
     }
   });

@@ -4,12 +4,13 @@ type Quality = '720p' | '1080p' | '4k';
 
 // buildAndRender (§10): формирует запрос рендеринга и вызывает FFmpeg pipeline в
 // main-процессе. Прогресс пробрасывается через onProgress.
+// Возвращает true при успешном рендере, false при отмене; бросает при реальной ошибке.
 export async function buildAndRender(
   project: ProjectState,
   outputPath: string,
   quality: Quality,
   onProgress: (percent: number) => void
-): Promise<void> {
+): Promise<boolean> {
   const unsubscribe = window.electronAPI.onExportProgress(onProgress);
   try {
     const request = {
@@ -34,6 +35,7 @@ export async function buildAndRender(
     if (result && 'error' in result) {
       throw new Error(result.error);
     }
+    return !(result && 'cancelled' in result);
   } finally {
     unsubscribe();
   }

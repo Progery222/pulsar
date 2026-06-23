@@ -51,17 +51,38 @@ function dimensions(format: Format, quality: Quality): [number, number] {
   return [s, s];
 }
 
-// Простые видеофильтры эффекта (исключаем сложные графы с ';' и tile/split).
-function effectFilters(effects: EffectName[]): string[] {
+// Render-безопасные видеофильтры эффектов: только timing-нейтральные и валидные
+// как простой -vf. Эффекты speed/boomerang/split/fastCut меняют тайминг/раскладку
+// и ломают синхронизацию с аудио — они отображаются только в превью (оверлей/маркеры).
+function effectFilters(effects: EffectName[], w: number, h: number): string[] {
   const out: string[] = [];
   for (const name of effects) {
-    const meta = EFFECTS.find((e) => e.key === name);
-    if (!meta || !meta.ffmpeg) continue;
-    if (meta.ffmpeg.includes(';') || meta.ffmpeg.startsWith('tile')) continue;
-    out.push(meta.ffmpeg);
+    switch (name) {
+      case 'prism':
+        out.push('rgbashift=rh=5:bh=-5');
+        break;
+      case 'rgb':
+        out.push('rgbashift=rh=8:bh=-8');
+        break;
+      case 'hue':
+        out.push('hue=h=360*t');
+        break;
+      case 'zoom':
+        out.push(`crop=iw/1.2:ih/1.2,scale=${w}:${h}`);
+        break;
+      case 'flash':
+        out.push('eq=brightness=0.18:saturation=1.2');
+        break;
+      // speed, boomerang, split, fastCut — превью-only (тайминг/раскладка).
+      default:
+        break;
+    }
   }
   return out;
 }
+
+// EFFECTS импортируется для согласованности набора (используется в превью).
+void EFFECTS;
 
 function globalFilter(filter: FilterName | null): string | null {
   if (!filter) return null;
@@ -103,16 +124,14 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     if (req.clips.length === 0) throw new Error('Нет клипов для рендеринга');
     const [w, h] = dimensions(req.format, req.quality);
     const scaleChain = `scale=${w}:${h}:force_original_aspect_ratio=increase,crop=${w}:${h},setsar=1`;
-    const gFilter = req.filterIntensity > 0 ? globalFilter(req.filter) : null;
 
-    // Этап 1–3: нарезка фрагментов + эффекты + глобальный фильтр.
+    // Этап 1–2: нарезка фрагментов + эффекты (глобальный фильтр — отдельным этапом).
     const fragments: string[] = [];
     for (let i = 0; i < req.clips.length; i++) {
       if (cancelled()) throw new Error('Экспорт отменён');
       const clip = req.clips[i];
       const fragPath = path.join(tmpDir, `fragment_${i}.mp4`);
-      const filters = [scaleChain, ...effectFilters(clip.effects)];
-      if (gFilter) filters.push(gFilter);
+      const filters = [scaleChain, ...effectFilters(clip.effects, w, h)];
 
       await runCommand(
         ffmpeg(clip.sourceFile)
@@ -125,7 +144,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
         hooks
       );
       fragments.push(fragPath);
-      progress((i / req.clips.length) * 60);
+      progress((i / req.clips.length) * 55);
     }
 
     // Этап 4: склейка (concat demuxer).
@@ -134,20 +153,40 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       listPath,
       fragments.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n')
     );
-    const concatPath = path.join(tmpDir, 'concat.mp4');
+    let videoSource = path.join(tmpDir, 'concat.mp4');
     await runCommand(
       ffmpeg()
         .input(listPath)
         .inputOptions(['-f', 'concat', '-safe', '0'])
         .outputOptions(['-c', 'copy'])
-        .output(concatPath),
+        .output(videoSource),
       hooks
     );
+    progress(62);
+
+    // Этап 3: глобальный фильтр с учётом filterIntensity (blend по K = intensity/100).
+    if (cancelled()) throw new Error('Экспорт отменён');
+    const gFilter = req.filterIntensity > 0 ? globalFilter(req.filter) : null;
+    if (gFilter) {
+      const filteredPath = path.join(tmpDir, 'filtered.mp4');
+      const k = Math.min(1, req.filterIntensity / 100);
+      const cmd = ffmpeg(videoSource);
+      if (k >= 1) {
+        cmd.videoFilters([gFilter]);
+      } else {
+        cmd.complexFilter(
+          [`[0:v]split[a][b];[b]${gFilter}[bf];[a][bf]blend=all_expr=A*(1-${k.toFixed(3)})+B*${k.toFixed(3)}[out]`],
+          ['out']
+        );
+      }
+      await runCommand(cmd.outputOptions(['-pix_fmt', 'yuv420p']).output(filteredPath), hooks);
+      videoSource = filteredPath;
+    }
     progress(70);
 
     // Этап 5–6: аудио + fade + финальный экспорт H.264/AAC.
     if (cancelled()) throw new Error('Экспорт отменён');
-    const final = ffmpeg().input(concatPath);
+    const final = ffmpeg().input(videoSource);
 
     const videoFades: string[] = [];
     const audioFades: string[] = [];

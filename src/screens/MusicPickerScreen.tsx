@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import type { Track } from '../types';
 import { fileName, formatTime, mediaUrl } from '../utils/media';
@@ -59,11 +59,20 @@ export default function MusicPickerScreen() {
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Останавливаем превью при уходе с экрана.
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+      audioRef.current = null;
+    };
+  }, []);
+
   function playPreview(track: Track) {
     if (!audioRef.current) audioRef.current = new Audio();
     const audio = audioRef.current;
     audio.src = mediaUrl(track.file);
     audio.currentTime = 0;
+    audio.onended = () => setPlayingId(null);
     audio.play().then(() => setPlayingId(track.id)).catch(() => setPlayingId(null));
   }
 

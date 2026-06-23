@@ -36,13 +36,16 @@ export default function ExportModal() {
     const outputPath = `${folder}${sep}beatleap_${Date.now()}.mp4`;
 
     try {
-      await buildAndRender(useProjectStore.getState(), outputPath, quality, (p) =>
+      const ok = await buildAndRender(useProjectStore.getState(), outputPath, quality, (p) =>
         setExportProgress(p)
       );
-      showToast('Видео сохранено!', {
-        actionLabel: 'Открыть папку',
-        onAction: () => window.electronAPI.openFolder(folder),
-      });
+      if (ok) {
+        showToast('Видео сохранено!', {
+          actionLabel: 'Открыть папку',
+          onAction: () => window.electronAPI.openFolder(folder),
+        });
+      }
+      // При отмене (ok === false) — тихо, без уведомления.
     } catch {
       // §14: ошибка FFmpeg — диалоговое окно.
       window.alert(

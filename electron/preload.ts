@@ -13,7 +13,9 @@ const electronAPI = {
     ipcRenderer.invoke('analyze-audio', audioPath),
 
   // Рендеринг видео (§10).
-  renderVideo: (request: unknown): Promise<{ ok: true } | { error: string }> =>
+  renderVideo: (
+    request: unknown
+  ): Promise<{ ok: true } | { error: string } | { cancelled: true }> =>
     ipcRenderer.invoke('ffmpeg:render', request),
   cancelRender: (): Promise<{ ok: true }> => ipcRenderer.invoke('ffmpeg:cancel'),
   onExportProgress: (cb: (percent: number) => void): (() => void) => {
