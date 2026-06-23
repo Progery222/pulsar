@@ -1,0 +1,22 @@
+[
+  { "id": "track_001", "title": "Neon Pulse", "artist": "Kira Vox", "duration": 178, "category": "POP", "file": "assets/music/track_001.mp3", "cover": "assets/covers/track_001.jpg", "bpm": 120 },
+  { "id": "track_002", "title": "Sugar Rush", "artist": "Mia Belle", "duration": 165, "category": "POP", "file": "assets/music/track_002.mp3", "cover": "assets/covers/track_002.jpg", "bpm": 128 },
+  { "id": "track_003", "title": "Concrete Flow", "artist": "Big Stax", "duration": 192, "category": "RAP", "file": "assets/music/track_003.mp3", "cover": "assets/covers/track_003.jpg", "bpm": 90 },
+  { "id": "track_004", "title": "Late Night Bars", "artist": "Verse One", "duration": 204, "category": "RAP", "file": "assets/music/track_004.mp3", "cover": "assets/covers/track_004.jpg", "bpm": 96 },
+  { "id": "track_005", "title": "Rising Tide", "artist": "Orchestral Skies", "duration": 240, "category": "CINEMATIC", "file": "assets/music/track_005.mp3", "cover": "assets/covers/track_005.jpg", "bpm": 80 },
+  { "id": "track_006", "title": "Final Horizon", "artist": "Echo Strings", "duration": 256, "category": "CINEMATIC", "file": "assets/music/track_006.mp3", "cover": "assets/covers/track_006.jpg", "bpm": 70 },
+  { "id": "track_007", "title": "Game Day", "artist": "Adrenaline", "duration": 150, "category": "SPORT", "file": "assets/music/track_007.mp3", "cover": "assets/covers/track_007.jpg", "bpm": 140 },
+  { "id": "track_008", "title": "Power Drive", "artist": "Pulse Engine", "duration": 158, "category": "SPORT", "file": "assets/music/track_008.mp3", "cover": "assets/covers/track_008.jpg", "bpm": 150 },
+  { "id": "track_009", "title": "Open Roads", "artist": "Wanderlust", "duration": 188, "category": "TRAVEL", "file": "assets/music/track_009.mp3", "cover": "assets/covers/track_009.jpg", "bpm": 110 },
+  { "id": "track_010", "title": "Coastline", "artist": "Sunset Drift", "duration": 196, "category": "TRAVEL", "file": "assets/music/track_010.mp3", "cover": "assets/covers/track_010.jpg", "bpm": 105 },
+  { "id": "track_011", "title": "Morning Light", "artist": "Oak & Pine", "duration": 172, "category": "ACOUSTIC", "file": "assets/music/track_011.mp3", "cover": "assets/covers/track_011.jpg", "bpm": 92 },
+  { "id": "track_012", "title": "Paper Boats", "artist": "Hollow Wood", "duration": 184, "category": "ACOUSTIC", "file": "assets/music/track_012.mp3", "cover": "assets/covers/track_012.jpg", "bpm": 88 },
+  { "id": "track_013", "title": "Groove Machine", "artist": "The Funksters", "duration": 210, "category": "FUNK", "file": "assets/music/track_013.mp3", "cover": "assets/covers/track_013.jpg", "bpm": 116 },
+  { "id": "track_014", "title": "Disco Heat", "artist": "Velvet Slap", "duration": 198, "category": "FUNK", "file": "assets/music/track_014.mp3", "cover": "assets/covers/track_014.jpg", "bpm": 118 },
+  { "id": "track_015", "title": "Midnight Club", "artist": "Deep Sector", "duration": 222, "category": "HOUSE", "file": "assets/music/track_015.mp3", "cover": "assets/covers/track_015.jpg", "bpm": 124 },
+  { "id": "track_016", "title": "Acid Rain", "artist": "Loop Theory", "duration": 234, "category": "HOUSE", "file": "assets/music/track_016.mp3", "cover": "assets/covers/track_016.jpg", "bpm": 126 },
+  { "id": "track_017", "title": "Glow Up", "artist": "Kira Vox", "duration": 160, "category": "POP", "file": "assets/music/track_017.mp3", "cover": "assets/covers/track_017.jpg", "bpm": 122 },
+  { "id": "track_018", "title": "Skyline Run", "artist": "Adrenaline", "duration": 162, "category": "SPORT", "file": "assets/music/track_018.mp3", "cover": "assets/covers/track_018.jpg", "bpm": 145 },
+  { "id": "track_019", "title": "Wide Open", "artist": "Wanderlust", "duration": 180, "category": "TRAVEL", "file": "assets/music/track_019.mp3", "cover": "assets/covers/track_019.jpg", "bpm": 112 },
+  { "id": "track_020", "title": "Velvet Night", "artist": "Deep Sector", "duration": 246, "category": "HOUSE", "file": "assets/music/track_020.mp3", "cover": "assets/covers/track_020.jpg", "bpm": 123 }
+]

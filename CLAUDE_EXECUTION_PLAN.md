@@ -6,7 +6,7 @@
 
 - [x] Шаг 1: Инициализация проекта
 - [x] Шаг 2: Дизайн-система, роутинг, State Management
-- [ ] Шаг 3: Экраны MediaPicker и MusicPicker
+- [x] Шаг 3: Экраны MediaPicker и MusicPicker
 - [ ] Шаг 4: Beat Detection (Python + IPC)
 - [ ] Шаг 5: Алгоритм нарезки и генерации монтажа
 - [ ] Шаг 6: Главный экран редактора (Layout)
@@ -26,3 +26,12 @@
   Inter, классы `.btn-primary/.btn-secondary/.card/.panel`. Роутинг 5 экранов
   через Zustand (`currentScreen`). Полный `ProjectState` (§15) + 15 экшенов в
   `projectStore.ts`. Общие типы в `src/types.ts`. Typecheck/build/рендер — без ошибок.
+- **Шаг 3** завершён: HomeScreen (§5.1, логотип/подзаголовок/«Начать»/«Продолжить
+  проект»), MediaPickerScreen (§5.2: сетка 4 кол., выбор через диалог и DnD,
+  зелёная галочка, длительность, лента выбранных 80×80 с № и ✕, drag-reorder,
+  «Перемешать»/«По порядку»), MusicPickerScreen (§5.3: табы категорий, список
+  72px, обложка 48px, превью play/pause, синяя точка, BEATLEAP/ФАЙЛЫ). Инфра:
+  IPC-диалоги `selectVideos/selectAudio`, протокол `media://` для локальных файлов,
+  библиотека `src/data/tracks.json` (20 треков). Миниатюры — первый кадр <video>
+  без FFmpeg. Реальные MP3 в `assets/music/` пока отсутствуют (превью молчит до
+  их добавления, как и предусмотрено ТЗ).
