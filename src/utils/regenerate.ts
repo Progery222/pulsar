@@ -17,3 +17,11 @@ export function regenerateMontage() {
   const withEffects = applyEffects(clips, s.activeEffects, s.beatData.beat_times);
   s.setGeneratedClips(withEffects);
 }
+
+// Перерасстановка эффектов по текущим клипам (для EDIT: переключение/Shuffle).
+export function reapplyEffects() {
+  const s = useProjectStore.getState();
+  if (!s.beatData) return;
+  const updated = applyEffects(s.generatedClips, s.activeEffects, s.beatData.beat_times);
+  s.setGeneratedClips(updated);
+}
