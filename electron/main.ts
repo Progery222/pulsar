@@ -3,6 +3,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { registerFileHandlers } from './ipc/files';
 import { registerAudioHandlers } from './ipc/audio';
+import { registerFfmpegHandlers } from './ipc/ffmpeg';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -68,6 +69,7 @@ app.whenReady().then(() => {
 
   registerFileHandlers();
   registerAudioHandlers();
+  registerFfmpegHandlers();
   createWindow();
 });
 

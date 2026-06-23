@@ -1,4 +1,4 @@
-import { dialog, ipcMain } from 'electron';
+import { dialog, ipcMain, shell } from 'electron';
 
 // IPC-обработчики для файловой системы: системные диалоги выбора файлов.
 export function registerFileHandlers() {
@@ -18,5 +18,16 @@ export function registerFileHandlers() {
       filters: [{ name: 'Аудио', extensions: ['mp3', 'wav', 'aac'] }],
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+
+  // Выбор папки для экспорта (§11).
+  ipcMain.handle('dialog:selectDirectory', async () => {
+    const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+
+  // Открыть папку в проводнике Windows (§11).
+  ipcMain.handle('shell:openPath', async (_event, folderPath: string) => {
+    return shell.openPath(folderPath);
   });
 }
