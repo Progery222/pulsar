@@ -1,21 +1,28 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
-import { generateClips } from '../utils/videoSlicer';
-import { applyEffects } from '../utils/effectsEngine';
+import { useUIStore } from '../store/uiStore';
+import { shuffleMontage } from '../utils/regenerate';
 import VideoPreview from '../components/VideoPreview';
 import Timeline from '../components/Timeline';
 import ToolsPanel from '../components/ToolsPanel';
 import EditPanel from '../components/EditPanel';
 import FiltersPanel from '../components/FiltersPanel';
-
-type Tab = 'tools' | 'edit' | 'filters';
+import ExportModal from '../components/ExportModal';
 
 export default function EditorScreen() {
   const format = useProjectStore((s) => s.format);
   const clips = useProjectStore((s) => s.generatedClips);
   const setScreen = useProjectStore((s) => s.setCurrentScreen);
+  const isExporting = useProjectStore((s) => s.isExporting);
+  const exportProgress = useProjectStore((s) => s.exportProgress);
+  const setIsExporting = useProjectStore((s) => s.setIsExporting);
 
-  const [activeTab, setActiveTab] = useState<Tab>('tools');
+  const activeTab = useUIStore((s) => s.activeTab);
+  const setActiveTab = useUIStore((s) => s.setActiveTab);
+  const showExport = useUIStore((s) => s.showExport);
+  const setShowExport = useUIStore((s) => s.setShowExport);
+  const setPlayToggle = useUIStore((s) => s.setPlayToggle);
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [scrub, setScrub] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -25,15 +32,9 @@ export default function EditorScreen() {
     [clips]
   );
 
-  // Маркеры эффектов на таймлайне: абсолютные времена слотов / общая длительность.
   const markers = useMemo(() => {
     const times: number[] = [];
-    let acc = 0;
-    for (const c of clips) {
-      for (const slot of c.effectSlots) times.push(slot.time);
-      acc += c.duration;
-    }
-    void acc;
+    for (const c of clips) for (const slot of c.effectSlots) times.push(slot.time);
     return times.map((t) => Math.max(0, Math.min(1, t / totalDuration)));
   }, [clips, totalDuration]);
 
@@ -48,34 +49,27 @@ export default function EditorScreen() {
     }
   }
 
+  // Регистрируем Play/Pause-колбэк для горячей клавиши Space.
+  useEffect(() => {
+    setPlayToggle(togglePlay);
+    return () => setPlayToggle(null);
+  }, [setPlayToggle]);
+
   function goHome() {
     if (window.confirm('Вернуться на главную? Прогресс будет потерян.')) {
       setScreen('home');
     }
   }
 
-  function changeTrack() {
-    setScreen('music');
-  }
-
-  // Иконка Shuffle (§5.5): повторная генерация монтажа с теми же настройками.
-  function shuffleMontage() {
-    const s = useProjectStore.getState();
-    if (!s.beatData) return;
-    const order = [...(s.mediaOrder.length ? s.mediaOrder : s.mediaFiles.map((f) => f.id))];
-    for (let i = order.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [order[i], order[j]] = [order[j], order[i]];
-    }
-    const newClips = generateClips(s.beatData, s.mediaFiles, s.mood, s.duration, s.segmentStart, order);
-    const withEffects = applyEffects(newClips, s.activeEffects, s.beatData.beat_times);
-    s.setGeneratedClips(withEffects);
-  }
-
   function onScrub(v: number) {
     setScrub(v);
     const video = videoRef.current;
     if (video && video.duration) video.currentTime = v * video.duration;
+  }
+
+  function cancelExport() {
+    window.electronAPI.cancelRender();
+    setIsExporting(false);
   }
 
   const firstClip = clips[0];
@@ -100,9 +94,7 @@ export default function EditorScreen() {
         <button
           className="btn-primary"
           style={{ width: 120, height: 36, borderRadius: 18, fontSize: 14 }}
-          onClick={() => {
-            /* ExportModal открывается на Шаге 10 */
-          }}
+          onClick={() => setShowExport(true)}
         >
           Сохранить
         </button>
@@ -121,7 +113,6 @@ export default function EditorScreen() {
             />
           </div>
 
-          {/* Элементы управления */}
           <div className="flex shrink-0 items-center justify-center gap-6 py-3">
             <button
               className="flex items-center justify-center rounded-full bg-bg-tertiary text-text-primary"
@@ -134,7 +125,7 @@ export default function EditorScreen() {
             <button
               className="flex items-center justify-center rounded-full text-text-primary hover:bg-bg-tertiary"
               style={{ width: 36, height: 36 }}
-              onClick={changeTrack}
+              onClick={() => setScreen('music')}
               title="Сменить трек"
             >
               ♪
@@ -149,17 +140,33 @@ export default function EditorScreen() {
             </button>
           </div>
 
-          {/* Timeline */}
           <div className="shrink-0 px-4 pb-4">
             <Timeline value={scrub} markers={markers} onChange={onScrub} />
           </div>
+
+          {/* Нижняя панель прогресса экспорта (§11) */}
+          {isExporting && (
+            <div className="flex shrink-0 items-center gap-3 border-t border-border bg-bg-secondary px-4 py-3">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-bg-tertiary">
+                <div
+                  className="h-full rounded-full transition-all"
+                  style={{ width: `${exportProgress}%`, backgroundColor: 'var(--accent-green)' }}
+                />
+              </div>
+              <span className="text-text-primary" style={{ fontSize: 13 }}>
+                Рендеринг... {Math.round(exportProgress)}%
+              </span>
+              <button className="btn-secondary px-3 py-1" style={{ fontSize: 13 }} onClick={cancelExport}>
+                Отмена
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Зона C — Правая панель */}
         <div className="flex min-h-0 flex-col bg-bg-secondary" style={{ width: '40%' }}>
-          {/* Вкладки */}
           <div className="flex shrink-0 border-b border-border" style={{ height: 44 }}>
-            {(['tools', 'edit', 'filters'] as Tab[]).map((tab) => {
+            {(['tools', 'edit', 'filters'] as const).map((tab) => {
               const active = tab === activeTab;
               return (
                 <button
@@ -178,7 +185,6 @@ export default function EditorScreen() {
             })}
           </div>
 
-          {/* Содержимое вкладки */}
           <div className="min-h-0 flex-1 overflow-y-auto">
             {activeTab === 'tools' && <ToolsPanel />}
             {activeTab === 'edit' && <EditPanel />}
@@ -186,6 +192,8 @@ export default function EditorScreen() {
           </div>
         </div>
       </div>
+
+      {showExport && <ExportModal />}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useState, type DragEvent } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import type { MediaFile } from '../types';
 import { fileName, formatTime, isVideoFile, mediaUrl } from '../utils/media';
+import { showToast } from '../store/toastStore';
 
 // Миниатюра видео: первый кадр через <video>, без зависимости от FFmpeg.
 function VideoThumb({
@@ -63,6 +64,12 @@ export default function MediaPickerScreen() {
 
   function addPaths(paths: string[]) {
     const valid = paths.filter(isVideoFile);
+    // §14: неподдерживаемый формат.
+    if (paths.length > valid.length) {
+      showToast(
+        'Формат файла не поддерживается. Используйте MP4, MOV, AVI для видео и MP3, WAV для аудио.'
+      );
+    }
     if (valid.length === 0) return;
     setPool((prev) => {
       const existing = new Set(prev.map((p) => p.id));
@@ -136,6 +143,14 @@ export default function MediaPickerScreen() {
     const selectedFiles = selectedIds
       .map((id) => byId.get(id))
       .filter((f): f is MediaFile => Boolean(f));
+
+    // §14: слишком короткое видео (< 5 сек суммарно).
+    const totalDuration = selectedFiles.reduce((s, f) => s + f.duration, 0);
+    if (totalDuration > 0 && totalDuration < 5) {
+      window.alert('Добавьте больше видео. Минимальная суммарная длительность — 5 секунд.');
+      return;
+    }
+
     setMediaFiles(selectedFiles);
     setScreen('music');
   }
