@@ -9,7 +9,7 @@ import { EFFECTS } from '../../src/data/effects';
 import { FILTERS } from '../../src/data/filters';
 import type { EffectName, FilterName } from '../../src/types';
 import type { UniqualizerSettings } from '../../src/types/uniqualizer';
-import { buildUniqualizerFilters, randomMetadata } from '../../src/utils/uniqualizer';
+import { buildUniqualizerFilters, randomMetadata, uniqualizerEncoding } from '../../src/utils/uniqualizer';
 
 // Bundled FFmpeg (§2 ТЗ). В упакованном приложении бинарник распакован из asar.
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
@@ -142,6 +142,8 @@ async function randomizeMetadata(outputPath: string, hooks: RenderHooks): Promis
         '-metadata', `creation_time=${meta.creation_time}`,
         '-metadata', `encoder=${meta.encoder}`,
         '-metadata', `major_brand=${meta.major_brand}`,
+        '-metadata', `artist=${meta.artist}`,
+        '-metadata', `album=${meta.album}`,
       ])
       .output(tmp),
     hooks
@@ -367,13 +369,18 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       if (cancelled()) throw new Error('Экспорт отменён');
       const out = single ? req.outputPath : suffixPath(req.outputPath, i + 1, count);
       const u = buildUniqualizerFilters(req.uniqualizer, w, h);
+      // Вариация кодирования (CRF/GOP/битрейт/faststart) — структурный fingerprint.
+      const enc = req.uniqualizer.enabled ? uniqualizerEncoding() : null;
 
       const cmd = ffmpeg(basePath);
       const oo = [
-        '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23', '-pix_fmt', 'yuv420p',
+        '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'fast',
+        '-crf', String(enc ? enc.crf : 23), '-pix_fmt', 'yuv420p',
       ];
+      if (enc) oo.push('-g', String(enc.gop));
+      if (enc?.faststart) oo.push('-movflags', '+faststart');
       if (baseHasAudio) {
-        oo.push('-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k');
+        oo.push('-map', '0:a:0', '-c:a', 'aac', '-b:a', enc ? enc.audioBitrate : '192k');
         if (u.af.length) cmd.audioFilters(u.af);
       } else {
         oo.push('-an');

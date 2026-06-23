@@ -14,13 +14,16 @@ function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
-// Метаданные (§1): случайные title/comment/creation_time/encoder/major_brand.
-export function randomMetadata(): Record<string, string> {
+function randomString(min: number, max: number): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  const len = 8 + Math.floor(Math.random() * 9); // 8–16
-  let title = '';
-  for (let i = 0; i < len; i++) title += chars[Math.floor(Math.random() * chars.length)];
+  const len = min + Math.floor(Math.random() * (max - min + 1));
+  let out = '';
+  for (let i = 0; i < len; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
 
+// Метаданные (§1): случайные title/comment/creation_time/encoder/major_brand + artist/album.
+export function randomMetadata(): Record<string, string> {
   const day = 86400000;
   const now = Date.now();
   const min = now - 182 * day; // ~6 месяцев назад
@@ -28,11 +31,28 @@ export function randomMetadata(): Record<string, string> {
   const creation_time = new Date(min + Math.random() * (max - min)).toISOString();
 
   return {
-    title,
+    title: randomString(8, 16),
     comment: globalThis.crypto.randomUUID(),
     creation_time,
     encoder: ENCODERS[Math.floor(Math.random() * ENCODERS.length)],
     major_brand: BRANDS[Math.floor(Math.random() * BRANDS.length)],
+    artist: randomString(5, 10),
+    album: randomString(5, 12),
+  };
+}
+
+// Вариация параметров кодирования (бинарный/структурный fingerprint, без потери качества).
+export function uniqualizerEncoding(): {
+  crf: number;
+  gop: number;
+  audioBitrate: string;
+  faststart: boolean;
+} {
+  return {
+    crf: 21 + Math.floor(Math.random() * 5), // 21–25 (визуально неотличимо)
+    gop: 48 + Math.floor(Math.random() * 73), // интервал ключевых кадров 48–120
+    audioBitrate: ['128k', '160k', '192k'][Math.floor(Math.random() * 3)],
+    faststart: Math.random() < 0.5,
   };
 }
 
