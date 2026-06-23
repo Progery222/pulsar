@@ -90,3 +90,23 @@ body {
   width: 100%;
   animation: screenFadeIn 0.25s ease;
 }
+
+/* Слайдеры VUB: белый круглый ползунок, трек через linear-gradient (§4.3 ТЗ). */
+.vub-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 4px;
+  outline: none;
+  cursor: pointer;
+}
+.vub-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}

@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { BeatData } from '../src/types';
+import type { VubProcessRequest, VubProgressEvent } from '../src/vub/types';
 
 // IPC bridge между renderer и main процессами (contextBridge).
 const electronAPI = {
@@ -27,6 +28,17 @@ const electronAPI = {
   // Открыть папку в проводнике (§11).
   openFolder: (folderPath: string): Promise<string> =>
     ipcRenderer.invoke('shell:openPath', folderPath),
+
+  // --- Модуль VUB (§4–5 ТЗ VUB) ---
+  selectWatermark: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectWatermark'),
+  processVub: (request: VubProcessRequest): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('vub:process', request),
+  cancelVub: (): Promise<{ ok: true }> => ipcRenderer.invoke('vub:cancel'),
+  onVubProgress: (cb: (event: VubProgressEvent) => void): (() => void) => {
+    const listener = (_e: unknown, event: VubProgressEvent) => cb(event);
+    ipcRenderer.on('vub-progress', listener);
+    return () => ipcRenderer.removeListener('vub-progress', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

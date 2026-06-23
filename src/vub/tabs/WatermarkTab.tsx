@@ -1,0 +1,103 @@
+import { useRef, useState } from 'react';
+import { useVubStore, type WatermarkZone } from '../store';
+
+// Вкладка 4: Водяной знак (§4.5 ТЗ).
+export default function WatermarkTab() {
+  const watermark = useVubStore((s) => s.watermark);
+  const setWatermark = useVubStore((s) => s.setWatermark);
+  const areaRef = useRef<HTMLDivElement>(null);
+  const [draft, setDraft] = useState<WatermarkZone | null>(null);
+
+  async function pickFile() {
+    const file = await window.electronAPI.selectWatermark();
+    if (file) setWatermark({ file });
+  }
+
+  function onPointerDown(e: React.PointerEvent) {
+    const area = areaRef.current;
+    if (!area) return;
+    const rect = area.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) / rect.width;
+    const sy = (e.clientY - rect.top) / rect.height;
+    const move = (ev: PointerEvent) => {
+      const cx = Math.min(1, Math.max(0, (ev.clientX - rect.left) / rect.width));
+      const cy = Math.min(1, Math.max(0, (ev.clientY - rect.top) / rect.height));
+      setDraft({ x: Math.min(sx, cx), y: Math.min(sy, cy), w: Math.abs(cx - sx), h: Math.abs(cy - sy) });
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setDraft((d) => {
+        if (d && d.w > 0.02 && d.h > 0.02) setWatermark({ zones: [...watermark.zones, d] });
+        return null;
+      });
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  }
+
+  const zoneBox = (z: WatermarkZone, dashed: boolean, key: React.Key) => (
+    <div
+      key={key}
+      style={{
+        position: 'absolute',
+        left: `${z.x * 100}%`,
+        top: `${z.y * 100}%`,
+        width: `${z.w * 100}%`,
+        height: `${z.h * 100}%`,
+        border: `2px dashed var(--accent-green)`,
+        background: dashed ? 'transparent' : 'rgba(204,255,0,0.08)',
+        pointerEvents: 'none',
+      }}
+    />
+  );
+
+  return (
+    <div>
+      <h2 className="font-semibold" style={{ fontSize: 20, marginBottom: 16 }}>
+        Водяной знак
+      </h2>
+
+      <button
+        onClick={pickFile}
+        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
+      >
+        Загрузить файл (PNG, GIF, MP4)
+      </button>
+      {watermark.file && (
+        <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)' }}>{watermark.file}</p>
+      )}
+
+      <p style={{ marginTop: 20, marginBottom: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
+        Нарисуйте зоны допустимого размещения:
+      </p>
+      <div
+        ref={areaRef}
+        onPointerDown={onPointerDown}
+        style={{
+          position: 'relative',
+          width: 270,
+          height: 480,
+          maxWidth: '100%',
+          background: 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          cursor: 'crosshair',
+          overflow: 'hidden',
+        }}
+      >
+        {watermark.zones.map((z, i) => zoneBox(z, false, i))}
+        {draft && zoneBox(draft, true, 'draft')}
+      </div>
+
+      {watermark.zones.length > 0 && (
+        <button
+          onClick={() => setWatermark({ zones: [] })}
+          style={{ marginTop: 12, background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 8, padding: '6px 12px', fontSize: 13, cursor: 'pointer' }}
+        >
+          Очистить зоны ({watermark.zones.length})
+        </button>
+      )}
+    </div>
+  );
+}

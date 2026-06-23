@@ -11,6 +11,9 @@ import MediaPickerScreen from './screens/MediaPickerScreen';
 import MusicPickerScreen from './screens/MusicPickerScreen';
 import ProcessingScreen from './screens/ProcessingScreen';
 import EditorScreen from './screens/EditorScreen';
+import ModeSelector from './screens/ModeSelector';
+import VubApp from './vub/VubApp';
+import HomeButton from './components/HomeButton';
 import Toast from './components/Toast';
 
 // Ctrl+O: добавление медиафайлов через диалог.
@@ -32,6 +35,7 @@ async function addMediaViaDialog() {
 
 function App() {
   const currentScreen = useProjectStore((state) => state.currentScreen);
+  const appMode = useUIStore((state) => state.appMode);
 
   // Горячие клавиши (§13).
   useEffect(() => {
@@ -84,6 +88,31 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Стартовый экран выбора режима (§3 ТЗ VUB).
+  if (appMode === 'select') {
+    return (
+      <>
+        <div className="screen-fade">
+          <ModeSelector />
+        </div>
+        <Toast />
+      </>
+    );
+  }
+
+  // Модуль Уникализатор (§4 ТЗ VUB).
+  if (appMode === 'vub') {
+    return (
+      <>
+        <div className="screen-fade">
+          <VubApp />
+        </div>
+        <HomeButton />
+        <Toast />
+      </>
+    );
+  }
+
   let screen;
   switch (currentScreen) {
     case 'home':
@@ -110,6 +139,7 @@ function App() {
       <div key={currentScreen} className="screen-fade">
         {screen}
       </div>
+      <HomeButton />
       <Toast />
     </>
   );

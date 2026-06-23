@@ -20,6 +20,15 @@ export function registerFileHandlers() {
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });
 
+  // Выбор файла водяного знака VUB (§4.5): PNG, GIF, MP4.
+  ipcMain.handle('dialog:selectWatermark', async () => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Водяной знак', extensions: ['png', 'gif', 'mp4'] }],
+    });
+    return result.canceled ? null : (result.filePaths[0] ?? null);
+  });
+
   // Выбор папки для экспорта (§11).
   ipcMain.handle('dialog:selectDirectory', async () => {
     const result = await dialog.showOpenDialog({ properties: ['openDirectory'] });

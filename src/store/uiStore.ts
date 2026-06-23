@@ -2,9 +2,14 @@ import { create } from 'zustand';
 
 export type Tab = 'tools' | 'edit' | 'filters';
 
+// Режим приложения: стартовый экран выбора / редактор (Монтаж) / VUB (Уникализатор) — §3, §5 ТЗ VUB.
+export type AppMode = 'select' | 'editor' | 'vub';
+
 // UI-состояние редактора (вкладка, модалка экспорта, play/pause-колбэк),
 // отдельно от ProjectState (§15).
 interface UIState {
+  appMode: AppMode;
+  setAppMode: (mode: AppMode) => void;
   activeTab: Tab;
   setActiveTab: (tab: Tab) => void;
   showExport: boolean;
@@ -14,6 +19,8 @@ interface UIState {
 }
 
 export const useUIStore = create<UIState>((set) => ({
+  appMode: 'select',
+  setAppMode: (mode) => set({ appMode: mode }),
   activeTab: 'tools',
   setActiveTab: (tab) => set({ activeTab: tab }),
   showExport: false,
