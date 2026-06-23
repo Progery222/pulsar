@@ -431,7 +431,11 @@ export default function EditorScreen() {
                 />
               </div>
               <span className="text-text-primary" style={{ fontSize: 13 }}>
-                Рендеринг... {Math.round(exportProgress)}%
+                {exportProgress < 85
+                  ? `Рендеринг... ${Math.round(exportProgress)}%`
+                  : exportProgress < 95
+                    ? 'Применяем уникализацию...'
+                    : 'Финализация файла...'}
               </span>
               <button className="btn-secondary px-3 py-1" style={{ fontSize: 13 }} onClick={cancelExport}>
                 Отмена

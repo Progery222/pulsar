@@ -3,6 +3,7 @@ import { useProjectStore } from '../store/projectStore';
 import { useUIStore } from '../store/uiStore';
 import { buildAndRender } from '../utils/ffmpegBuilder';
 import { showToast } from '../store/toastStore';
+import UniqualizerPanel from './UniqualizerPanel';
 
 type Quality = '720p' | '1080p' | '4k';
 
@@ -98,6 +99,9 @@ export default function ExportModal() {
         <div className="mb-4 truncate text-text-secondary" style={{ fontSize: 12 }}>
           {folder ?? 'Папка не выбрана'}
         </div>
+
+        {/* Секция уникализатора (§ТЗ) */}
+        <UniqualizerPanel />
 
         <button className="btn-primary px-4 py-3" onClick={exportVideo} disabled={!folder}>
           Экспортировать

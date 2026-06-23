@@ -1,11 +1,14 @@
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { EFFECTS } from '../../src/data/effects';
 import { FILTERS } from '../../src/data/filters';
 import type { EffectName, FilterName } from '../../src/types';
+import type { UniqualizerSettings } from '../../src/types/uniqualizer';
+import { buildUniqualizerFilters, randomMetadata } from '../../src/utils/uniqualizer';
 
 // Bundled FFmpeg (§2 ТЗ). В упакованном приложении бинарник распакован из asar.
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
@@ -32,6 +35,7 @@ export interface RenderRequest {
   filterIntensity: number;
   volumeOriginal: number; // громкость оригинального звука видео (0..1)
   volumeMusic: number; // громкость музыки (0..1)
+  uniqualizer: UniqualizerSettings;
   quality: Quality;
   outputPath: string;
 }
@@ -105,6 +109,35 @@ function runCommand(cmd: ffmpeg.FfmpegCommand, hooks: RenderHooks): Promise<void
     });
     cmd.run();
   });
+}
+
+// Уникализатор §1: перезапись метаданных через FFmpeg (-metadata, -codec copy).
+async function randomizeMetadata(outputPath: string, hooks: RenderHooks): Promise<void> {
+  const meta = randomMetadata();
+  const tmp = `${outputPath}.meta.mp4`;
+  await runCommand(
+    ffmpeg(outputPath)
+      .outputOptions([
+        '-map', '0',
+        '-c', 'copy',
+        '-metadata', `title=${meta.title}`,
+        '-metadata', `comment=${meta.comment}`,
+        '-metadata', `creation_time=${meta.creation_time}`,
+        '-metadata', `encoder=${meta.encoder}`,
+        '-metadata', `major_brand=${meta.major_brand}`,
+      ])
+      .output(tmp),
+    hooks
+  );
+  fs.rmSync(outputPath, { force: true });
+  fs.renameSync(tmp, outputPath);
+}
+
+// Уникализатор §2: дозапись 512–2048 случайных байт в конец файла (меняет хэш).
+async function appendRandomBytes(filePath: string): Promise<void> {
+  const size = Math.floor(Math.random() * 1536) + 512; // 512–2048
+  const randomBytes = crypto.randomBytes(size);
+  await fs.promises.appendFile(filePath, randomBytes);
 }
 
 // FFmpeg Pipeline (§10): 6 этапов. Чистая функция без Electron-зависимостей.
@@ -252,11 +285,15 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     }
     progress(74);
 
-    // Этап 6: финальный экспорт — видео (+ video fade) + аудио-дорожка.
+    // Этап 6: финальный экспорт — видео (+ video fade + фильтры уникализатора) + аудио.
     if (cancelled()) throw new Error('Экспорт отменён');
+    // Фильтры уникализатора добавляются В КОНЕЦ vf/af (после EDIT и FILTERS).
+    const uniq = buildUniqualizerFilters(req.uniqualizer, w, h);
+
     const videoFades: string[] = [];
     if (req.fade === 'in' || req.fade === 'all') videoFades.push('fade=t=in:st=0:d=0.5');
     if (req.fade === 'out' || req.fade === 'all') videoFades.push(`fade=t=out:st=${fadeOutStart}:d=0.5`);
+    const finalVf = [...videoFades, ...uniq.vf];
 
     const final = ffmpeg().input(videoSource);
     const outOptions = [
@@ -266,18 +303,28 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     if (audioTrack) {
       final.input(audioTrack);
       outOptions.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-shortest');
+      if (uniq.af.length) final.audioFilters(uniq.af);
     } else {
       outOptions.push('-an');
     }
-    if (videoFades.length) final.videoFilters(videoFades);
+    if (finalVf.length) final.videoFilters(finalVf);
 
     await runCommand(
       final
         .outputOptions(outOptions)
         .output(req.outputPath)
-        .on('progress', (p) => progress(74 + ((p.percent ?? 0) / 100) * 26)),
+        .on('progress', (p) => progress(Math.min(85, 74 + ((p.percent ?? 0) / 100) * 11))),
       hooks
     );
+
+    // После рендеринга: метаданные (85–95%) и дозапись случайных байт (95–100%).
+    if (req.uniqualizer.enabled) {
+      if (cancelled()) throw new Error('Экспорт отменён');
+      progress(88);
+      await randomizeMetadata(req.outputPath, hooks);
+      progress(96);
+      await appendRandomBytes(req.outputPath);
+    }
 
     progress(100);
     cleanup();

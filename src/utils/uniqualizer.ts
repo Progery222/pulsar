@@ -1,0 +1,91 @@
+import type { UniqualizerSettings } from '../types/uniqualizer';
+
+// Чистые генераторы для уникализатора (без node-зависимостей). Реальные операции
+// с файлом (метаданные через FFmpeg, дозапись байт) выполняются в main-процессе.
+
+const ENCODERS = ['Lavf58.76.100', 'Lavf59.16.100', 'Lavf60.3.100', 'Lavf57.83.100'];
+const BRANDS = ['isom', 'mp42', 'M4V ', 'qt  '];
+const SPEEDS = [
+  0.995, 0.996, 0.997, 0.998, 0.999, 1.001, 1.002, 1.003, 1.004, 1.005, 1.01, 1.015, 1.02,
+];
+
+function rand(min: number, max: number): number {
+  return min + Math.random() * (max - min);
+}
+
+// Метаданные (§1): случайные title/comment/creation_time/encoder/major_brand.
+export function randomMetadata(): Record<string, string> {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  const len = 8 + Math.floor(Math.random() * 9); // 8–16
+  let title = '';
+  for (let i = 0; i < len; i++) title += chars[Math.floor(Math.random() * chars.length)];
+
+  const day = 86400000;
+  const now = Date.now();
+  const min = now - 182 * day; // ~6 месяцев назад
+  const max = now - day; // вчера
+  const creation_time = new Date(min + Math.random() * (max - min)).toISOString();
+
+  return {
+    title,
+    comment: globalThis.crypto.randomUUID(),
+    creation_time,
+    encoder: ENCODERS[Math.floor(Math.random() * ENCODERS.length)],
+    major_brand: BRANDS[Math.floor(Math.random() * BRANDS.length)],
+  };
+}
+
+// Видео/аудио фильтры уникализатора (§3–8). w,h — итоговое разрешение (для crop+scale).
+export function buildUniqualizerFilters(
+  s: UniqualizerSettings,
+  w: number,
+  h: number
+): { vf: string[]; af: string[] } {
+  const vf: string[] = [];
+  const af: string[] = [];
+  if (!s.enabled) return { vf, af };
+
+  // Зеркальный флип (§4) — двойной hflip: визуально идентично, иной fingerprint.
+  if (s.mirrorFlip) {
+    vf.push('hflip', 'hflip');
+  }
+
+  // Цветовой сдвиг (§3).
+  if (s.colorShift) {
+    const brightness = rand(-0.03, 0.03).toFixed(3);
+    const contrast = rand(0.97, 1.03).toFixed(3);
+    const saturation = rand(0.96, 1.04).toFixed(3);
+    const gamma = rand(0.97, 1.03).toFixed(3);
+    vf.push(`eq=brightness=${brightness}:contrast=${contrast}:saturation=${saturation}:gamma=${gamma}`);
+  }
+
+  // Шум (§5): alls 1–4.
+  if (s.noise) {
+    const n = 1 + Math.floor(Math.random() * 4);
+    vf.push(`noise=alls=${n}:allf=t+u`);
+  }
+
+  // Обрезка краёв (§7): 1–3px с каждой стороны + scale обратно.
+  if (s.cropEdges) {
+    const top = 1 + Math.floor(Math.random() * 3);
+    const bottom = 1 + Math.floor(Math.random() * 3);
+    const left = 1 + Math.floor(Math.random() * 3);
+    const right = 1 + Math.floor(Math.random() * 3);
+    vf.push(`crop=iw-${left + right}:ih-${top + bottom}:${left}:${top},scale=${w}:${h}`);
+  }
+
+  // Скорость (§6): setpts + atempo=1/SPEED для синхронности аудио.
+  if (s.speed) {
+    const sp = SPEEDS[Math.floor(Math.random() * SPEEDS.length)];
+    vf.push(`setpts=${sp}*PTS`);
+    af.push(`atempo=${(1 / sp).toFixed(6)}`);
+  }
+
+  // Аудио сдвиг (§8): adelay 10–50ms.
+  if (s.audioShift) {
+    const delayMs = 10 + Math.floor(Math.random() * 41);
+    af.push(`adelay=${delayMs}|${delayMs}`);
+  }
+
+  return { vf, af };
+}

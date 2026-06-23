@@ -29,6 +29,7 @@ export async function buildAndRender(
       filterIntensity: project.filterIntensity,
       volumeOriginal: project.volumeOriginal,
       volumeMusic: project.volumeMusic,
+      uniqualizer: project.uniqualizerSettings,
       quality,
       outputPath,
     };

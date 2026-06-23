@@ -10,6 +10,7 @@ import {
   type Track,
   type TweakOverride,
 } from '../types';
+import type { UniqualizerSettings } from '../types/uniqualizer';
 
 // Полный интерфейс состояния проекта (§15 ТЗ).
 export interface ProjectState {
@@ -48,6 +49,9 @@ export interface ProjectState {
 
   // Tweak данные
   tweakOverrides: Record<string, TweakOverride>; // Ручные правки фрагментов
+
+  // Уникализатор экспорта
+  uniqualizerSettings: UniqualizerSettings;
 }
 
 // Экшены store (Шаг 2 плана).
@@ -71,6 +75,7 @@ export interface ProjectActions {
   setTweakOverride: (key: string, value: TweakOverride) => void;
   setVolumeOriginal: (value: number) => void;
   setVolumeMusic: (value: number) => void;
+  setUniqualizerSettings: (settings: Partial<UniqualizerSettings>) => void;
 }
 
 const initialEffects = EFFECT_NAMES.reduce(
@@ -111,6 +116,16 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
 
   tweakOverrides: {},
 
+  uniqualizerSettings: {
+    enabled: true,
+    colorShift: true,
+    mirrorFlip: false,
+    noise: true,
+    speed: true,
+    cropEdges: true,
+    audioShift: true,
+  },
+
   // --- Экшены ---
   setCurrentScreen: (screen) => set({ currentScreen: screen }),
   setMediaFiles: (files) =>
@@ -136,4 +151,6 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
     set((state) => ({ tweakOverrides: { ...state.tweakOverrides, [key]: value } })),
   setVolumeOriginal: (value) => set({ volumeOriginal: value }),
   setVolumeMusic: (value) => set({ volumeMusic: value }),
+  setUniqualizerSettings: (settings) =>
+    set((state) => ({ uniqualizerSettings: { ...state.uniqualizerSettings, ...settings } })),
 }));
