@@ -14,6 +14,15 @@ function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
 }
 
+// UUID v4 через Math.random — работает и в renderer, и в main (где globalThis.crypto нет).
+function uuidv4(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.floor(Math.random() * 16);
+    const v = c === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
 function randomString(min: number, max: number): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   const len = min + Math.floor(Math.random() * (max - min + 1));
@@ -32,7 +41,7 @@ export function randomMetadata(): Record<string, string> {
 
   return {
     title: randomString(8, 16),
-    comment: globalThis.crypto.randomUUID(),
+    comment: uuidv4(),
     creation_time,
     encoder: ENCODERS[Math.floor(Math.random() * ENCODERS.length)],
     major_brand: BRANDS[Math.floor(Math.random() * BRANDS.length)],

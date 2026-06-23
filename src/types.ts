@@ -50,6 +50,12 @@ export const FILTER_NAMES: FilterName[] = [
   'vignette',
 ];
 
+// Настройки отдельного эффекта (мини-диалог): сила + вариант.
+export interface EffectSettings {
+  intensity: number; // 0..100
+  variant: string;
+}
+
 export interface MediaFile {
   id: string;
   path: string;

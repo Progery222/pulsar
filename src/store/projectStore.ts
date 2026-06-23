@@ -3,6 +3,7 @@ import {
   EFFECT_NAMES,
   type BeatData,
   type EffectName,
+  type EffectSettings,
   type FilterName,
   type GeneratedClip,
   type MediaFile,
@@ -10,6 +11,7 @@ import {
   type Track,
   type TweakOverride,
 } from '../types';
+import { defaultVariant } from '../data/effects';
 import type { UniqualizerSettings } from '../types/uniqualizer';
 
 // Полный интерфейс состояния проекта (§15 ТЗ).
@@ -34,6 +36,7 @@ export interface ProjectState {
 
   // Эффекты
   activeEffects: Record<EffectName, 0 | 1 | 2>; // 0 = выкл, 1/2 = уровень
+  effectSettings: Record<EffectName, EffectSettings>; // мини-настройки эффекта
   activeFilter: FilterName | null;
   filterIntensity: number; // 0–100
 
@@ -65,6 +68,7 @@ export interface ProjectActions {
   setFormat: (format: ProjectState['format']) => void;
   setFade: (fade: ProjectState['fade']) => void;
   setActiveEffect: (effect: EffectName, level: 0 | 1 | 2) => void;
+  setEffectSetting: (effect: EffectName, settings: Partial<EffectSettings>) => void;
   setActiveFilter: (filter: FilterName | null) => void;
   setFilterIntensity: (intensity: number) => void;
   setBeatData: (data: BeatData | null) => void;
@@ -88,6 +92,14 @@ const initialEffects = EFFECT_NAMES.reduce(
   {} as Record<EffectName, 0 | 1 | 2>
 );
 
+const initialEffectSettings = EFFECT_NAMES.reduce(
+  (acc, name) => {
+    acc[name] = { intensity: 50, variant: defaultVariant(name) };
+    return acc;
+  },
+  {} as Record<EffectName, EffectSettings>
+);
+
 export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   // --- Начальное состояние ---
   mediaFiles: [],
@@ -105,6 +117,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   volumeMusic: 1.0,
 
   activeEffects: initialEffects,
+  effectSettings: initialEffectSettings,
   activeFilter: null,
   filterIntensity: 50,
 
@@ -141,6 +154,13 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   setActiveEffect: (effect, level) =>
     set((state) => ({
       activeEffects: { ...state.activeEffects, [effect]: level },
+    })),
+  setEffectSetting: (effect, settings) =>
+    set((state) => ({
+      effectSettings: {
+        ...state.effectSettings,
+        [effect]: { ...state.effectSettings[effect], ...settings },
+      },
     })),
   setActiveFilter: (filter) => set({ activeFilter: filter }),
   setFilterIntensity: (intensity) => set({ filterIntensity: intensity }),

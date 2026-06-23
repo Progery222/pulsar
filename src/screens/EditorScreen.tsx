@@ -30,6 +30,36 @@ function scaleCssFilter(css: string, k: number): string {
 const EFFECT_WIN = 0.35;
 const FADE_DUR = 0.5;
 
+// Реальный split-эффект на canvas: 2×2 / зеркало / 2 полосы.
+function drawSplit(canvas: HTMLCanvasElement, video: HTMLVideoElement, mode: string) {
+  const W = video.clientWidth || canvas.clientWidth;
+  const H = video.clientHeight || canvas.clientHeight;
+  if (!W || !H) return;
+  if (canvas.width !== W) canvas.width = W;
+  if (canvas.height !== H) canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  if (mode === '2x2') {
+    ctx.drawImage(video, 0, 0, W / 2, H / 2);
+    ctx.drawImage(video, W / 2, 0, W / 2, H / 2);
+    ctx.drawImage(video, 0, H / 2, W / 2, H / 2);
+    ctx.drawImage(video, W / 2, H / 2, W / 2, H / 2);
+  } else if (mode === 'vertical') {
+    ctx.drawImage(video, 0, 0, W, H / 2);
+    ctx.drawImage(video, 0, H / 2, W, H / 2);
+  } else {
+    // mirror: левая половина + зеркальная правая
+    ctx.drawImage(video, 0, 0, W / 2, H);
+    ctx.save();
+    ctx.translate(W, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, W / 2, H);
+    ctx.restore();
+  }
+}
+
 export default function EditorScreen() {
   const format = useProjectStore((s) => s.format);
   const clips = useProjectStore((s) => s.generatedClips);
@@ -53,10 +83,14 @@ export default function EditorScreen() {
   const setShowExport = useUIStore((s) => s.setShowExport);
   const setPlayToggle = useUIStore((s) => s.setPlayToggle);
 
+  const effectSettings = useProjectStore((s) => s.effectSettings);
+
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const audioRef = useRef<HTMLAudioElement>(null);
   const flashRef = useRef<HTMLDivElement | null>(null);
   const fadeRef = useRef<HTMLDivElement | null>(null);
+  const splitCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const effectSettingsRef = useRef(effectSettings);
 
   const startsRef = useRef<number[]>([]);
   const totalRef = useRef<number>(1);
@@ -122,6 +156,7 @@ export default function EditorScreen() {
   useEffect(() => { segStartRef.current = segmentStart; }, [segmentStart]);
   useEffect(() => { volOrigRef.current = volumeOriginal; }, [volumeOriginal]);
   useEffect(() => { fadeModeRef.current = fade; }, [fade]);
+  useEffect(() => { effectSettingsRef.current = effectSettings; }, [effectSettings]);
   useEffect(() => {
     globalFilterRef.current = filterCss;
     if (!playingRef.current && activeSourceRef.current) {
@@ -191,27 +226,84 @@ export default function EditorScreen() {
     let filter = base === 'none' ? '' : base;
     let transform = '';
     let flash = 0;
+    let rate = 1;
+    let splitMode: string | null = null;
     const e = 1 - prog;
+    const set = eff ? effectSettingsRef.current[eff] : null;
+    const k = set ? set.intensity / 100 : 0.5; // сила эффекта
+    const variant = set?.variant ?? 'default';
+
     if (eff) {
       switch (eff) {
-        case 'flash': flash = e; break;
-        case 'zoom': transform = `scale(${(1 + 0.18 * e).toFixed(3)})`; break;
-        case 'hue': filter += ` hue-rotate(${Math.round(prog * 360)}deg)`; break;
-        case 'prism':
-        case 'rgb':
-          filter += ` saturate(${(1 + 2 * e).toFixed(2)}) contrast(${(1 + 0.4 * e).toFixed(2)})`;
-          transform = `translateX(${((Math.random() * 4 - 2) * e).toFixed(1)}px)`;
+        case 'flash':
+          if (variant === 'black') filter += ` brightness(${Math.max(0, 1 - e * k).toFixed(2)})`;
+          else flash = e * k;
           break;
-        case 'boomerang': filter += ` hue-rotate(${Math.round(prog * 180)}deg)`; transform = `scaleX(${e > 0.5 ? -1 : 1})`; break;
-        case 'split': transform = `scale(${(1 - 0.12 * e).toFixed(3)})`; break;
-        case 'fastCut': flash = Math.floor(prog * 10) % 2 ? 0.35 : 0; break;
-        case 'speed': break;
+        case 'zoom': {
+          const amount = 0.08 + 0.5 * k;
+          if (variant === 'out') transform = `scale(${(1 + amount * e).toFixed(3)})`;
+          else if (variant === 'punch') transform = `scale(${(1 + amount * Math.sin(prog * Math.PI)).toFixed(3)})`;
+          else transform = `scale(${(1 + amount * prog).toFixed(3)})`; // in
+          break;
+        }
+        case 'hue':
+          filter += ` hue-rotate(${Math.round(prog * 360)}deg) saturate(${(1 + k).toFixed(2)})`;
+          break;
+        case 'prism':
+        case 'rgb': {
+          const j = (Math.random() * 8 - 4) * e * k;
+          filter += ` saturate(${(1 + 2.5 * k * e).toFixed(2)}) contrast(${(1 + 0.5 * k * e).toFixed(2)})`;
+          transform = `translateX(${j.toFixed(1)}px)`;
+          break;
+        }
+        case 'boomerang':
+          filter += ` hue-rotate(${Math.round(prog * 180)}deg)`;
+          transform = `scaleX(${prog > 0.5 ? -1 : 1})`;
+          break;
+        case 'split':
+          splitMode = variant;
+          break;
+        case 'fastCut': {
+          const n = Math.round(4 + k * 10);
+          const phase = Math.floor(prog * n);
+          if (variant === 'strobe') {
+            flash = phase % 2 ? 0.4 * k + 0.2 : 0;
+          } else {
+            // резкие кадры: рывками меняем масштаб/позицию
+            const jx = ((phase * 53) % 13 - 6) * k;
+            const jy = ((phase * 31) % 11 - 5) * k;
+            transform = `scale(${(1 + 0.12 * k).toFixed(3)}) translate(${jx}px, ${jy}px)`;
+            flash = phase % 2 ? 0.12 : 0;
+          }
+          break;
+        }
+        case 'speed': {
+          const slow = 1 - 0.6 * k;
+          const fast = 1 + 1.6 * k;
+          if (variant === 'down') rate = fast + (slow - fast) * prog;
+          else if (variant === 'constant') rate = 1 + 1.0 * k;
+          else rate = slow + (fast - slow) * prog; // up (разгон)
+          rate = Math.max(0.25, Math.min(4, rate));
+          break;
+        }
       }
     }
+
+    // Split рисуем на canvas поверх видео.
+    const canvas = splitCanvasRef.current;
+    if (canvas) {
+      if (splitMode && el.videoWidth) {
+        drawSplit(canvas, el, splitMode);
+        canvas.style.opacity = '1';
+      } else {
+        canvas.style.opacity = '0';
+      }
+    }
+
     el.style.filter = filter.trim() || 'none';
-    el.style.transform = transform;
-    el.playbackRate = eff === 'speed' ? 2 : 1;
-    if (flashRef.current) flashRef.current.style.opacity = String(flash);
+    el.style.transform = splitMode ? '' : transform;
+    el.playbackRate = rate;
+    if (flashRef.current) flashRef.current.style.opacity = String(Math.max(0, Math.min(1, flash)));
 
     // Live-превью fade in/out.
     let fadeOp = 0;
@@ -364,6 +456,7 @@ export default function EditorScreen() {
               activeSource={activeSource}
               flashRef={flashRef}
               fadeRef={fadeRef}
+              splitCanvasRef={splitCanvasRef}
               format={format}
               hasClips={clips.length > 0}
             />

@@ -17,6 +17,7 @@ export default function VideoPreview({
   activeSource,
   flashRef,
   fadeRef,
+  splitCanvasRef,
   format,
   hasClips,
 }: {
@@ -25,6 +26,7 @@ export default function VideoPreview({
   activeSource: string | null;
   flashRef: MutableRefObject<HTMLDivElement | null>;
   fadeRef: MutableRefObject<HTMLDivElement | null>;
+  splitCanvasRef: MutableRefObject<HTMLCanvasElement | null>;
   format: Format;
   hasClips: boolean;
 }) {
@@ -82,6 +84,12 @@ export default function VideoPreview({
               }}
             />
           ))}
+          {/* Canvas для Split-эффекта (рисуется только во время эффекта) */}
+          <canvas
+            ref={splitCanvasRef}
+            className="pointer-events-none absolute inset-0 h-full w-full"
+            style={{ opacity: 0 }}
+          />
           {/* Слой вспышки (Flash / Fast Cut) */}
           <div
             ref={flashRef}
