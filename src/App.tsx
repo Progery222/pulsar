@@ -1,9 +1,28 @@
-import React from 'react';
+import { useProjectStore } from './store/projectStore';
+import HomeScreen from './screens/HomeScreen';
+import MediaPickerScreen from './screens/MediaPickerScreen';
+import MusicPickerScreen from './screens/MusicPickerScreen';
+import ProcessingScreen from './screens/ProcessingScreen';
+import EditorScreen from './screens/EditorScreen';
 
-// Шаг 1: корневой компонент с одной пустой страницей на тёмном фоне (#0D0D0D).
-// Роутинг между экранами через Zustand добавляется на Шаге 2.
+// Роутинг между 5 экранами через Zustand (поле currentScreen), без React Router.
 function App() {
-  return <div className="w-full h-full" style={{ backgroundColor: '#0D0D0D' }} />;
+  const currentScreen = useProjectStore((state) => state.currentScreen);
+
+  switch (currentScreen) {
+    case 'home':
+      return <HomeScreen />;
+    case 'media':
+      return <MediaPickerScreen />;
+    case 'music':
+      return <MusicPickerScreen />;
+    case 'processing':
+      return <ProcessingScreen />;
+    case 'editor':
+      return <EditorScreen />;
+    default:
+      return <HomeScreen />;
+  }
 }
 
 export default App;

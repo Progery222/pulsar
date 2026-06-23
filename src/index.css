@@ -1,6 +1,21 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+:root {
+  /* Палитра §4 ТЗ (точные HEX) — для inline-стилей и canvas/svg. */
+  --bg-primary: #0d0d0d;
+  --bg-secondary: #1a1a1a;
+  --bg-tertiary: #252525;
+  --accent-green: #ccff00;
+  --accent-orange: #ff6b35;
+  --text-primary: #ffffff;
+  --text-secondary: #888888;
+  --border: #2e2e2e;
+  --danger: #ff4444;
+}
 
 html,
 body,
@@ -11,8 +26,34 @@ body,
 }
 
 body {
-  background-color: #0d0d0d;
-  color: #ffffff;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-weight: 400;
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+}
+
+@layer components {
+  /* Кнопки */
+  .btn-primary {
+    @apply inline-flex items-center justify-center rounded-card bg-accent-green
+      font-semibold text-black transition-opacity hover:opacity-90
+      disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center justify-center rounded-card border border-border
+      bg-transparent font-semibold text-text-primary transition-colors
+      hover:bg-bg-tertiary disabled:cursor-not-allowed disabled:opacity-40;
+  }
+
+  /* Карточки и панели */
+  .card {
+    @apply rounded-card bg-bg-secondary;
+  }
+
+  .panel {
+    @apply bg-bg-secondary;
+  }
 }
