@@ -12,7 +12,7 @@ export default function HomeScreen() {
         className="font-semibold text-accent-green"
         style={{ fontSize: 36, lineHeight: 1.1 }}
       >
-        Beatleap
+        Pulsar
       </h1>
       <p className="mt-3 text-text-secondary" style={{ fontSize: 16 }}>
         Создавай видео в ритм музыки

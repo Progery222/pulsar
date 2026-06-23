@@ -154,7 +154,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
   const cancelled = () => hooks.getCancelled?.() ?? false;
   const progress = (p: number) => hooks.onProgress?.(Math.max(0, Math.min(100, Math.round(p))));
 
-  const tmpDir = path.join(os.tmpdir(), `beatleap-${Date.now()}`);
+  const tmpDir = path.join(os.tmpdir(), `pulsar-${Date.now()}`);
   fs.mkdirSync(tmpDir, { recursive: true });
   const cleanup = () => {
     try {

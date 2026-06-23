@@ -34,7 +34,7 @@ export default function ExportModal() {
     setExportProgress(0);
 
     const sep = folder.includes('\\') ? '\\' : '/';
-    const outputPath = `${folder}${sep}beatleap_${Date.now()}.mp4`;
+    const outputPath = `${folder}${sep}pulsar_${Date.now()}.mp4`;
 
     try {
       const ok = await buildAndRender(useProjectStore.getState(), outputPath, quality, (p) =>

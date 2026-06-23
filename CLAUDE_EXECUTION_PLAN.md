@@ -1,4 +1,4 @@
-# ПЛАН ВЫПОЛНЕНИЯ: Beatleap for Windows
+# ПЛАН ВЫПОЛНЕНИЯ: Pulsar for Windows (ранее Beatleap)
 
 Трекер статуса выполнения. ТЗ: `Техническое_Задание_Beatleap_for_Windows_*.pdf`.
 

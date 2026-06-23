@@ -152,7 +152,7 @@ export default function MusicPickerScreen() {
         </button>
       </div>
 
-      {/* Табы категорий (только для BEATLEAP) */}
+      {/* Табы категорий (только для встроенной библиотеки) */}
       {source === 'beatleap' && (
         <div className="flex shrink-0 gap-5 overflow-x-auto border-b border-border px-4 py-3">
           {CATEGORIES.map((cat) => {
@@ -230,7 +230,7 @@ export default function MusicPickerScreen() {
           }}
           onClick={() => setSource('beatleap')}
         >
-          BEATLEAP
+          PULSAR
         </button>
         <button
           className="flex-1 py-3 font-semibold"

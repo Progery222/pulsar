@@ -1,8 +1,8 @@
 {
-  "name": "beatleap-windows",
+  "name": "pulsar-windows",
   "version": "1.0.0",
-  "description": "Beatleap for Windows — Desktop video editor with beat auto-sync",
-  "author": "Beatleap",
+  "description": "Pulsar — Desktop video editor with beat auto-sync",
+  "author": "Pulsar",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -35,8 +35,8 @@
     "vite-plugin-electron-renderer": "^0.14.5"
   },
   "build": {
-    "appId": "com.beatleap.windows",
-    "productName": "Beatleap",
+    "appId": "com.pulsar.windows",
+    "productName": "Pulsar",
     "directories": {
       "output": "dist"
     },

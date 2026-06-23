@@ -345,7 +345,7 @@ export default function EditorScreen() {
         >
           ⌂
         </button>
-        <span className="font-semibold text-accent-green" style={{ fontSize: 20 }}>Beatleap</span>
+        <span className="font-semibold text-accent-green" style={{ fontSize: 20 }}>Pulsar</span>
         <button
           className="btn-primary"
           style={{ width: 120, height: 36, borderRadius: 18, fontSize: 14 }}
