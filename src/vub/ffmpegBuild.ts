@@ -10,10 +10,23 @@ function pick<T>(arr: T[]): T | undefined {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// Случайное значение параметра в его диапазоне (если включён), иначе null.
-function value(p: RangeParam): number | null {
+function clamp(v: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, v));
+}
+
+// Значение параметра для вариации idx из total. Вариации распределяются по всему
+// диапазону (первая — у одного края, последняя — у другого) + лёгкий джиттер,
+// чтобы N роликов гарантированно отличались, а не клались случайно рядом.
+function value(p: RangeParam, idx: number, total: number): number | null {
   if (!p.enabled) return null;
-  return rand(p.min, p.max);
+  if (total <= 1) return rand(p.min, p.max);
+  const span = p.max - p.min;
+  const step = span / total;
+  // Перемешиваем порядок полос по индексу, чтобы вариации шли не строго по возрастанию.
+  const slot = (idx * 2 + 1) % total;
+  const base = p.min + (slot + 0.5) * step;
+  const jitter = (Math.random() - 0.5) * step;
+  return clamp(base + jitter, p.min, p.max);
 }
 
 // Раскрытие Spintax: {a|b|c} -> случайный вариант (рекурсивно).
@@ -57,26 +70,30 @@ export function buildVubPlan(
   params: VubParams,
   effects: VubEffects,
   text: VubText,
-  cleanMetadata: boolean
+  cleanMetadata: boolean,
+  variationIndex = 0,
+  variationTotal = 1
 ): FfmpegPlan {
   const vf: string[] = [];
   const af: string[] = [];
+  const idx = variationIndex;
+  const total = variationTotal;
 
   // --- Параметры видео (eq / unsharp / volume / speed) ---
-  const brightness = value(params.brightness); // % -> -0.5..0.5
-  const contrast = value(params.contrast); // % -> 1 + v/100
+  const brightness = value(params.brightness, idx, total); // % -> -0.5..0.5
+  const contrast = value(params.contrast, idx, total); // % -> 1 + v/100
   const eqParts: string[] = [];
   if (brightness !== null) eqParts.push(`brightness=${(brightness / 100).toFixed(4)}`);
   if (contrast !== null) eqParts.push(`contrast=${(1 + contrast / 100).toFixed(4)}`);
   if (eqParts.length) vf.push(`eq=${eqParts.join(':')}`);
 
-  const sharpness = value(params.sharpness); // % -> luma amount
+  const sharpness = value(params.sharpness, idx, total); // % -> luma amount
   if (sharpness !== null) vf.push(`unsharp=5:5:${(sharpness / 50).toFixed(3)}:5:5:0`);
 
-  const volume = value(params.volume); // % -> 1 + v/100
+  const volume = value(params.volume, idx, total); // % -> 1 + v/100
   if (volume !== null) af.push(`volume=${Math.max(0, 1 + volume / 100).toFixed(3)}`);
 
-  const duration = value(params.duration); // % длительности
+  const duration = value(params.duration, idx, total); // % длительности
   if (duration !== null) {
     const factor = 1 + duration / 100; // >1 = длиннее (медленнее)
     vf.push(`setpts=${factor.toFixed(4)}*PTS`);
@@ -86,14 +103,20 @@ export function buildVubPlan(
 
   // --- Эффекты ---
   if (effects.mirror.enabled) {
-    const doMirror = effects.mirror.mode === 'always' || (effects.mirror.mode === 'random' && Math.random() < 0.5);
+    // В режиме "Случайно" чередуем по чётности вариации: половина роликов зеркалится.
+    const doMirror =
+      effects.mirror.mode === 'always' ||
+      (effects.mirror.mode === 'random' && (total > 1 ? idx % 2 === 0 : Math.random() < 0.5));
     if (doMirror) vf.push('hflip');
   }
 
   if (effects.grid.enabled) {
-    const opacity = rand(effects.grid.opacityMin, effects.grid.opacityMax) / 100;
+    const opacityPct = value({ enabled: true, min: effects.grid.opacityMin, max: effects.grid.opacityMax }, idx, total);
+    const opacity = (opacityPct ?? effects.grid.opacityMin) / 100;
     const size = effects.gridSize.enabled ? effects.gridSize.size : 32;
-    const colorHex = (effects.gridColor.enabled ? pick(effects.gridColor.colors) : undefined) ?? 'white';
+    // Цвет сетки чередуем по индексу вариации (а не случайно).
+    const colors = effects.gridColor.enabled ? effects.gridColor.colors : [];
+    const colorHex = colors.length ? colors[idx % colors.length] : 'white';
     const color = colorHex.startsWith('#') ? `0x${colorHex.slice(1)}` : colorHex;
     vf.push(`drawgrid=w=${size}:h=${size}:t=1:color=${color}@${opacity.toFixed(3)}`);
   }

@@ -11,6 +11,8 @@ interface VubTask {
   id: string; // уникальный id строки прогресса (videoId#index)
   video: VubVideo;
   outName: string; // имя выходного файла
+  index: number; // номер вариации (0-based)
+  total: number; // всего вариаций на это видео
 }
 
 // Bundled FFmpeg (распаковка из asar в упакованном приложении).
@@ -48,8 +50,8 @@ function processOne(
         resolve();
         return;
       }
-      // Каждая вариация — свой случайный набор значений из заданных диапазонов.
-      const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata);
+      // Каждая вариация — свой набор значений, распределённый по диапазонам (§ вариации).
+      const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total);
       const out = path.join(req.outputDir, task.outName);
 
       const cmd = ffmpeg(video.path).addInputOption('-nostdin');
@@ -141,6 +143,8 @@ export function registerVubHandlers() {
           id: variations > 1 ? `${video.id}#${i}` : video.id,
           video,
           outName: variations > 1 ? `${base}_unique_${i + 1}.mp4` : `${base}_unique.mp4`,
+          index: i,
+          total: variations,
         });
       }
     }
