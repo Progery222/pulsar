@@ -63,6 +63,8 @@ export interface ProjectActions {
   setIsProcessing: (value: boolean) => void;
   setIsExporting: (value: boolean) => void;
   setExportProgress: (progress: number) => void;
+  setSegmentStart: (value: number) => void;
+  setTweakOverride: (key: string, value: TweakOverride) => void;
 }
 
 const initialEffects = EFFECT_NAMES.reduce(
@@ -120,4 +122,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   setIsProcessing: (value) => set({ isProcessing: value }),
   setIsExporting: (value) => set({ isExporting: value }),
   setExportProgress: (progress) => set({ exportProgress: progress }),
+  setSegmentStart: (value) => set({ segmentStart: value }),
+  setTweakOverride: (key, value) =>
+    set((state) => ({ tweakOverrides: { ...state.tweakOverrides, [key]: value } })),
 }));
