@@ -78,7 +78,13 @@ export default function MediaPickerScreen() {
         .map<MediaFile>((p) => ({ id: p, path: p, name: fileName(p), duration: 0 }));
       return [...prev, ...added];
     });
-    setSelectedIds((prev) => [...prev, ...valid.filter((p) => !prev.includes(p))]);
+    // §16: выбор от 1 до 30 видеофайлов.
+    setSelectedIds((prev) => {
+      const additions = valid.filter((p) => !prev.includes(p));
+      const room = 30 - prev.length;
+      if (additions.length > room) showToast('Можно выбрать не более 30 видео.');
+      return [...prev, ...additions.slice(0, Math.max(0, room))];
+    });
   }
 
   async function pickFromDialog() {
@@ -95,9 +101,14 @@ export default function MediaPickerScreen() {
   }
 
   function toggleSelect(id: string) {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedIds((prev) => {
+      if (prev.includes(id)) return prev.filter((x) => x !== id);
+      if (prev.length >= 30) {
+        showToast('Можно выбрать не более 30 видео.');
+        return prev;
+      }
+      return [...prev, id];
+    });
   }
 
   function removeSelected(id: string) {

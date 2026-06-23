@@ -107,7 +107,9 @@ function App() {
 
   return (
     <>
-      {screen}
+      <div key={currentScreen} className="screen-fade">
+        {screen}
+      </div>
       <Toast />
     </>
   );
