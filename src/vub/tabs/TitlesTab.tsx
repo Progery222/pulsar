@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useVubStore } from '../store';
 import { Block, Checkbox, Select, Slider, Switch } from '../components/ui';
 import TitlePreview from '../components/TitlePreview';
+import Scrubber from '../components/Scrubber';
 
 // Встроенные (зашитые в assets/fonts, с кириллицей) + системные шрифты.
 const FONT_OPTIONS = [
@@ -179,28 +180,8 @@ export default function TitlesTab() {
         </div>
 
         <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            Позиция X, %
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={titles.posXPct}
-              onChange={(e) => setTitles({ posXPct: Math.min(100, Math.max(0, Number(e.target.value))) })}
-              style={{ display: 'block', marginTop: 6, width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 14 }}
-            />
-          </label>
-          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            Позиция Y, %
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={titles.posYPct}
-              onChange={(e) => setTitles({ posYPct: Math.min(100, Math.max(0, Number(e.target.value))) })}
-              style={{ display: 'block', marginTop: 6, width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 14 }}
-            />
-          </label>
+          <Scrubber label="Позиция X, %" value={titles.posXPct} min={0} max={100} suffix="%" onChange={(v) => setTitles({ posXPct: v })} />
+          <Scrubber label="Позиция Y, %" value={titles.posYPct} min={0} max={100} suffix="%" onChange={(v) => setTitles({ posYPct: v })} />
         </div>
       </Block>
 
