@@ -23,9 +23,25 @@ interface CleanerState {
   setCoverMethod: (m: CoverMethod) => void;
   boxColor: string;
   setBoxColor: (c: string) => void;
+  minConf: number;
+  setMinConf: (v: number) => void;
 
   outputDir: string | null;
   setOutputDir: (v: string | null) => void;
+
+  isProcessing: boolean;
+  setIsProcessing: (v: boolean) => void;
+  progress: CleanerProgress[];
+  setProgress: (p: CleanerProgress[]) => void;
+  updateProgress: (id: string, v: Partial<CleanerProgress>) => void;
+}
+
+export interface CleanerProgress {
+  id: string;
+  name: string;
+  status: string;
+  percent: number;
+  info?: string;
 }
 
 function fileName(p: string): string {
@@ -53,7 +69,16 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setCoverMethod: (m) => set({ coverMethod: m }),
   boxColor: '#000000',
   setBoxColor: (c) => set({ boxColor: c }),
+  minConf: 0.25,
+  setMinConf: (v) => set({ minConf: v }),
 
   outputDir: null,
   setOutputDir: (v) => set({ outputDir: v }),
+
+  isProcessing: false,
+  setIsProcessing: (v) => set({ isProcessing: v }),
+  progress: [],
+  setProgress: (p) => set({ progress: p }),
+  updateProgress: (id, v) =>
+    set((s) => ({ progress: s.progress.map((p) => (p.id === id ? { ...p, ...v } : p)) })),
 }));

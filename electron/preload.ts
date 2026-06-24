@@ -51,6 +51,19 @@ const electronAPI = {
     ipcRenderer.on('vub-progress', listener);
     return () => ipcRenderer.removeListener('vub-progress', listener);
   },
+
+  // --- Режим «Замена титров» ---
+  processCleaner: (request: unknown): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('cleaner:process', request),
+  cancelCleaner: (): Promise<{ ok: true }> => ipcRenderer.invoke('cleaner:cancel'),
+  onCleanerProgress: (
+    cb: (e: { id: string; status: string; percent: number; info?: string }) => void
+  ): (() => void) => {
+    const listener = (_e: unknown, payload: { id: string; status: string; percent: number; info?: string }) =>
+      cb(payload);
+    ipcRenderer.on('cleaner-progress', listener);
+    return () => ipcRenderer.removeListener('cleaner-progress', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

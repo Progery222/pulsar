@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useCleanerStore, type CoverMethod } from './store';
-import { Block, Checkbox, Select } from '../vub/components/ui';
-import { showToast } from '../store/toastStore';
+import { Block, Checkbox, Select, Slider } from '../vub/components/ui';
 
 function mediaUrl(p: string): string {
   return `media:///${encodeURIComponent(p)}`;
@@ -12,10 +11,16 @@ export default function CleanerApp() {
   const {
     videos, addVideos, removeVideo,
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
-    coverMethod, setCoverMethod, boxColor, setBoxColor,
+    coverMethod, setCoverMethod, boxColor, setBoxColor, minConf, setMinConf,
     outputDir, setOutputDir,
+    isProcessing, setIsProcessing, progress, setProgress, updateProgress,
   } = useCleanerStore();
   const [dragOver, setDragOver] = useState(false);
+
+  useEffect(() => {
+    const off = window.electronAPI.onCleanerProgress((p) => updateProgress(p.id, p));
+    return off;
+  }, [updateProgress]);
 
   async function pick() {
     const paths = await window.electronAPI.selectVideos();
@@ -33,9 +38,32 @@ export default function CleanerApp() {
     const dir = await window.electronAPI.selectDirectory();
     if (dir) setOutputDir(dir);
   }
-  function analyze() {
-    showToast('Детектор ещё не установлен (Фаза 2). Нужна установка Python-пакетов.');
+  async function analyze() {
+    if (!videos.length || !outputDir || isProcessing) return;
+    setProgress(videos.map((v) => ({ id: v.id, name: v.name, status: 'queued', percent: 0 })));
+    setIsProcessing(true);
+    try {
+      await window.electronAPI.processCleaner({
+        videos,
+        detectTitles,
+        detectWatermarks,
+        coverMethod,
+        boxColor,
+        minConf,
+        outputDir,
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   }
+  function cancel() {
+    window.electronAPI.cancelCleaner();
+    setIsProcessing(false);
+  }
+
+  const statusRu: Record<string, string> = {
+    queued: 'В очереди', detecting: 'Анализ', processing: 'Перекрытие', done: 'Готово', error: 'Ошибка',
+  };
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', padding: '56px 40px 40px', background: 'var(--bg-primary)' }}>
@@ -105,20 +133,63 @@ export default function CleanerApp() {
         </button>
         {outputDir && <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)' }}>{outputDir}</p>}
 
-        <div style={{ marginTop: 20 }}>
-          <button
-            onClick={analyze}
-            disabled={!videos.length}
-            className="btn-primary"
-            style={{ padding: '10px 24px', fontSize: 14, opacity: videos.length ? 1 : 0.4 }}
-          >
-            Анализировать и перекрыть
-          </button>
+        <div style={{ marginTop: 16, maxWidth: 340 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Порог уверенности</span>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{Math.round(minConf * 100)}%</span>
+          </div>
+          <Slider min={0} max={90} step={5} value={Math.round(minConf * 100)} onChange={(v) => setMinConf(v / 100)} />
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '6px 0 0' }}>
+            Выше порог — меньше ложных зон (но можно пропустить настоящие).
+          </p>
         </div>
 
+        <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
+          <button
+            onClick={analyze}
+            disabled={!videos.length || !outputDir || isProcessing}
+            className="btn-primary"
+            style={{ padding: '10px 24px', fontSize: 14, opacity: !videos.length || !outputDir || isProcessing ? 0.4 : 1 }}
+          >
+            {isProcessing ? 'Обработка…' : 'Анализировать и перекрыть'}
+          </button>
+          {isProcessing && (
+            <button onClick={cancel} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 8, padding: '10px 24px', fontSize: 14, cursor: 'pointer' }}>
+              Отмена
+            </button>
+          )}
+        </div>
+
+        {progress.length > 0 && (
+          <table style={{ marginTop: 24, width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead>
+              <tr style={{ color: 'var(--text-secondary)', textAlign: 'left' }}>
+                <th style={{ padding: '8px 0', fontWeight: 600 }}>Файл</th>
+                <th style={{ padding: '8px 0', fontWeight: 600, width: 130 }}>Статус</th>
+                <th style={{ padding: '8px 0', fontWeight: 600, width: 160 }}>Прогресс</th>
+              </tr>
+            </thead>
+            <tbody>
+              {progress.map((p) => (
+                <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 0', maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</td>
+                  <td style={{ padding: '8px 0', color: p.status === 'error' ? 'var(--danger)' : p.status === 'done' ? 'var(--accent-green)' : 'var(--text-secondary)' }}>
+                    {statusRu[p.status] ?? p.status}{p.info ? ` · ${p.info}` : ''}
+                  </td>
+                  <td style={{ padding: '8px 0' }}>
+                    <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${p.percent}%`, background: 'var(--accent-green)', transition: 'width 0.2s ease' }} />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
         <p style={{ marginTop: 16, fontSize: 12, color: 'var(--text-secondary)' }}>
-          Каркас режима готов. Детектор (PaddleOCR для текста + temporal для вотермарков) подключается на Фазе 2
-          и требует разовой установки Python-пакетов.
+          Детект статичных оверлеев (вотермарки, постоянные титры) работает оффлайн. Динамичные субтитры
+          (модель текста) и наложение своих титров — на следующем шаге.
         </p>
       </div>
     </div>
