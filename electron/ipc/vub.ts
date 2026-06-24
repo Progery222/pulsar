@@ -132,10 +132,9 @@ async function processOne(
       }
     }
   }
-  const assFilter = assPath
-    ? `ass=filename=${escFilterPath(assPath)}` +
-      (process.platform === 'win32' ? ':fontsdir=C\\:/Windows/Fonts' : '')
-    : null;
+  // Путь к .ass: одинарные кавычки + экранированное двоеточие (иначе ffmpeg режет по ':').
+  // fontsdir не нужен — libass сам берёт системные шрифты (DirectWrite на Windows).
+  const assFilter = assPath ? `ass=filename='${escFilterPath(assPath)}'` : null;
 
   const cmd = ffmpeg(video.path).addInputOption('-nostdin');
 
