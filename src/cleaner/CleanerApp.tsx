@@ -16,6 +16,7 @@ export default function CleanerApp() {
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
     coverMethod, setCoverMethod, boxColor, setBoxColor, boxRadius, setBoxRadius, minConf, setMinConf,
     addTitles, setAddTitles, titlesAtZone, setTitlesAtZone, titleZoneIndex, setTitleZoneIndex,
+    titleZonePick, setTitleZonePick,
     manualZones, setManualZones, zones, setZones, addZone, removeZone,
     outputDir, setOutputDir,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
@@ -71,6 +72,7 @@ export default function CleanerApp() {
         addTitles,
         titlesAtZone,
         titleZoneIndex,
+        titleZonePick,
         titles: addTitles ? titles : undefined,
         manualZones,
         zones: manualZones ? zones : undefined,
@@ -166,6 +168,39 @@ export default function CleanerApp() {
               <Checkbox checked={titlesAtZone} onChange={setTitlesAtZone} label="Ставить титры на месте найденной зоны (автоматически)" />
             </div>
           )}
+          {addTitles && titlesAtZone && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>В какую зону ставить титры:</div>
+              {manualZones && zones.length > 0 ? (
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                  {zones.map((_, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setTitleZoneIndex(i)}
+                      style={{
+                        background: i === titleZoneIndex ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                        color: i === titleZoneIndex ? '#000' : 'var(--text-primary)',
+                        border: '1px solid var(--border)', borderRadius: 8, padding: '6px 14px', fontSize: 13, cursor: 'pointer',
+                        fontWeight: i === titleZoneIndex ? 600 : 400,
+                      }}
+                    >
+                      Зона {i + 1}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <Select<'largest' | 'lowest' | 'highest'>
+                  value={titleZonePick}
+                  options={[
+                    { value: 'largest', label: 'Самая крупная' },
+                    { value: 'lowest', label: 'Самая нижняя' },
+                    { value: 'highest', label: 'Самая верхняя' },
+                  ]}
+                  onChange={setTitleZonePick}
+                />
+              )}
+            </div>
+          )}
           {addTitles && (
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '10px 0 0' }}>
               Речь распознаётся заново, титры берут стиль/караоке/подложку и API-ключ со вкладки{' '}
@@ -217,31 +252,6 @@ export default function CleanerApp() {
                   </button>
                 )}
 
-                {addTitles && titlesAtZone && zones.length > 1 && (
-                  <div style={{ marginTop: 16 }}>
-                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Зона для ваших титров:</div>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                      {zones.map((_, i) => (
-                        <button
-                          key={i}
-                          onClick={() => setTitleZoneIndex(i)}
-                          style={{
-                            background: i === titleZoneIndex ? 'var(--accent-green)' : 'var(--bg-tertiary)',
-                            color: i === titleZoneIndex ? '#000' : 'var(--text-primary)',
-                            border: '1px solid var(--border)',
-                            borderRadius: 8,
-                            padding: '6px 14px',
-                            fontSize: 13,
-                            cursor: 'pointer',
-                            fontWeight: i === titleZoneIndex ? 600 : 400,
-                          }}
-                        >
-                          Зона {i + 1}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
           )}

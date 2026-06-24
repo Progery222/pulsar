@@ -49,6 +49,7 @@ export interface CleanerRequest {
   addTitles: boolean; // наложить свои титры поверх зачищенных
   titlesAtZone?: boolean; // ставить титры по центру найденной зоны
   titleZoneIndex?: number; // индекс зоны для титров (ручной режим)
+  titleZonePick?: 'largest' | 'lowest' | 'highest'; // выбор зоны в авто-режиме
   titles?: TitlesStyle; // стиль титров (из вкладки Уникализатор → Титры)
   manualZones?: boolean; // использовать ручные зоны для всех роликов
   zones?: { x: number; y: number; w: number; h: number }[];
@@ -300,12 +301,18 @@ async function processOne(
       if (words.length) {
         let style = { ...req.titles, enabled: true };
         if (req.titlesAtZone !== false && boxes.length) {
-          // Зона для титров: выбранная (ручной режим) или крупнейшая.
+          // Зона для титров: ручной выбор по индексу, иначе эвристика.
           const idx = req.titleZoneIndex;
-          const t =
-            req.manualZones && idx != null && boxes[idx]
-              ? boxes[idx]
-              : boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+          let t: Box;
+          if (req.manualZones && idx != null && boxes[idx]) {
+            t = boxes[idx];
+          } else if (req.titleZonePick === 'lowest') {
+            t = boxes.reduce((a, b) => (b.y + b.h > a.y + a.h ? b : a));
+          } else if (req.titleZonePick === 'highest') {
+            t = boxes.reduce((a, b) => (b.y < a.y ? b : a));
+          } else {
+            t = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+          }
           style = { ...style, posXPct: Math.round((t.x + t.w / 2) * 100), posYPct: Math.round((t.y + t.h / 2) * 100) };
         }
         const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });

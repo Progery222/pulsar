@@ -40,6 +40,8 @@ interface CleanerState {
   setTitlesAtZone: (v: boolean) => void;
   titleZoneIndex: number; // индекс зоны для титров (ручной режим)
   setTitleZoneIndex: (v: number) => void;
+  titleZonePick: 'largest' | 'lowest' | 'highest'; // выбор зоны в авто-режиме
+  setTitleZonePick: (v: 'largest' | 'lowest' | 'highest') => void;
 
   manualZones: boolean; // использовать ручные зоны для всех роликов (вместо авто-детекта)
   setManualZones: (v: boolean) => void;
@@ -101,6 +103,8 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setTitlesAtZone: (v) => set({ titlesAtZone: v }),
   titleZoneIndex: 0,
   setTitleZoneIndex: (v) => set({ titleZoneIndex: v }),
+  titleZonePick: 'largest',
+  setTitleZonePick: (v) => set({ titleZonePick: v }),
 
   manualZones: false,
   setManualZones: (v) => set({ manualZones: v }),
