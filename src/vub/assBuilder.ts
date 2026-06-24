@@ -80,6 +80,19 @@ export function buildAss(words: TranscriptWord[], style: TitlesStyle, opts: AssB
 
   const baseC = color6(style.baseColor);
   const hlC = color6(style.highlightColor);
+  const ml = Math.round(W * 0.05);
+  const bg = style.bg;
+
+  // Подложка = авто-обтекающий бокс (BorderStyle=3) — сам подгоняется под текст и перенос.
+  // Иначе обычная обводка текста (BorderStyle=1).
+  let styleLine: string;
+  if (bg?.enabled) {
+    const pad = Math.max(6, Math.round(style.fontSize * 0.22));
+    const boxColour = `&H${alpha2(bg.opacity)}${color6(bg.color)}`;
+    styleLine = `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},${boxColour},&H00000000,1,0,0,0,100,100,0,0,3,${pad},0,5,${ml},${ml},0,1`;
+  } else {
+    styleLine = `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,${style.outline},1,5,${ml},${ml},0,1`;
+  }
 
   const header =
     `[Script Info]\n` +
@@ -91,8 +104,7 @@ export function buildAss(words: TranscriptWord[], style: TitlesStyle, opts: AssB
     `Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, ` +
     `Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, ` +
     `Alignment, MarginL, MarginR, MarginV, Encoding\n` +
-    `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},&H00000000,&H64000000,` +
-    `1,0,0,0,100,100,0,0,1,${style.outline},1,5,${Math.round(W * 0.05)},${Math.round(W * 0.05)},0,1\n\n` +
+    `${styleLine}\n\n` +
     `[Events]\n` +
     `Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
 
@@ -101,25 +113,10 @@ export function buildAss(words: TranscriptWord[], style: TitlesStyle, opts: AssB
   const lines = groupLines(words, Math.max(1, style.maxWordsPerLine));
   const posTag = `\\an5\\pos(${posX},${posY})`;
 
-  // Подложка под текстом строки.
-  const bg = style.bg;
-  let bgTagPath = '';
-  if (bg?.enabled) {
-    const w = Math.round((bg.widthPct / 100) * W);
-    const h = Math.round((bg.heightPct / 100) * H);
-    const left = posX - w / 2;
-    const top = posY - h / 2;
-    const path = roundRectPath(w, h, bg.radius);
-    bgTagPath = `{\\an7\\pos(${Math.round(left)},${Math.round(top)})\\1c&H${color6(bg.color)}&\\1a&H${alpha2(bg.opacity)}&\\bord0\\shad0\\p1}${path}`;
-  }
-
   const events: string[] = [];
   for (const line of lines) {
     const lStart = fmtTime(line[0].start);
     const lEnd = fmtTime(line[line.length - 1].end);
-
-    // Подложка: один объект на строку, слой 0 (под текстом).
-    if (bgTagPath) events.push(`Dialogue: 0,${lStart},${lEnd},D,,0,0,0,,${bgTagPath}`);
 
     if (style.karaoke) {
       // Текущее слово — цветом подсветки, остальные — базовым. Отдельное событие на каждое слово.

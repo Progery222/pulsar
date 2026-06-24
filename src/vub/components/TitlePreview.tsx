@@ -100,23 +100,7 @@ export default function TitlePreview({
         )}
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '18%', background: 'rgba(255,107,53,0.07)' }} />
 
-        {/* Подложка */}
-        {style.bg.enabled && (
-          <div
-            style={{
-              position: 'absolute',
-              left: `${style.posXPct}%`,
-              top: `${style.posYPct}%`,
-              width: `${style.bg.widthPct}%`,
-              height: `${style.bg.heightPct}%`,
-              transform: 'translate(-50%, -50%)',
-              background: hexToRgba(style.bg.color, style.bg.opacity / 100),
-              borderRadius: style.bg.radius * scale,
-            }}
-          />
-        )}
-
-        {/* Текст */}
+        {/* Текст с авто-обтекающей подложкой (как BorderStyle=3) */}
         <div
           onPointerDown={startDrag}
           style={{
@@ -126,6 +110,10 @@ export default function TitlePreview({
             transform: 'translate(-50%, -50%)',
             maxWidth: '92%',
             ...textStyle,
+            background: style.bg.enabled ? hexToRgba(style.bg.color, style.bg.opacity / 100) : undefined,
+            padding: style.bg.enabled ? `${fontPx * 0.12}px ${fontPx * 0.22}px` : undefined,
+            boxDecorationBreak: 'clone',
+            WebkitBoxDecorationBreak: 'clone',
           }}
         >
           {words.map((w, i) => (

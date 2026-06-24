@@ -196,35 +196,15 @@ export default function TitlesTab() {
             style={{ width: 44, height: 32, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8 }}
           />
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Затемнение</span>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.opacity}%</span>
-            </div>
-            <Slider min={0} max={100} value={titles.bg.opacity} onChange={(v) => setTitles({ bg: { ...titles.bg, opacity: v } })} />
+        <div style={{ maxWidth: 320 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Затемнение (непрозрачность)</span>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.opacity}%</span>
           </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Скругление</span>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.radius}px</span>
-            </div>
-            <Slider min={0} max={80} value={titles.bg.radius} onChange={(v) => setTitles({ bg: { ...titles.bg, radius: v } })} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ширина</span>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.widthPct}%</span>
-            </div>
-            <Slider min={10} max={100} value={titles.bg.widthPct} onChange={(v) => setTitles({ bg: { ...titles.bg, widthPct: v } })} />
-          </div>
-          <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Высота</span>
-              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.heightPct}%</span>
-            </div>
-            <Slider min={3} max={40} value={titles.bg.heightPct} onChange={(v) => setTitles({ bg: { ...titles.bg, heightPct: v } })} />
-          </div>
+          <Slider min={0} max={100} value={titles.bg.opacity} onChange={(v) => setTitles({ bg: { ...titles.bg, opacity: v } })} />
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
+            Подложка автоматически обтягивает текст (и перенос строк) — ничего не вылезает за рамку.
+          </p>
         </div>
       </Block>
 
