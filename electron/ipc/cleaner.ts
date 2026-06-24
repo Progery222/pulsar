@@ -25,6 +25,7 @@ interface DetectResult {
   height: number;
   duration: number;
   boxes: Box[];
+  motion?: number;
   error?: string;
 }
 
@@ -59,7 +60,7 @@ function eastModel(): string {
 }
 
 const PY_CANDIDATES =
-  process.platform === 'win32' ? [['py', ['-3']], ['python', []], ['python3', []]] : [['python3', []], ['python', []]];
+  process.platform === 'win32' ? [['python', []], ['py', ['-3']], ['python3', []]] : [['python3', []], ['python', []]];
 
 function runPy(cmd: string, pre: string[], args: string[]): Promise<{ out: string; err: string; code: number | null; spawnErr?: string }> {
   return new Promise((resolve) => {
@@ -99,16 +100,22 @@ async function detect(videoPath: string, req: CleanerRequest): Promise<DetectRes
       lastErr = `${cmd}: не найден`;
       continue;
     }
+    let r: DetectResult | null = null;
     try {
-      const r = JSON.parse(out.trim());
-      console.log(`[cleaner] detect ok (${cmd}):`, path.basename(videoPath), 'boxes:', r.boxes?.length, 'motion:', r.motion, 'err:', r.error);
-      return r;
+      r = JSON.parse(out.trim());
     } catch {
       lastErr = err.trim() || spawnErr || `нет JSON (код ${code})`;
-      console.error(`[cleaner] detect FAIL (${cmd}):`, path.basename(videoPath), 'code:', code, 'stdout:', out.slice(0, 300), 'stderr:', err.slice(0, 300));
-      // если интерпретатор запустился, но упал (напр. нет cv2) — нет смысла пробовать другие
-      if (out || err) break;
+      console.error(`[cleaner] detect noJSON (${cmd}):`, code, 'stderr:', err.slice(0, 200));
+      continue; // интерпретатор не подошёл — пробуем следующий
     }
+    // Нет зависимостей (cv2/numpy) в этом интерпретаторе — пробуем следующий.
+    if (r && r.error && /deps:|No module|ModuleNotFound/i.test(r.error)) {
+      lastErr = r.error;
+      console.error(`[cleaner] detect deps-miss (${cmd}):`, r.error);
+      continue;
+    }
+    console.log(`[cleaner] detect ok (${cmd}):`, path.basename(videoPath), 'boxes:', r?.boxes?.length, 'motion:', r?.motion, 'err:', r?.error);
+    return r as DetectResult;
   }
   return { width: 0, height: 0, duration: 0, boxes: [], error: lastErr || 'Python/детектор недоступен' };
 }
