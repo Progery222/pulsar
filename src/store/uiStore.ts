@@ -2,8 +2,9 @@ import { create } from 'zustand';
 
 export type Tab = 'tools' | 'edit' | 'filters';
 
-// Режим приложения: стартовый экран выбора / редактор (Монтаж) / VUB (Уникализатор) — §3, §5 ТЗ VUB.
-export type AppMode = 'select' | 'editor' | 'vub';
+// Режим приложения: стартовый экран выбора / редактор (Монтаж) / VUB (Уникализатор) /
+// cleaner (Замена титров — детект и перекрытие).
+export type AppMode = 'select' | 'editor' | 'vub' | 'cleaner';
 
 // UI-состояние редактора (вкладка, модалка экспорта, play/pause-колбэк),
 // отдельно от ProjectState (§15).

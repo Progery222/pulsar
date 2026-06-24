@@ -13,6 +13,7 @@ import ProcessingScreen from './screens/ProcessingScreen';
 import EditorScreen from './screens/EditorScreen';
 import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
+import CleanerApp from './cleaner/CleanerApp';
 import HomeButton from './components/HomeButton';
 import Toast from './components/Toast';
 
@@ -106,6 +107,19 @@ function App() {
       <>
         <div className="screen-fade">
           <VubApp />
+        </div>
+        <HomeButton />
+        <Toast />
+      </>
+    );
+  }
+
+  // Модуль «Замена титров» (детект чужих титров/вотермарков + перекрытие).
+  if (appMode === 'cleaner') {
+    return (
+      <>
+        <div className="screen-fade">
+          <CleanerApp />
         </div>
         <HomeButton />
         <Toast />

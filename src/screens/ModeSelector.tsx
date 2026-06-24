@@ -77,7 +77,7 @@ export default function ModeSelector() {
         Выберите режим работы
       </p>
 
-      <div style={{ display: 'flex', gap: 32 }}>
+      <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', justifyContent: 'center' }}>
         <ModeCard
           title="Монтаж"
           description="Автоматический монтаж видео в ритм музыки"
@@ -100,6 +100,19 @@ export default function ModeSelector() {
             <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               <path d="M9 12l2 2 4-4" />
+            </svg>
+          }
+        />
+        <ModeCard
+          title="Замена титров (AI)"
+          description="Поиск чужих титров/водяных знаков и автоперекрытие своими"
+          onClick={() => setAppMode('cleaner')}
+          icon={
+            <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 3h18v18H3z" />
+              <path d="M7 8h6" />
+              <path d="M7 12h4" />
+              <rect x="13" y="13" width="6" height="5" rx="1" fill="currentColor" stroke="none" />
             </svg>
           }
         />
