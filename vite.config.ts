@@ -16,6 +16,10 @@ export default defineConfig({
       {
         // Main process
         entry: 'electron/main.ts',
+        // Перезапускать Electron при каждой пересборке main (иначе изменения не применяются).
+        onstart(args) {
+          args.startup();
+        },
         vite: {
           build: {
             outDir: 'dist-electron',
