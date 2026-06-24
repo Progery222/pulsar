@@ -17,11 +17,14 @@ function hexToRgba(hex: string, a: number): string {
 export default function TitlePreview({
   style,
   onMove,
+  videoSrc,
 }: {
   style: TitlesStyle;
   onMove: (xPct: number, yPct: number) => void;
+  videoSrc?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const vidRef = useRef<HTMLVideoElement>(null);
   const H = Math.round((PREVIEW_W * 16) / 9);
   const scale = H / NORM_H; // тот же масштаб, что и при рендере
   const fontPx = Math.max(7, style.fontSize * scale);
@@ -81,6 +84,20 @@ export default function TitlePreview({
           background: 'linear-gradient(135deg, #2b3a4a 0%, #16202b 60%, #0c1116 100%)',
         }}
       >
+        {videoSrc && (
+          <video
+            ref={vidRef}
+            src={videoSrc}
+            muted
+            playsInline
+            preload="metadata"
+            onLoadedMetadata={() => {
+              const v = vidRef.current;
+              if (v) v.currentTime = Math.min(1, (v.duration || 4) * 0.25);
+            }}
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+          />
+        )}
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '18%', background: 'rgba(255,107,53,0.07)' }} />
 
         {/* Подложка */}

@@ -235,7 +235,11 @@ export default function TitlesTab() {
       </div>
 
       <div style={{ width: 240, flexShrink: 0, position: 'sticky', top: 0 }}>
-        <TitlePreview style={titles} onMove={(x, y) => setTitles({ posXPct: x, posYPct: y })} />
+        <TitlePreview
+          style={titles}
+          onMove={(x, y) => setTitles({ posXPct: x, posYPct: y })}
+          videoSrc={videos[0] ? `media:///${encodeURIComponent(videos[0].path)}` : undefined}
+        />
       </div>
     </div>
   );
