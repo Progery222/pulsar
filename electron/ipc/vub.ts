@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildVubPlan } from '../../src/vub/ffmpegBuild';
 import { buildAss } from '../../src/vub/assBuilder';
+import { outFileName } from '../../src/vub/naming';
 import type { TranscriptWord, VubProcessRequest, VubVideo } from '../../src/vub/types';
 import { transcribe } from './transcribe';
 import { getAssemblyKey } from './config';
@@ -79,7 +80,8 @@ function probe(file: string): Promise<ProbeResult> {
 async function processOne(
   task: VubTask,
   req: VubProcessRequest,
-  send: (status: 'processing' | 'done' | 'error', percent: number, error?: string) => void
+  send: (status: 'processing' | 'done' | 'error', percent: number, error?: string) => void,
+  warn: (msg: string) => void
 ): Promise<void> {
   const video = task.video;
   const { duration, hasAudio, width, height } = await probe(video.path);
@@ -91,25 +93,35 @@ async function processOne(
 
   // --- Авто-титры (транскрибация речи -> .ass) ---
   let assPath: string | null = null;
-  const apiKey = getAssemblyKey();
-  if (req.titles?.enabled && apiKey && hasAudio) {
-    try {
-      const words = await getWords(video.path, apiKey, req.titles.language);
-      if (cancelled) return;
-      if (words.length) {
-        const ass = buildAss(words, req.titles, {
-          width: width || 1080,
-          height: height || 1920,
-          variationIndex: task.index,
-          variationTotal: task.total,
-        });
-        if (ass) {
-          assPath = path.join(os.tmpdir(), `vub_sub_${task.index}_${Math.random().toString(36).slice(2, 8)}.ass`);
-          fs.writeFileSync(assPath, ass, 'utf-8');
+  if (req.titles?.enabled) {
+    const apiKey = getAssemblyKey();
+    if (!apiKey) {
+      if (task.index === 0) warn('Титры: не задан API-ключ AssemblyAI (вкладка «Титры»).');
+    } else if (!hasAudio) {
+      if (task.index === 0) warn(`Титры: в «${video.name}» нет аудиодорожки.`);
+    } else {
+      try {
+        const words = await getWords(video.path, apiKey, req.titles.language);
+        if (cancelled) return;
+        if (!words.length) {
+          if (task.index === 0) warn(`Титры: речь не распознана в «${video.name}».`);
+        } else {
+          const ass = buildAss(words, req.titles, {
+            width: width || 1080,
+            height: height || 1920,
+            variationIndex: task.index,
+            variationTotal: task.total,
+          });
+          if (ass) {
+            assPath = path.join(os.tmpdir(), `vub_sub_${task.index}_${Math.random().toString(36).slice(2, 8)}.ass`);
+            fs.writeFileSync(assPath, ass, 'utf-8');
+          }
         }
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        console.warn('VUB titles failed:', msg);
+        if (task.index === 0) warn(`Титры: ошибка распознавания — ${msg}`);
       }
-    } catch (e) {
-      console.warn('VUB titles failed:', e);
     }
   }
   const assFilter = assPath
@@ -204,27 +216,55 @@ export function registerVubHandlers() {
     const sender = BrowserWindow.fromWebContents(event.sender);
     const emit = (id: string, status: string, percent: number, error?: string) =>
       sender?.webContents.send('vub-progress', { id, status, percent, error });
+    const warned = new Set<string>();
+    const warn = (msg: string) => {
+      if (warned.has(msg)) return;
+      warned.add(msg);
+      sender?.webContents.send('vub-warning', msg);
+    };
 
     // Разворачиваем очередь: каждое видео -> N уникальных вариаций.
     const variations = Math.max(1, req.variations || 1);
+    const totalFiles = req.videos.length * variations;
     const tasks: VubTask[] = [];
+    let g = 0;
     for (const video of req.videos) {
       const base = path.parse(video.name).name;
       for (let i = 0; i < variations; i++) {
         tasks.push({
           id: variations > 1 ? `${video.id}#${i}` : video.id,
           video,
-          outName: variations > 1 ? `${base}_unique_${i + 1}.mp4` : `${base}_unique.mp4`,
+          outName: outFileName({
+            baseName: base,
+            variationIndex: i,
+            variationTotal: variations,
+            globalIndex: g,
+            totalFiles,
+            pattern: req.namePattern || '',
+          }),
           index: i,
           total: variations,
         });
+        g++;
       }
     }
 
     await runPool(tasks, req.threads, (task) =>
-      processOne(task, req, (status, percent, error) => emit(task.id, status, percent, error))
+      processOne(task, req, (status, percent, error) => emit(task.id, status, percent, error), warn)
     );
     return { ok: true };
+  });
+
+  // Тест распознавания: распознаёт первый ролик и возвращает текст или ошибку.
+  ipcMain.handle('vub:testTranscribe', async (_e, videoPath: string, language: string) => {
+    const key = getAssemblyKey();
+    if (!key) return { error: 'Не задан API-ключ AssemblyAI.' };
+    try {
+      const words = await transcribe(videoPath, key, language || 'auto');
+      return { ok: true, count: words.length, text: words.map((w) => w.text).join(' ').slice(0, 500) };
+    } catch (e) {
+      return { error: e instanceof Error ? e.message : String(e) };
+    }
   });
 
   ipcMain.handle('vub:cancel', () => {

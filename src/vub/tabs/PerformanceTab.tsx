@@ -1,13 +1,16 @@
 import { useEffect } from 'react';
 import { useVubStore, type FileProgress } from '../store';
 import { Slider } from '../components/ui';
+import { outFileName } from '../naming';
+import { showToast } from '../../store/toastStore';
 
 const cores = navigator.hardwareConcurrency || 4;
 
 // Вкладка 8: Производительность и Сохранение (§4.9 ТЗ).
 export default function PerformanceTab() {
   const {
-    threads, setThreads, variations, setVariations, outputDir, setOutputDir,
+    threads, setThreads, variations, setVariations, namePattern, setNamePattern,
+    outputDir, setOutputDir,
     videos, params, effects, watermark, text, template, cleanMetadata, titles,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
   } = useVubStore();
@@ -17,6 +20,11 @@ export default function PerformanceTab() {
     return off;
   }, [updateProgress]);
 
+  useEffect(() => {
+    const off = window.electronAPI.onVubWarning((msg) => showToast(msg));
+    return off;
+  }, []);
+
   async function pickFolder() {
     const dir = await window.electronAPI.selectDirectory();
     if (dir) setOutputDir(dir);
@@ -24,17 +32,27 @@ export default function PerformanceTab() {
 
   async function start() {
     if (!videos.length || !outputDir || isProcessing) return;
-    // Разворачиваем строки прогресса: каждое видео -> N вариаций (id совпадает со схемой в main).
+    // Строки прогресса показывают будущие имена файлов (та же схема, что в main).
+    const totalFiles = videos.length * variations;
     const initial: FileProgress[] = [];
+    let g = 0;
     for (const v of videos) {
       const base = v.name.replace(/\.[^.]+$/, '');
       for (let i = 0; i < variations; i++) {
         initial.push({
           id: variations > 1 ? `${v.id}#${i}` : v.id,
-          name: variations > 1 ? `${base} — вариация ${i + 1}` : v.name,
+          name: outFileName({
+            baseName: base,
+            variationIndex: i,
+            variationTotal: variations,
+            globalIndex: g,
+            totalFiles,
+            pattern: namePattern,
+          }),
           status: 'queued',
           percent: 0,
         });
+        g++;
       }
     }
     setProgress(initial);
@@ -51,6 +69,7 @@ export default function PerformanceTab() {
         titles,
         threads,
         variations,
+        namePattern,
         outputDir,
       });
     } finally {
@@ -100,6 +119,24 @@ export default function PerformanceTab() {
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{threads} / {cores}</span>
         </div>
         <Slider min={1} max={cores} value={threads} onChange={setThreads} />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 14, marginBottom: 8 }}>Имя файлов</div>
+        <input
+          type="text"
+          value={namePattern}
+          onChange={(e) => setNamePattern(e.target.value)}
+          placeholder="пусто = имя оригинала + _unique"
+          style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}
+        />
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
+          {namePattern.trim()
+            ? videos.length * variations > 1
+              ? `Файлы: ${namePattern.trim()}_1.mp4, ${namePattern.trim()}_2.mp4 …`
+              : `Файл: ${namePattern.trim()}.mp4`
+            : 'По умолчанию используется имя исходного видео.'}
+        </p>
       </div>
 
       <button

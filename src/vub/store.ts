@@ -63,6 +63,8 @@ interface VubState {
   setThreads: (value: number) => void;
   variations: number; // сколько уникальных вариаций создавать на каждое видео
   setVariations: (value: number) => void;
+  namePattern: string; // свой шаблон имени файлов
+  setNamePattern: (value: string) => void;
   outputDir: string | null;
   setOutputDir: (value: string | null) => void;
 
@@ -144,6 +146,8 @@ export const useVubStore = create<VubState>((set) => ({
   setThreads: (value) => set({ threads: value }),
   variations: 1,
   setVariations: (value) => set({ variations: Math.max(1, value) }),
+  namePattern: '',
+  setNamePattern: (value) => set({ namePattern: value }),
   outputDir: null,
   setOutputDir: (value) => set({ outputDir: value }),
 

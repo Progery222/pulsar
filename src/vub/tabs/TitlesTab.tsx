@@ -6,8 +6,11 @@ import { Block, Checkbox, Select, Slider, Switch } from '../components/ui';
 export default function TitlesTab() {
   const titles = useVubStore((s) => s.titles);
   const setTitles = useVubStore((s) => s.setTitles);
+  const videos = useVubStore((s) => s.videos);
   const [apiKey, setApiKey] = useState('');
   const [saved, setSaved] = useState(false);
+  const [testResult, setTestResult] = useState('');
+  const [testing, setTesting] = useState(false);
 
   useEffect(() => {
     window.electronAPI.getVubApiKey().then((k) => setApiKey(k || ''));
@@ -17,6 +20,21 @@ export default function TitlesTab() {
     await window.electronAPI.setVubApiKey(apiKey.trim());
     setSaved(true);
     setTimeout(() => setSaved(false), 1500);
+  }
+
+  async function testTranscribe() {
+    if (!videos.length) {
+      setTestResult('Сначала добавьте видео на вкладке «Загруженные видео».');
+      return;
+    }
+    setTesting(true);
+    setTestResult('Сохраняю ключ и распознаю первый ролик…');
+    await window.electronAPI.setVubApiKey(apiKey.trim());
+    const r = await window.electronAPI.testVubTranscribe(videos[0].path, titles.language);
+    setTesting(false);
+    if ('error' in r) setTestResult(`Ошибка: ${r.error}`);
+    else if (!r.count) setTestResult('Речь не распознана (нет голоса или только музыка).');
+    else setTestResult(`Распознано (${r.count} слов): ${r.text}`);
   }
 
   return (
@@ -45,9 +63,21 @@ export default function TitlesTab() {
             {saved ? 'Сохранено ✓' : 'Сохранить'}
           </button>
         </div>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, marginBottom: 0 }}>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, marginBottom: 10 }}>
           Ключ хранится локально (зашифровано), в проект не попадает. Распознавание происходит при экспорте.
         </p>
+        <button
+          onClick={testTranscribe}
+          disabled={testing}
+          style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', opacity: testing ? 0.5 : 1 }}
+        >
+          {testing ? 'Распознаю…' : 'Тест распознавания (1-й ролик)'}
+        </button>
+        {testResult && (
+          <p style={{ fontSize: 13, color: testResult.startsWith('Ошибка') ? 'var(--danger)' : 'var(--text-primary)', marginTop: 10, marginBottom: 0, lineHeight: 1.4 }}>
+            {testResult}
+          </p>
+        )}
       </Block>
 
       {/* Язык */}

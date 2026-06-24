@@ -33,6 +33,16 @@ const electronAPI = {
   selectWatermark: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectWatermark'),
   getVubApiKey: (): Promise<string> => ipcRenderer.invoke('vub:getKey'),
   setVubApiKey: (key: string): Promise<{ ok: true }> => ipcRenderer.invoke('vub:setKey', key),
+  testVubTranscribe: (
+    videoPath: string,
+    language: string
+  ): Promise<{ ok: true; count: number; text: string } | { error: string }> =>
+    ipcRenderer.invoke('vub:testTranscribe', videoPath, language),
+  onVubWarning: (cb: (message: string) => void): (() => void) => {
+    const listener = (_e: unknown, message: string) => cb(message);
+    ipcRenderer.on('vub-warning', listener);
+    return () => ipcRenderer.removeListener('vub-warning', listener);
+  },
   processVub: (request: VubProcessRequest): Promise<{ ok: true }> =>
     ipcRenderer.invoke('vub:process', request),
   cancelVub: (): Promise<{ ok: true }> => ipcRenderer.invoke('vub:cancel'),
