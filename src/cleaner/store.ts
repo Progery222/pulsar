@@ -34,6 +34,8 @@ interface CleanerState {
   setMinConf: (v: number) => void;
   addTitles: boolean;
   setAddTitles: (v: boolean) => void;
+  titlesAtZone: boolean; // ставить свои титры по центру найденной зоны
+  setTitlesAtZone: (v: boolean) => void;
 
   manualZones: boolean; // использовать ручные зоны для всех роликов (вместо авто-детекта)
   setManualZones: (v: boolean) => void;
@@ -89,6 +91,8 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setMinConf: (v) => set({ minConf: v }),
   addTitles: false,
   setAddTitles: (v) => set({ addTitles: v }),
+  titlesAtZone: true,
+  setTitlesAtZone: (v) => set({ titlesAtZone: v }),
 
   manualZones: false,
   setManualZones: (v) => set({ manualZones: v }),

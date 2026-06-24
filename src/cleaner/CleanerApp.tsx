@@ -15,7 +15,7 @@ export default function CleanerApp() {
     videos, addVideos, removeVideo,
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
     coverMethod, setCoverMethod, boxColor, setBoxColor, minConf, setMinConf,
-    addTitles, setAddTitles,
+    addTitles, setAddTitles, titlesAtZone, setTitlesAtZone,
     manualZones, setManualZones, zones, setZones, addZone, removeZone,
     outputDir, setOutputDir,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
@@ -68,6 +68,7 @@ export default function CleanerApp() {
         boxColor,
         minConf,
         addTitles,
+        titlesAtZone,
         titles: addTitles ? titles : undefined,
         manualZones,
         zones: manualZones ? zones : undefined,
@@ -149,6 +150,11 @@ export default function CleanerApp() {
             <Switch checked={addTitles} onChange={setAddTitles} />
             <span style={{ fontSize: 14 }}>Наложить свои титры поверх (авто-субтитры)</span>
           </div>
+          {addTitles && (
+            <div style={{ marginTop: 12, marginBottom: 4 }}>
+              <Checkbox checked={titlesAtZone} onChange={setTitlesAtZone} label="Ставить титры на месте найденной зоны (автоматически)" />
+            </div>
+          )}
           {addTitles && (
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '10px 0 0' }}>
               Речь распознаётся заново, титры берут стиль/караоке/подложку и API-ключ со вкладки{' '}

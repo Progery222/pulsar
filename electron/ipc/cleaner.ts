@@ -46,6 +46,7 @@ export interface CleanerRequest {
   boxColor: string;
   minConf: number;
   addTitles: boolean; // наложить свои титры поверх зачищенных
+  titlesAtZone?: boolean; // ставить титры по центру найденной зоны
   titles?: TitlesStyle; // стиль титров (из вкладки Уникализатор → Титры)
   manualZones?: boolean; // использовать ручные зоны для всех роликов
   zones?: { x: number; y: number; w: number; h: number }[];
@@ -256,10 +257,13 @@ async function processOne(
       const words = await getWords(video.path, key, req.titles.language);
       if (cancelled) return;
       if (words.length) {
-        const ass = buildAss(words, { ...req.titles, enabled: true }, {
-          width: W || 1080,
-          height: H || 1920,
-        });
+        // По умолчанию ставим титры по центру найденной зоны (крупнейшей).
+        let style = { ...req.titles, enabled: true };
+        if (req.titlesAtZone !== false && boxes.length) {
+          const t = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+          style = { ...style, posXPct: Math.round((t.x + t.w / 2) * 100), posYPct: Math.round((t.y + t.h / 2) * 100) };
+        }
+        const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
         if (ass) {
           assPath = path.join(os.tmpdir(), `cl_sub_${Math.random().toString(36).slice(2, 8)}.ass`);
           fs.writeFileSync(assPath, ass, 'utf-8');
