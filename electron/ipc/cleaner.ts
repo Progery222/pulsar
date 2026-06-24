@@ -274,6 +274,7 @@ async function processOne(
     }
     boxes = (det.boxes || []).filter((b) => (b.conf ?? 1) >= req.minConf);
   }
+  console.log('[cleaner] boxes:', JSON.stringify(boxes.map((b) => ({ x: +b.x.toFixed(2), y: +b.y.toFixed(2), w: +b.w.toFixed(2), h: +b.h.toFixed(2) }))), 'method:', req.coverMethod, 'addTitles:', req.addTitles);
   send('processing', 10, `зон: ${boxes.length}`);
 
   // Перекрытие: box -> скруглённая плашка через .ass; blur/delogo -> фильтры.
@@ -318,6 +319,8 @@ async function processOne(
           style = { ...style, posXPct: Math.round((t.x + t.w / 2) * 100), posYPct: Math.round((t.y + t.h / 2) * 100) };
         }
         const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
+        console.log('[cleaner] titles words:', words.length, 'bg.enabled:', req.titles.bg?.enabled, 'maxWords:', req.titles.maxWordsPerLine, 'fontSize:', style.fontSize);
+        console.log('[cleaner] ASS >>>\n' + ass + '\n<<< ASS');
         if (ass) {
           assPath = path.join(os.tmpdir(), `cl_sub_${Math.random().toString(36).slice(2, 8)}.ass`);
           fs.writeFileSync(assPath, ass, 'utf-8');
