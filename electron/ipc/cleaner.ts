@@ -287,7 +287,9 @@ async function processOne(
     else if (req.titleZonePick === 'highest') titleZone = boxes.reduce((a, b) => (b.y < a.y ? b : a));
     else titleZone = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
   }
-  const coverBoxes = titleZone ? boxes.filter((b) => b !== titleZone) : boxes;
+  // Перекрываем ВСЕ зоны (включая зону титра), чтобы старый титр полностью скрылся;
+  // плашка титра рисуется сверху.
+  const coverBoxes = boxes;
 
   // Перекрытие: box -> скруглённая плашка через .ass; blur/delogo -> фильтры.
   const cover: { vf?: string; complex?: string } = {};
@@ -315,20 +317,39 @@ async function processOne(
       if (cancelled) return;
       if (words.length) {
         let style = { ...req.titles, enabled: true };
+        let marginFrac: number | undefined;
         if (titleZone) {
           const t = titleZone;
-          // Размер под высоту зоны; авто-обтекающая НЕПРОЗРАЧНАЯ плашка = и фон, и перекрытие.
-          const fitSize = Math.max(30, Math.min(96, Math.round(t.h * 1080 * 0.55)));
-          style = {
-            ...style,
-            posXPct: Math.round((t.x + t.w / 2) * 100),
-            posYPct: Math.round((t.y + t.h / 2) * 100),
-            fontSize: fitSize,
-            bg: { ...style.bg, enabled: true, opacity: 100 },
-          };
+          const posXPct = Math.round((t.x + t.w / 2) * 100);
+          const posYPct = Math.round((t.y + t.h / 2) * 100);
+          if (req.coverMethod === 'box') {
+            // Текст ВНУТРИ чёрной плашки-перекрытия: перенос по её ширине + подгон шрифта под высоту.
+            const aspect = H > 0 ? W / H : 9 / 16;
+            const Wn = Math.round(1080 * aspect);
+            const Wb = t.w * Wn;
+            const Hb = t.h * 1080;
+            const mw = Math.max(1, req.titles.maxWordsPerLine);
+            let maxChars = 1;
+            for (let i = 0; i < words.length; i += mw) {
+              const seg = words.slice(i, i + mw).map((w) => (req.titles!.uppercase ? w.text.toUpperCase() : w.text)).join(' ');
+              if (seg.length > maxChars) maxChars = seg.length;
+            }
+            let fit = 20;
+            for (let s = 80; s >= 18; s -= 2) {
+              const cpl = Math.max(1, Wb / (0.52 * s));
+              const lines = Math.ceil(maxChars / cpl);
+              if (lines * 1.25 * s <= Hb * 0.88) { fit = s; break; }
+            }
+            style = { ...style, posXPct, posYPct, fontSize: fit, bg: { ...style.bg, enabled: false } };
+            marginFrac = Math.max(0.01, (1 - t.w) / 2);
+          } else {
+            // blur/delogo: своя авто-обтекающая непрозрачная плашка.
+            const fitSize = Math.max(28, Math.min(56, Math.round(t.h * 1080 * 0.42)));
+            style = { ...style, posXPct, posYPct, fontSize: fitSize, bg: { ...style.bg, enabled: true, opacity: 100 } };
+          }
         }
-        const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
-        console.log('[cleaner] titles words:', words.length, 'fontSize:', style.fontSize, 'titleZone:', !!titleZone);
+        const ass = buildAss(words, style, { width: W || 1080, height: H || 1920, marginFrac });
+        console.log('[cleaner] titles words:', words.length, 'fontSize:', style.fontSize, 'method:', req.coverMethod);
         if (ass) {
           assPath = path.join(os.tmpdir(), `cl_sub_${Math.random().toString(36).slice(2, 8)}.ass`);
           fs.writeFileSync(assPath, ass, 'utf-8');
