@@ -178,7 +178,14 @@ export default function PerformanceTab() {
           <tbody>
             {progress.map((p) => (
               <tr key={p.id} style={{ borderTop: '1px solid var(--border)' }}>
-                <td style={{ padding: '8px 0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: 280 }}>{p.name}</td>
+                <td style={{ padding: '8px 0', maxWidth: 280 }}>
+                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</div>
+                  {p.status === 'error' && p.error && (
+                    <div style={{ fontSize: 11, color: 'var(--danger)', whiteSpace: 'normal', marginTop: 2 }} title={p.error}>
+                      {p.error}
+                    </div>
+                  )}
+                </td>
                 <td style={{ padding: '8px 0', color: p.status === 'error' ? 'var(--danger)' : p.status === 'done' ? 'var(--accent-green)' : 'var(--text-secondary)' }}>
                   {statusLabel[p.status]}
                 </td>

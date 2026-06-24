@@ -89,7 +89,15 @@ async function processOne(
 
   // Каждая вариация — свой набор значений, распределённый по диапазонам (§ вариации).
   const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total);
-  const out = path.join(req.outputDir, task.outName);
+  const finalOut = path.join(req.outputDir, task.outName);
+  // ffmpeg на Windows не открывает выходной файл с не-ASCII именем (EINVAL) —
+  // рендерим во временный ASCII-файл, затем переименовываем средствами Node.
+  const isAscii = (s: string) => /^[\x00-\x7F]*$/.test(s);
+  const stageDir = isAscii(path.dirname(finalOut)) ? path.dirname(finalOut) : os.tmpdir();
+  const out = isAscii(finalOut)
+    ? finalOut
+    : path.join(stageDir, `vub_out_${Math.random().toString(36).slice(2, 10)}.mp4`);
+  const staged = out !== finalOut;
 
   // --- Авто-титры (транскрибация речи -> .ass) ---
   let assPath: string | null = null;
@@ -168,6 +176,18 @@ async function processOne(
     if (assPath) fs.promises.unlink(assPath).catch(() => {});
   };
 
+  // Перенос временного ASCII-файла в итоговое (возможно кириллическое) имя.
+  async function finalizeOutput() {
+    if (!staged) return;
+    await fs.promises.rm(finalOut, { force: true }).catch(() => {});
+    try {
+      await fs.promises.rename(out, finalOut);
+    } catch {
+      await fs.promises.copyFile(out, finalOut);
+      await fs.promises.unlink(out).catch(() => {});
+    }
+  }
+
   await new Promise<void>((resolve) => {
     cmd
       .on('start', () => send('processing', 1))
@@ -182,13 +202,19 @@ async function processOne(
       .on('end', () => {
         active.delete(cmd);
         cleanup();
-        send('done', 100);
-        resolve();
+        finalizeOutput()
+          .then(() => send('done', 100))
+          .catch((e) => send('error', 0, `Не удалось сохранить файл: ${e instanceof Error ? e.message : String(e)}`))
+          .finally(() => resolve());
       })
       .on('error', (err) => {
         active.delete(cmd);
         cleanup();
-        if (!cancelled) send('error', 0, err.message);
+        if (staged) fs.promises.unlink(out).catch(() => {});
+        if (!cancelled) {
+          console.error('VUB ffmpeg error для', task.outName, '|ass:', assFilter, '|', err.message);
+          send('error', 0, err.message);
+        }
         resolve();
       });
 
