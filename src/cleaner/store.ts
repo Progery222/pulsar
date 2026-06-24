@@ -32,6 +32,8 @@ interface CleanerState {
   setBoxColor: (c: string) => void;
   boxRadius: number; // скругление сплошной плашки, px
   setBoxRadius: (v: number) => void;
+  blurStrength: number; // сила блюра
+  setBlurStrength: (v: number) => void;
   minConf: number;
   setMinConf: (v: number) => void;
   addTitles: boolean;
@@ -95,6 +97,8 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setBoxColor: (c) => set({ boxColor: c }),
   boxRadius: 16,
   setBoxRadius: (v) => set({ boxRadius: v }),
+  blurStrength: 16,
+  setBlurStrength: (v) => set({ blurStrength: v }),
   minConf: 0.25,
   setMinConf: (v) => set({ minConf: v }),
   addTitles: false,

@@ -14,7 +14,7 @@ export default function CleanerApp() {
   const {
     videos, addVideos, removeVideo,
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
-    coverMethod, setCoverMethod, boxColor, setBoxColor, boxRadius, setBoxRadius, minConf, setMinConf,
+    coverMethod, setCoverMethod, boxColor, setBoxColor, boxRadius, setBoxRadius, blurStrength, setBlurStrength, minConf, setMinConf,
     addTitles, setAddTitles, titlesAtZone, setTitlesAtZone, titleZoneIndex, setTitleZoneIndex,
     titleZonePick, setTitleZonePick,
     manualZones, setManualZones, zones, setZones, addZone, removeZone,
@@ -68,6 +68,7 @@ export default function CleanerApp() {
         coverMethod,
         boxColor,
         boxRadius,
+        blurStrength,
         minConf,
         addTitles,
         titlesAtZone,
@@ -154,6 +155,15 @@ export default function CleanerApp() {
                 <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{boxRadius}px</span>
               </div>
               <Slider min={0} max={80} value={boxRadius} onChange={setBoxRadius} />
+            </div>
+          )}
+          {coverMethod === 'blur' && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Сила блюра</span>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{blurStrength}</span>
+              </div>
+              <Slider min={4} max={60} value={blurStrength} onChange={setBlurStrength} />
             </div>
           )}
         </Block>

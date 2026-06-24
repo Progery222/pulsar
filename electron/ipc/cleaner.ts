@@ -45,6 +45,7 @@ export interface CleanerRequest {
   coverMethod: 'delogo' | 'blur' | 'box';
   boxColor: string;
   boxRadius?: number; // скругление сплошной плашки, px
+  blurStrength?: number; // сила блюра (sigma)
   minConf: number;
   addTitles: boolean; // наложить свои титры поверх зачищенных
   titlesAtZone?: boolean; // ставить титры по центру найденной зоны
@@ -191,7 +192,8 @@ function buildCover(
   W: number,
   H: number,
   method: CleanerRequest['coverMethod'],
-  boxColor: string
+  boxColor: string,
+  blurStrength = 16
 ): { vf?: string; complex?: string } {
   const px = boxes
     .map((b) => {
@@ -219,7 +221,7 @@ function buildCover(
   const parts: string[] = [];
   parts.push(`[0:v]split=${n + 1}[main]${px.map((_, i) => `[s${i}]`).join('')}`);
   px.forEach((b, i) => {
-    parts.push(`[s${i}]crop=${b.w}:${b.h}:${b.x}:${b.y},gblur=sigma=14[b${i}]`);
+    parts.push(`[s${i}]crop=${b.w}:${b.h}:${b.x}:${b.y},gblur=sigma=${blurStrength}[b${i}]`);
   });
   let label = 'main';
   px.forEach((b, i) => {
@@ -283,7 +285,7 @@ async function processOne(
       coverAssPath = path.join(os.tmpdir(), `cl_box_${Math.random().toString(36).slice(2, 8)}.ass`);
       fs.writeFileSync(coverAssPath, a, 'utf-8');
     } else {
-      Object.assign(cover, buildCover(boxes, W, H, req.coverMethod, req.boxColor));
+      Object.assign(cover, buildCover(boxes, W, H, req.coverMethod, req.boxColor, req.blurStrength ?? 16));
     }
   }
   const coverAssFilter = coverAssPath ? `ass=filename='${escFilterPath(coverAssPath)}'` : null;
