@@ -52,32 +52,52 @@ function pythonScript(): string {
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', 'detect_overlays.py');
 }
 
-// Запуск Python-детектора, парсинг JSON.
-function detect(videoPath: string): Promise<DetectResult> {
+const PY_CANDIDATES =
+  process.platform === 'win32' ? [['py', ['-3']], ['python', []], ['python3', []]] : [['python3', []], ['python', []]];
+
+function runPy(cmd: string, pre: string[], videoPath: string): Promise<{ out: string; err: string; code: number | null; spawnErr?: string }> {
   return new Promise((resolve) => {
-    const py = process.platform === 'win32' ? 'python' : 'python3';
-    const child = spawn(py, [pythonScript(), videoPath]);
+    const child = spawn(cmd, [...pre, pythonScript(), videoPath]);
     let out = '';
     let err = '';
     const timer = setTimeout(() => {
       child.kill();
-      resolve({ width: 0, height: 0, duration: 0, boxes: [], error: 'detect timeout' });
+      resolve({ out, err, code: null, spawnErr: 'timeout' });
     }, 120000);
     child.stdout.on('data', (d) => (out += d.toString()));
     child.stderr.on('data', (d) => (err += d.toString()));
     child.on('error', (e) => {
       clearTimeout(timer);
-      resolve({ width: 0, height: 0, duration: 0, boxes: [], error: e.message });
+      resolve({ out, err, code: null, spawnErr: e.message });
     });
-    child.on('close', () => {
+    child.on('close', (code) => {
       clearTimeout(timer);
-      try {
-        resolve(JSON.parse(out.trim()));
-      } catch {
-        resolve({ width: 0, height: 0, duration: 0, boxes: [], error: err.trim() || 'bad detector output' });
-      }
+      resolve({ out, err, code });
     });
   });
+}
+
+// Запуск Python-детектора (перебор интерпретаторов), парсинг JSON.
+async function detect(videoPath: string): Promise<DetectResult> {
+  let lastErr = '';
+  for (const [cmd, pre] of PY_CANDIDATES as [string, string[]][]) {
+    const { out, err, code, spawnErr } = await runPy(cmd, pre, videoPath);
+    if (spawnErr === 'ENOENT' || /not found|ENOENT/i.test(spawnErr || '')) {
+      lastErr = `${cmd}: не найден`;
+      continue;
+    }
+    try {
+      const r = JSON.parse(out.trim());
+      console.log(`[cleaner] detect ok (${cmd}):`, path.basename(videoPath), 'boxes:', r.boxes?.length, 'motion:', r.motion, 'err:', r.error);
+      return r;
+    } catch {
+      lastErr = err.trim() || spawnErr || `нет JSON (код ${code})`;
+      console.error(`[cleaner] detect FAIL (${cmd}):`, path.basename(videoPath), 'code:', code, 'stdout:', out.slice(0, 300), 'stderr:', err.slice(0, 300));
+      // если интерпретатор запустился, но упал (напр. нет cv2) — нет смысла пробовать другие
+      if (out || err) break;
+    }
+  }
+  return { width: 0, height: 0, duration: 0, boxes: [], error: lastErr || 'Python/детектор недоступен' };
 }
 
 function color6(hex: string): string {
