@@ -277,16 +277,28 @@ async function processOne(
   console.log('[cleaner] boxes:', JSON.stringify(boxes.map((b) => ({ x: +b.x.toFixed(2), y: +b.y.toFixed(2), w: +b.w.toFixed(2), h: +b.h.toFixed(2) }))), 'method:', req.coverMethod, 'addTitles:', req.addTitles);
   send('processing', 10, `зон: ${boxes.length}`);
 
+  // Зона для титров: её НЕ перекрываем отдельной плашкой — фон самих титров
+  // (авто-обтекающий, непрозрачный) служит и плашкой, и перекрытием. Иначе двойная плашка.
+  let titleZone: Box | null = null;
+  if (req.addTitles && req.titles && req.titlesAtZone !== false && boxes.length) {
+    const idx = req.titleZoneIndex;
+    if (req.manualZones && idx != null && boxes[idx]) titleZone = boxes[idx];
+    else if (req.titleZonePick === 'lowest') titleZone = boxes.reduce((a, b) => (b.y + b.h > a.y + a.h ? b : a));
+    else if (req.titleZonePick === 'highest') titleZone = boxes.reduce((a, b) => (b.y < a.y ? b : a));
+    else titleZone = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+  }
+  const coverBoxes = titleZone ? boxes.filter((b) => b !== titleZone) : boxes;
+
   // Перекрытие: box -> скруглённая плашка через .ass; blur/delogo -> фильтры.
   const cover: { vf?: string; complex?: string } = {};
   let coverAssPath: string | null = null;
-  if (boxes.length) {
+  if (coverBoxes.length) {
     if (req.coverMethod === 'box') {
-      const a = buildBoxAss(boxes, W, H, req.boxColor, req.boxRadius ?? 0);
+      const a = buildBoxAss(coverBoxes, W, H, req.boxColor, req.boxRadius ?? 0);
       coverAssPath = path.join(os.tmpdir(), `cl_box_${Math.random().toString(36).slice(2, 8)}.ass`);
       fs.writeFileSync(coverAssPath, a, 'utf-8');
     } else {
-      Object.assign(cover, buildCover(boxes, W, H, req.coverMethod, req.boxColor, req.blurStrength ?? 16));
+      Object.assign(cover, buildCover(coverBoxes, W, H, req.coverMethod, req.boxColor, req.blurStrength ?? 16));
     }
   }
   const coverAssFilter = coverAssPath ? `ass=filename='${escFilterPath(coverAssPath)}'` : null;
@@ -303,36 +315,20 @@ async function processOne(
       if (cancelled) return;
       if (words.length) {
         let style = { ...req.titles, enabled: true };
-        let marginFrac: number | undefined;
-        if (req.titlesAtZone !== false && boxes.length) {
-          // Зона для титров: ручной выбор по индексу, иначе эвристика.
-          const idx = req.titleZoneIndex;
-          let t: Box;
-          if (req.manualZones && idx != null && boxes[idx]) {
-            t = boxes[idx];
-          } else if (req.titleZonePick === 'lowest') {
-            t = boxes.reduce((a, b) => (b.y + b.h > a.y + a.h ? b : a));
-          } else if (req.titleZonePick === 'highest') {
-            t = boxes.reduce((a, b) => (b.y < a.y ? b : a));
-          } else {
-            t = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
-          }
-          const fitSize = Math.max(22, Math.min(110, Math.round(t.h * 1080 * 0.62)));
+        if (titleZone) {
+          const t = titleZone;
+          // Размер под высоту зоны; авто-обтекающая НЕПРОЗРАЧНАЯ плашка = и фон, и перекрытие.
+          const fitSize = Math.max(30, Math.min(96, Math.round(t.h * 1080 * 0.55)));
           style = {
             ...style,
             posXPct: Math.round((t.x + t.w / 2) * 100),
             posYPct: Math.round((t.y + t.h / 2) * 100),
             fontSize: fitSize,
+            bg: { ...style.bg, enabled: true, opacity: 100 },
           };
-          // Способ «сплошная плашка»: внедряем титр В неё — своя подложка титра не нужна,
-          // текст переносим по ширине зоны.
-          if (req.coverMethod === 'box') {
-            style = { ...style, bg: { ...style.bg, enabled: false } };
-            marginFrac = Math.max(0.02, (1 - t.w) / 2);
-          }
         }
-        const ass = buildAss(words, style, { width: W || 1080, height: H || 1920, marginFrac });
-        console.log('[cleaner] titles words:', words.length, 'bg.enabled:', req.titles.bg?.enabled, 'fontSize:', style.fontSize);
+        const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
+        console.log('[cleaner] titles words:', words.length, 'fontSize:', style.fontSize, 'titleZone:', !!titleZone);
         if (ass) {
           assPath = path.join(os.tmpdir(), `cl_sub_${Math.random().toString(36).slice(2, 8)}.ass`);
           fs.writeFileSync(assPath, ass, 'utf-8');
