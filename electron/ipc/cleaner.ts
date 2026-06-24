@@ -6,6 +6,10 @@ import ffprobeStatic from 'ffprobe-static';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { transcribe } from './transcribe';
+import { getAssemblyKey } from './config';
+import { buildAss } from '../../src/vub/assBuilder';
+import type { TitlesStyle, TranscriptWord } from '../../src/vub/types';
 
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
@@ -41,6 +45,8 @@ export interface CleanerRequest {
   coverMethod: 'delogo' | 'blur' | 'box';
   boxColor: string;
   minConf: number;
+  addTitles: boolean; // наложить свои титры поверх зачищенных
+  titles?: TitlesStyle; // стиль титров (из вкладки Уникализатор → Титры)
   outputDir: string;
 }
 
@@ -57,6 +63,27 @@ function pythonScript(): string {
 function eastModel(): string {
   const p = resDir('assets', 'models', 'east.pb');
   return fs.existsSync(p) ? p : '';
+}
+function escFilterPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/:/g, '\\:');
+}
+function fontsDir(): string {
+  return resDir('assets', 'fonts');
+}
+
+// Кэш транскрибаций (один исходник распознаётся раз).
+const transcriptCache = new Map<string, Promise<TranscriptWord[]>>();
+function getWords(videoPath: string, key: string, lang: string): Promise<TranscriptWord[]> {
+  const ck = `${videoPath}::${lang}`;
+  let pr = transcriptCache.get(ck);
+  if (!pr) {
+    pr = transcribe(videoPath, key, lang).catch((e) => {
+      console.warn('[cleaner] transcribe failed:', e);
+      return [] as TranscriptWord[];
+    });
+    transcriptCache.set(ck, pr);
+  }
+  return pr;
 }
 
 const PY_CANDIDATES =
@@ -199,14 +226,50 @@ async function processOne(
 
   const cover = buildCover(boxes, W, H, req.coverMethod, req.boxColor);
 
+  // Наложение своих титров (транскрибация + .ass) поверх зачищенного видео.
+  let assPath: string | null = null;
+  if (req.addTitles && req.titles) {
+    const key = getAssemblyKey();
+    if (!key) {
+      send('processing', 10, 'титры: нет API-ключа');
+    } else {
+      send('processing', 10, 'распознаю речь…');
+      const words = await getWords(video.path, key, req.titles.language);
+      if (cancelled) return;
+      if (words.length) {
+        const ass = buildAss(words, { ...req.titles, enabled: true }, {
+          width: W || 1080,
+          height: H || 1920,
+        });
+        if (ass) {
+          assPath = path.join(os.tmpdir(), `cl_sub_${Math.random().toString(36).slice(2, 8)}.ass`);
+          fs.writeFileSync(assPath, ass, 'utf-8');
+        }
+      }
+    }
+  }
+  const assFilter = assPath
+    ? `ass=filename='${escFilterPath(assPath)}':fontsdir='${escFilterPath(fontsDir())}'`
+    : null;
+
   const finalOut = path.join(req.outputDir, `${path.parse(video.name).name}_clean.mp4`);
   const stageDir = isAscii(path.dirname(finalOut)) ? path.dirname(finalOut) : os.tmpdir();
   const out = isAscii(finalOut) ? finalOut : path.join(stageDir, `cl_${Math.random().toString(36).slice(2, 10)}.mp4`);
   const staged = out !== finalOut;
 
   const cmd = ffmpeg(video.path).addInputOption('-nostdin');
-  if (cover.complex) cmd.complexFilter(cover.complex, ['outv']);
-  else if (cover.vf) cmd.videoFilters(cover.vf);
+  // Граф: перекрытие -> наши титры. Комбинируем complex (blur) или vf (box/delogo) с ass.
+  if (cover.complex) {
+    const complex = assFilter ? `${cover.complex};[outv]${assFilter}[v]` : cover.complex;
+    cmd.complexFilter(complex, [assFilter ? 'v' : 'outv']);
+  } else {
+    const vf = [cover.vf, assFilter].filter(Boolean).join(',');
+    if (vf) cmd.videoFilters(vf);
+  }
+
+  const cleanupAss = () => {
+    if (assPath) fs.promises.unlink(assPath).catch(() => {});
+  };
 
   cmd
     .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20')
@@ -218,6 +281,7 @@ async function processOne(
       .on('progress', (p) => send('processing', Math.min(99, Math.max(11, p.percent || 11))))
       .on('end', async () => {
         active.delete(cmd);
+        cleanupAss();
         if (staged) {
           await fs.promises.rm(finalOut, { force: true }).catch(() => {});
           await fs.promises.rename(out, finalOut).catch(async () => {
@@ -225,11 +289,12 @@ async function processOne(
             await fs.promises.unlink(out).catch(() => {});
           });
         }
-        send('done', 100, `зон: ${boxes.length}`);
+        send('done', 100, `зон: ${boxes.length}${assPath ? ' +титры' : ''}`);
         resolve();
       })
       .on('error', (e) => {
         active.delete(cmd);
+        cleanupAss();
         if (staged) fs.promises.unlink(out).catch(() => {});
         if (!cancelled) send('error', 0, e.message);
         resolve();
@@ -242,6 +307,7 @@ async function processOne(
 export function registerCleanerHandlers() {
   ipcMain.handle('cleaner:process', async (event, req: CleanerRequest) => {
     cancelled = false;
+    transcriptCache.clear();
     const sender = BrowserWindow.fromWebContents(event.sender);
     for (const v of req.videos) {
       if (cancelled) break;

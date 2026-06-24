@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useCleanerStore, type CoverMethod } from './store';
-import { Block, Checkbox, Select, Slider } from '../vub/components/ui';
+import { useVubStore } from '../vub/store';
+import { useUIStore } from '../store/uiStore';
+import { Block, Checkbox, Select, Slider, Switch } from '../vub/components/ui';
 
 function mediaUrl(p: string): string {
   return `media:///${encodeURIComponent(p)}`;
@@ -12,9 +14,11 @@ export default function CleanerApp() {
     videos, addVideos, removeVideo,
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
     coverMethod, setCoverMethod, boxColor, setBoxColor, minConf, setMinConf,
-    outputDir, setOutputDir,
+    addTitles, setAddTitles, outputDir, setOutputDir,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
   } = useCleanerStore();
+  const titles = useVubStore((s) => s.titles);
+  const setAppMode = useUIStore((s) => s.setAppMode);
   const [dragOver, setDragOver] = useState(false);
 
   useEffect(() => {
@@ -50,6 +54,8 @@ export default function CleanerApp() {
         coverMethod,
         boxColor,
         minConf,
+        addTitles,
+        titles: addTitles ? titles : undefined,
         outputDir,
       });
     } finally {
@@ -121,9 +127,22 @@ export default function CleanerApp() {
               />
             </div>
           </div>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '10px 0 0' }}>
-            После перекрытия можно наложить ваши титры/подложку (настройки берутся из режима Уникализатор → Титры).
-          </p>
+        </Block>
+
+        <Block>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Switch checked={addTitles} onChange={setAddTitles} />
+            <span style={{ fontSize: 14 }}>Наложить свои титры поверх (авто-субтитры)</span>
+          </div>
+          {addTitles && (
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '10px 0 0' }}>
+              Речь распознаётся заново, титры берут стиль/караоке/подложку и API-ключ со вкладки{' '}
+              <button onClick={() => setAppMode('vub')} style={{ background: 'none', border: 'none', color: 'var(--accent-green)', cursor: 'pointer', padding: 0, fontSize: 12, textDecoration: 'underline' }}>
+                Уникализатор → Титры
+              </button>
+              . Текущий шрифт: {titles.font}, позиция Y: {titles.posYPct}%.
+            </p>
+          )}
         </Block>
 
         {/* 3. Папка + анализ */}

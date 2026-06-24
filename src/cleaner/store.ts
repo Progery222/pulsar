@@ -25,6 +25,8 @@ interface CleanerState {
   setBoxColor: (c: string) => void;
   minConf: number;
   setMinConf: (v: number) => void;
+  addTitles: boolean;
+  setAddTitles: (v: boolean) => void;
 
   outputDir: string | null;
   setOutputDir: (v: string | null) => void;
@@ -71,6 +73,8 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setBoxColor: (c) => set({ boxColor: c }),
   minConf: 0.25,
   setMinConf: (v) => set({ minConf: v }),
+  addTitles: false,
+  setAddTitles: (v) => set({ addTitles: v }),
 
   outputDir: null,
   setOutputDir: (v) => set({ outputDir: v }),
