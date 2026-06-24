@@ -18,6 +18,16 @@ export interface TranscriptWord {
   end: number;
 }
 
+// Подложка (плашка) под текстом титра.
+export interface TitleBg {
+  enabled: boolean;
+  color: string; // HEX
+  opacity: number; // затемнение/непрозрачность, 0..100 (100 = полностью непрозрачная)
+  widthPct: number; // ширина, % ширины кадра (10..100)
+  heightPct: number; // высота, % высоты кадра (3..40)
+  radius: number; // скругление углов, px
+}
+
 // Авто-титры: распознавание речи (AssemblyAI) + стиль наложения.
 export interface TitlesStyle {
   enabled: boolean;
@@ -32,6 +42,7 @@ export interface TitlesStyle {
   karaoke: boolean; // пословная подсветка
   uppercase: boolean;
   maxWordsPerLine: number;
+  bg: TitleBg; // подложка под текстом
 }
 
 export interface VubVideo {
@@ -52,6 +63,7 @@ export interface VubParams {
   sharpness: RangeParam;
   volume: RangeParam;
   duration: RangeParam;
+  rotation: RangeParam; // лёгкий поворот видео, градусы
 }
 
 export type MirrorMode = 'random' | 'always' | 'never';

@@ -101,6 +101,18 @@ export function buildVubPlan(
     af.push(`atempo=${atempo.toFixed(4)}`);
   }
 
+  // Лёгкий поворот: зум -> поворот -> центр-кроп, чтобы не было чёрных углов.
+  // z = (cos|θ| + AR·sin|θ|)·запас; AR=1.78 (худший для 9:16/16:9).
+  const rotDeg = value(params.rotation, idx, total);
+  if (rotDeg !== null && Math.abs(rotDeg) > 0.05) {
+    const rad = (rotDeg * Math.PI) / 180;
+    const a = Math.abs(rad);
+    const z = Math.min(1.6, (Math.cos(a) + 1.78 * Math.sin(a)) * 1.05);
+    vf.push(`scale=iw*${z.toFixed(4)}:ih*${z.toFixed(4)}`);
+    vf.push(`rotate=${rad.toFixed(5)}`);
+    vf.push(`crop=iw/${z.toFixed(4)}:ih/${z.toFixed(4)}`);
+  }
+
   // --- Эффекты ---
   if (effects.mirror.enabled) {
     // В режиме "Случайно" чередуем по чётности вариации: половина роликов зеркалится.

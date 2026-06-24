@@ -3,7 +3,15 @@ import type { TitlesStyle } from '../types';
 
 const POOL = ['ВАШ', 'ТЕКСТ', 'ТИТРА', 'ЗДЕСЬ', 'ПРИМЕР'];
 const PREVIEW_W = 240;
-const FRAME_REF = 1080; // fontSize задаётся в координатах кадра шириной 1080
+const NORM_H = 1080; // размер шрифта/подложки задаётся в координатах высоты 1080 (как в рендере)
+
+function hexToRgba(hex: string, a: number): string {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+}
 
 // Превью титра с перетаскиванием по координатам (X/Y в % кадра).
 export default function TitlePreview({
@@ -15,8 +23,8 @@ export default function TitlePreview({
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const H = Math.round((PREVIEW_W * 16) / 9);
-  const scale = PREVIEW_W / FRAME_REF;
-  const fontPx = Math.max(8, style.fontSize * scale);
+  const scale = H / NORM_H; // тот же масштаб, что и при рендере
+  const fontPx = Math.max(7, style.fontSize * scale);
   const outlinePx = style.outline * scale;
 
   const words = POOL.slice(0, Math.max(1, Math.min(style.maxWordsPerLine, POOL.length)));
@@ -73,8 +81,25 @@ export default function TitlePreview({
           background: 'linear-gradient(135deg, #2b3a4a 0%, #16202b 60%, #0c1116 100%)',
         }}
       >
-        {/* safe-зоны TikTok/Reels — низ и правый край */}
         <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, height: '18%', background: 'rgba(255,107,53,0.07)' }} />
+
+        {/* Подложка */}
+        {style.bg.enabled && (
+          <div
+            style={{
+              position: 'absolute',
+              left: `${style.posXPct}%`,
+              top: `${style.posYPct}%`,
+              width: `${style.bg.widthPct}%`,
+              height: `${style.bg.heightPct}%`,
+              transform: 'translate(-50%, -50%)',
+              background: hexToRgba(style.bg.color, style.bg.opacity / 100),
+              borderRadius: style.bg.radius * scale,
+            }}
+          />
+        )}
+
+        {/* Текст */}
         <div
           onPointerDown={startDrag}
           style={{

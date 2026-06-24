@@ -185,6 +185,49 @@ export default function TitlesTab() {
         </div>
       </Block>
 
+      {/* Подложка */}
+      <Block>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <Checkbox checked={titles.bg.enabled} onChange={(v) => setTitles({ bg: { ...titles.bg, enabled: v } })} label="Подложка под текстом" />
+          <input
+            type="color"
+            value={titles.bg.color}
+            onChange={(e) => setTitles({ bg: { ...titles.bg, color: e.target.value.toUpperCase() } })}
+            style={{ width: 44, height: 32, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8 }}
+          />
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Затемнение</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.opacity}%</span>
+            </div>
+            <Slider min={0} max={100} value={titles.bg.opacity} onChange={(v) => setTitles({ bg: { ...titles.bg, opacity: v } })} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Скругление</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.radius}px</span>
+            </div>
+            <Slider min={0} max={80} value={titles.bg.radius} onChange={(v) => setTitles({ bg: { ...titles.bg, radius: v } })} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ширина</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.widthPct}%</span>
+            </div>
+            <Slider min={10} max={100} value={titles.bg.widthPct} onChange={(v) => setTitles({ bg: { ...titles.bg, widthPct: v } })} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Высота</span>
+              <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.bg.heightPct}%</span>
+            </div>
+            <Slider min={3} max={40} value={titles.bg.heightPct} onChange={(v) => setTitles({ bg: { ...titles.bg, heightPct: v } })} />
+          </div>
+        </div>
+      </Block>
+
       <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
         Текст распознаётся один раз для каждого исходного видео; во всех вариациях слова одинаковые,
         отличается оформление и положение. Если речи нет — титры не добавляются.

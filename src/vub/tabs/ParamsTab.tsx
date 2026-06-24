@@ -7,6 +7,7 @@ const PARAMS: { key: keyof VubParams; label: string; min: number; max: number }[
   { key: 'sharpness', label: 'Резкость', min: -50, max: 50 },
   { key: 'volume', label: 'Громкость', min: -100, max: 100 },
   { key: 'duration', label: 'Длительность', min: -50, max: 50 },
+  { key: 'rotation', label: 'Поворот (°)', min: -5, max: 5 },
 ];
 
 // Вкладка 2: Параметры видео (§4.3 ТЗ).

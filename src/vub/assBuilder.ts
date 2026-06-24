@@ -2,16 +2,21 @@
 // Чистая функция (без node-зависимостей) — общая для renderer-превью и electron-рендера.
 import type { TitlesStyle, TranscriptWord } from './types';
 
-// #RRGGBB -> &H00BBGGRR (ASS: alpha,B,G,R; alpha 00 = непрозрачно).
-function assColor(hex: string): string {
+// Нормализованная высота кадра: размер шрифта/позиции задаются в координатах 1080,
+// libass масштабирует под реальное видео -> одинаковый вид при любом разрешении (и в превью).
+const NORM_H = 1080;
+
+// #RRGGBB -> ASS BBGGRR (без альфы), для \1c и \3c.
+function color6(hex: string): string {
   const h = hex.replace('#', '');
-  const r = h.slice(0, 2);
-  const g = h.slice(2, 4);
-  const b = h.slice(4, 6);
-  return `&H00${b}${g}${r}`.toUpperCase();
+  return `${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase();
+}
+// непрозрачность 0..100 -> ASS альфа (00 = непрозрачно, FF = прозрачно).
+function alpha2(opacityPct: number): string {
+  const a = Math.round(255 * (1 - Math.min(100, Math.max(0, opacityPct)) / 100));
+  return a.toString(16).padStart(2, '0').toUpperCase();
 }
 
-// мс -> h:mm:ss.cc
 function fmtTime(ms: number): string {
   const cs = Math.round(ms / 10);
   const c = cs % 100;
@@ -22,7 +27,6 @@ function fmtTime(ms: number): string {
   return `${h}:${p2(m)}:${p2(s)}.${p2(c)}`;
 }
 
-// Группировка слов в строки: по числу слов и по паузам между словами.
 function groupLines(words: TranscriptWord[], maxWords: number): TranscriptWord[][] {
   const lines: TranscriptWord[][] = [];
   let cur: TranscriptWord[] = [];
@@ -40,6 +44,19 @@ function groupLines(words: TranscriptWord[], maxWords: number): TranscriptWord[]
   return lines;
 }
 
+// Путь скруглённого прямоугольника (ASS \p) от верхнего-левого угла (0,0) до (w,h).
+function roundRectPath(w: number, h: number, r: number): string {
+  r = Math.max(0, Math.min(r, w / 2, h / 2));
+  const R = (n: number) => Math.round(n);
+  return (
+    `m ${R(r)} 0 ` +
+    `l ${R(w - r)} 0 b ${R(w)} 0 ${R(w)} 0 ${R(w)} ${R(r)} ` +
+    `l ${R(w)} ${R(h - r)} b ${R(w)} ${R(h)} ${R(w)} ${R(h)} ${R(w - r)} ${R(h)} ` +
+    `l ${R(r)} ${R(h)} b 0 ${R(h)} 0 ${R(h)} 0 ${R(h - r)} ` +
+    `l 0 ${R(r)} b 0 0 0 0 ${R(r)} 0`
+  );
+}
+
 export interface AssBuildOptions {
   width: number;
   height: number;
@@ -47,70 +64,78 @@ export interface AssBuildOptions {
   variationTotal?: number;
 }
 
-// Возвращает текст .ass-файла. Пусто, если слов нет.
-export function buildAss(
-  words: TranscriptWord[],
-  style: TitlesStyle,
-  opts: AssBuildOptions
-): string {
+export function buildAss(words: TranscriptWord[], style: TitlesStyle, opts: AssBuildOptions): string {
   if (!words.length) return '';
-  const { width, height } = opts;
   const idx = opts.variationIndex ?? 0;
   const total = opts.variationTotal ?? 1;
 
-  // Точная позиция центра титра (\an5 + \pos) из процентов кадра.
-  const jitter = total > 1 ? (idx / Math.max(1, total - 1) - 0.5) * height * 0.03 : 0;
-  const posX = Math.round((style.posXPct / 100) * width);
-  const posY = Math.round((style.posYPct / 100) * height + jitter);
+  // Нормализованный холст 1080 по высоте, ширина по аспекту реального видео.
+  const aspect = opts.height > 0 ? opts.width / opts.height : 9 / 16;
+  const H = NORM_H;
+  const W = Math.max(1, Math.round(H * aspect));
 
-  const fontSize = style.fontSize;
-  // В караоке: Primary = подсветка (активное слово), Secondary = базовый цвет.
-  const primary = style.karaoke ? assColor(style.highlightColor) : assColor(style.baseColor);
-  const secondary = assColor(style.baseColor);
-  const outlineColor = '&H00000000';
+  const jitter = total > 1 ? (idx / Math.max(1, total - 1) - 0.5) * H * 0.03 : 0;
+  const posX = Math.round((style.posXPct / 100) * W);
+  const posY = Math.round((style.posYPct / 100) * H + jitter);
+
+  const baseC = color6(style.baseColor);
+  const hlC = color6(style.highlightColor);
 
   const header =
     `[Script Info]\n` +
     `ScriptType: v4.00+\n` +
-    `PlayResX: ${width}\n` +
-    `PlayResY: ${height}\n` +
+    `PlayResX: ${W}\n` +
+    `PlayResY: ${H}\n` +
     `WrapStyle: 0\n\n` +
     `[V4+ Styles]\n` +
     `Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, ` +
     `Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, ` +
     `Alignment, MarginL, MarginR, MarginV, Encoding\n` +
-    `Style: D,${style.font},${fontSize},${primary},${secondary},${outlineColor},&H64000000,` +
-    `1,0,0,0,100,100,0,0,1,${style.outline},1,5,${Math.round(width * 0.06)},` +
-    `${Math.round(width * 0.06)},0,1\n\n` +
+    `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},&H00000000,&H64000000,` +
+    `1,0,0,0,100,100,0,0,1,${style.outline},1,5,${Math.round(W * 0.05)},${Math.round(W * 0.05)},0,1\n\n` +
     `[Events]\n` +
     `Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
 
   const esc = (t: string) => t.replace(/[{}\\]/g, '').replace(/\n/g, ' ');
+  const word = (w: TranscriptWord) => esc(style.uppercase ? w.text.toUpperCase() : w.text);
   const lines = groupLines(words, Math.max(1, style.maxWordsPerLine));
-  // Префикс позиции: центрируем блок на (posX, posY) + плавное появление.
-  const posTag = `{\\an5\\pos(${posX},${posY})\\fad(120,120)}`;
+  const posTag = `\\an5\\pos(${posX},${posY})`;
 
-  const events = lines
-    .map((line) => {
-      const start = fmtTime(line[0].start);
-      const end = fmtTime(line[line.length - 1].end);
-      let text: string;
-      if (style.karaoke) {
-        text = line
-          .map((w) => {
-            const durCs = Math.max(1, Math.round((w.end - w.start) / 10));
-            const word = style.uppercase ? w.text.toUpperCase() : w.text;
-            return `{\\k${durCs}}${esc(word)} `;
-          })
-          .join('')
-          .trimEnd();
-      } else {
-        text = line.map((w) => (style.uppercase ? w.text.toUpperCase() : w.text)).join(' ');
-        text = esc(text);
-      }
-      return `Dialogue: 0,${start},${end},D,,0,0,0,,${posTag}${text}`;
-    })
-    .join('\n');
+  // Подложка под текстом строки.
+  const bg = style.bg;
+  let bgTagPath = '';
+  if (bg?.enabled) {
+    const w = Math.round((bg.widthPct / 100) * W);
+    const h = Math.round((bg.heightPct / 100) * H);
+    const left = posX - w / 2;
+    const top = posY - h / 2;
+    const path = roundRectPath(w, h, bg.radius);
+    bgTagPath = `{\\an7\\pos(${Math.round(left)},${Math.round(top)})\\1c&H${color6(bg.color)}&\\1a&H${alpha2(bg.opacity)}&\\bord0\\shad0\\p1}${path}`;
+  }
 
-  return header + events + '\n';
+  const events: string[] = [];
+  for (const line of lines) {
+    const lStart = fmtTime(line[0].start);
+    const lEnd = fmtTime(line[line.length - 1].end);
+
+    // Подложка: один объект на строку, слой 0 (под текстом).
+    if (bgTagPath) events.push(`Dialogue: 0,${lStart},${lEnd},D,,0,0,0,,${bgTagPath}`);
+
+    if (style.karaoke) {
+      // Текущее слово — цветом подсветки, остальные — базовым. Отдельное событие на каждое слово.
+      line.forEach((w, i) => {
+        const segStart = fmtTime(w.start);
+        const segEnd = fmtTime(i + 1 < line.length ? line[i + 1].start : w.end);
+        const txt = line
+          .map((ww, j) => `{\\1c&H${j === i ? hlC : baseC}&}${word(ww)}`)
+          .join(' ');
+        events.push(`Dialogue: 1,${segStart},${segEnd},D,,0,0,0,,{${posTag}}${txt}`);
+      });
+    } else {
+      const txt = `{\\1c&H${baseC}&}` + line.map((w) => word(w)).join(' ');
+      events.push(`Dialogue: 1,${lStart},${lEnd},D,,0,0,0,,{${posTag}\\fad(120,120)}${txt}`);
+    }
+  }
+
+  return header + events.join('\n') + '\n';
 }

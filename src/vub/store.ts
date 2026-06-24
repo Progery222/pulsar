@@ -102,6 +102,7 @@ export const useVubStore = create<VubState>((set) => ({
     sharpness: range(-10, 10),
     volume: range(-20, 20),
     duration: range(-5, 5),
+    rotation: range(-3, 3),
   },
   setParam: (key, value) =>
     set((s) => ({ params: { ...s.params, [key]: { ...s.params[key], ...value } } })),
@@ -140,6 +141,7 @@ export const useVubStore = create<VubState>((set) => ({
     karaoke: true,
     uppercase: true,
     maxWordsPerLine: 4,
+    bg: { enabled: false, color: '#000000', opacity: 55, widthPct: 72, heightPct: 14, radius: 16 },
   },
   setTitles: (value) => set((s) => ({ titles: { ...s.titles, ...value } })),
 
