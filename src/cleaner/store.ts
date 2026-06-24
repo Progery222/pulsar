@@ -9,6 +9,13 @@ export interface CleanerVideo {
   name: string;
 }
 
+export interface Zone {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
 interface CleanerState {
   videos: CleanerVideo[];
   addVideos: (paths: string[]) => void;
@@ -27,6 +34,13 @@ interface CleanerState {
   setMinConf: (v: number) => void;
   addTitles: boolean;
   setAddTitles: (v: boolean) => void;
+
+  manualZones: boolean; // использовать ручные зоны для всех роликов (вместо авто-детекта)
+  setManualZones: (v: boolean) => void;
+  zones: Zone[];
+  setZones: (z: Zone[]) => void;
+  addZone: (z: Zone) => void;
+  removeZone: (i: number) => void;
 
   outputDir: string | null;
   setOutputDir: (v: string | null) => void;
@@ -75,6 +89,13 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setMinConf: (v) => set({ minConf: v }),
   addTitles: false,
   setAddTitles: (v) => set({ addTitles: v }),
+
+  manualZones: false,
+  setManualZones: (v) => set({ manualZones: v }),
+  zones: [],
+  setZones: (z) => set({ zones: z }),
+  addZone: (z) => set((s) => ({ zones: [...s.zones, z] })),
+  removeZone: (i) => set((s) => ({ zones: s.zones.filter((_, j) => j !== i) })),
 
   outputDir: null,
   setOutputDir: (v) => set({ outputDir: v }),

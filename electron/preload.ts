@@ -55,6 +55,10 @@ const electronAPI = {
   // --- Режим «Замена титров» ---
   processCleaner: (request: unknown): Promise<{ ok: true }> =>
     ipcRenderer.invoke('cleaner:process', request),
+  detectCleanerOne: (
+    payload: { videoPath: string; detectTitles: boolean; detectWatermarks: boolean }
+  ): Promise<{ width: number; height: number; boxes: { x: number; y: number; w: number; h: number; conf?: number }[]; error?: string }> =>
+    ipcRenderer.invoke('cleaner:detectOne', payload),
   cancelCleaner: (): Promise<{ ok: true }> => ipcRenderer.invoke('cleaner:cancel'),
   onCleanerProgress: (
     cb: (e: { id: string; status: string; percent: number; info?: string }) => void

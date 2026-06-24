@@ -47,6 +47,8 @@ export interface CleanerRequest {
   minConf: number;
   addTitles: boolean; // наложить свои титры поверх зачищенных
   titles?: TitlesStyle; // стиль титров (из вкладки Уникализатор → Титры)
+  manualZones?: boolean; // использовать ручные зоны для всех роликов
+  zones?: { x: number; y: number; w: number; h: number }[];
   outputDir: string;
 }
 
@@ -112,7 +114,7 @@ function runPy(cmd: string, pre: string[], args: string[]): Promise<{ out: strin
 }
 
 // Запуск Python-детектора (перебор интерпретаторов), парсинг JSON.
-async function detect(videoPath: string, req: CleanerRequest): Promise<DetectResult> {
+async function detect(videoPath: string, req: Pick<CleanerRequest, 'detectTitles' | 'detectWatermarks'>): Promise<DetectResult> {
   const args = [
     pythonScript(),
     videoPath,
@@ -213,15 +215,32 @@ async function processOne(
   req: CleanerRequest,
   send: (status: string, percent: number, info?: string) => void
 ): Promise<void> {
-  send('detecting', 3);
-  const det = await detect(video.path, req);
-  if (cancelled) return;
-  if (det.error) {
-    send('error', 0, det.error);
-    return;
+  let W = 0;
+  let H = 0;
+  let boxes: Box[] = [];
+  if (req.manualZones && req.zones?.length) {
+    const p = await probe(video.path);
+    W = p.w;
+    H = p.h;
+    boxes = req.zones.map((z) => ({ x: z.x, y: z.y, w: z.w, h: z.h, conf: 1 }));
+  } else {
+    send('detecting', 3);
+    const det = await detect(video.path, req);
+    if (cancelled) return;
+    if (det.error) {
+      send('error', 0, det.error);
+      return;
+    }
+    if (det.width) {
+      W = det.width;
+      H = det.height;
+    } else {
+      const p = await probe(video.path);
+      W = p.w;
+      H = p.h;
+    }
+    boxes = (det.boxes || []).filter((b) => (b.conf ?? 1) >= req.minConf);
   }
-  const { w: W, h: H } = det.width ? { w: det.width, h: det.height } : await probe(video.path);
-  const boxes = (det.boxes || []).filter((b) => (b.conf ?? 1) >= req.minConf);
   send('processing', 10, `зон: ${boxes.length}`);
 
   const cover = buildCover(boxes, W, H, req.coverMethod, req.boxColor);
@@ -316,6 +335,11 @@ export function registerCleanerHandlers() {
       );
     }
     return { ok: true };
+  });
+
+  // Детект на одном ролике (для редактора зон — предзаполнить).
+  ipcMain.handle('cleaner:detectOne', async (_e, p: { videoPath: string; detectTitles: boolean; detectWatermarks: boolean }) => {
+    return detect(p.videoPath, p);
   });
 
   ipcMain.handle('cleaner:cancel', () => {

@@ -3,6 +3,7 @@ import { useCleanerStore, type CoverMethod } from './store';
 import { useVubStore } from '../vub/store';
 import { useUIStore } from '../store/uiStore';
 import { Block, Checkbox, Select, Slider, Switch } from '../vub/components/ui';
+import ZoneEditor from './ZoneEditor';
 
 function mediaUrl(p: string): string {
   return `media:///${encodeURIComponent(p)}`;
@@ -14,12 +15,24 @@ export default function CleanerApp() {
     videos, addVideos, removeVideo,
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
     coverMethod, setCoverMethod, boxColor, setBoxColor, minConf, setMinConf,
-    addTitles, setAddTitles, outputDir, setOutputDir,
+    addTitles, setAddTitles,
+    manualZones, setManualZones, zones, setZones, addZone, removeZone,
+    outputDir, setOutputDir,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
   } = useCleanerStore();
   const titles = useVubStore((s) => s.titles);
   const setAppMode = useUIStore((s) => s.setAppMode);
   const [dragOver, setDragOver] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+
+  async function autoZones() {
+    if (!videos.length) return;
+    setDetecting(true);
+    const r = await window.electronAPI.detectCleanerOne({ videoPath: videos[0].path, detectTitles, detectWatermarks });
+    setDetecting(false);
+    if (r.error) { setZones([]); return; }
+    setZones((r.boxes || []).filter((b) => (b.conf ?? 1) >= minConf).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })));
+  }
 
   useEffect(() => {
     const off = window.electronAPI.onCleanerProgress((p) => updateProgress(p.id, p));
@@ -56,6 +69,8 @@ export default function CleanerApp() {
         minConf,
         addTitles,
         titles: addTitles ? titles : undefined,
+        manualZones,
+        zones: manualZones ? zones : undefined,
         outputDir,
       });
     } finally {
@@ -142,6 +157,49 @@ export default function CleanerApp() {
               </button>
               . Текущий шрифт: {titles.font}, позиция Y: {titles.posYPct}%.
             </p>
+          )}
+        </Block>
+
+        {/* Зоны */}
+        <Block>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+            <Switch checked={manualZones} onChange={setManualZones} />
+            <span style={{ fontSize: 14 }}>Размечать зоны вручную (одни для всех роликов)</span>
+          </div>
+          {manualZones && (
+            <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start' }}>
+              {videos[0] ? (
+                <ZoneEditor
+                  videoSrc={mediaUrl(videos[0].path)}
+                  zones={zones}
+                  onAdd={addZone}
+                  onRemove={removeZone}
+                />
+              ) : (
+                <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Загрузите видео, чтобы разметить зоны.</div>
+              )}
+              <div style={{ flex: 1 }}>
+                <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 10px' }}>
+                  Рисуйте прямоугольники мышью поверх кадра. Удаление — крестик. Эти зоны применятся ко
+                  всем роликам пачки (удобно, когда титры в одних местах).
+                </p>
+                <button
+                  onClick={autoZones}
+                  disabled={!videos.length || detecting}
+                  style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', opacity: detecting ? 0.5 : 1 }}
+                >
+                  {detecting ? 'Ищу…' : 'Найти автоматически (1-й ролик)'}
+                </button>
+                {zones.length > 0 && (
+                  <button
+                    onClick={() => setZones([])}
+                    style={{ marginLeft: 10, background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+                  >
+                    Очистить ({zones.length})
+                  </button>
+                )}
+              </div>
+            </div>
           )}
         </Block>
 
