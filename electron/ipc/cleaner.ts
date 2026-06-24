@@ -303,6 +303,7 @@ async function processOne(
       if (cancelled) return;
       if (words.length) {
         let style = { ...req.titles, enabled: true };
+        let marginFrac: number | undefined;
         if (req.titlesAtZone !== false && boxes.length) {
           // Зона для титров: ручной выбор по индексу, иначе эвристика.
           const idx = req.titleZoneIndex;
@@ -316,7 +317,6 @@ async function processOne(
           } else {
             t = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
           }
-          // Размер титра подгоняем под высоту зоны (как был старый титр).
           const fitSize = Math.max(22, Math.min(110, Math.round(t.h * 1080 * 0.62)));
           style = {
             ...style,
@@ -324,8 +324,14 @@ async function processOne(
             posYPct: Math.round((t.y + t.h / 2) * 100),
             fontSize: fitSize,
           };
+          // Способ «сплошная плашка»: внедряем титр В неё — своя подложка титра не нужна,
+          // текст переносим по ширине зоны.
+          if (req.coverMethod === 'box') {
+            style = { ...style, bg: { ...style.bg, enabled: false } };
+            marginFrac = Math.max(0.02, (1 - t.w) / 2);
+          }
         }
-        const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
+        const ass = buildAss(words, style, { width: W || 1080, height: H || 1920, marginFrac });
         console.log('[cleaner] titles words:', words.length, 'bg.enabled:', req.titles.bg?.enabled, 'fontSize:', style.fontSize);
         if (ass) {
           assPath = path.join(os.tmpdir(), `cl_sub_${Math.random().toString(36).slice(2, 8)}.ass`);

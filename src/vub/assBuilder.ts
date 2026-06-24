@@ -62,6 +62,7 @@ export interface AssBuildOptions {
   height: number;
   variationIndex?: number;
   variationTotal?: number;
+  marginFrac?: number; // боковой отступ как доля ширины (перенос текста в пределах зоны)
 }
 
 export function buildAss(words: TranscriptWord[], style: TitlesStyle, opts: AssBuildOptions): string {
@@ -80,7 +81,7 @@ export function buildAss(words: TranscriptWord[], style: TitlesStyle, opts: AssB
 
   const baseC = color6(style.baseColor);
   const hlC = color6(style.highlightColor);
-  const ml = Math.round(W * 0.05);
+  const ml = Math.round(W * (opts.marginFrac != null ? Math.max(0.01, opts.marginFrac) : 0.05));
   const bg = style.bg;
 
   // Подложка = авто-обтекающий бокс (BorderStyle=3) — сам подгоняется под текст и перенос.
