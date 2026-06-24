@@ -141,7 +141,7 @@ export const useVubStore = create<VubState>((set) => ({
     karaoke: true,
     uppercase: true,
     maxWordsPerLine: 4,
-    bg: { enabled: false, color: '#000000', opacity: 55, widthPct: 72, heightPct: 14, radius: 16 },
+    bg: { enabled: true, color: '#000000', opacity: 55, widthPct: 72, heightPct: 14, radius: 16 },
   },
   setTitles: (value) => set((s) => ({ titles: { ...s.titles, ...value } })),
 

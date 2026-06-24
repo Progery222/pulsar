@@ -319,8 +319,7 @@ async function processOne(
           style = { ...style, posXPct: Math.round((t.x + t.w / 2) * 100), posYPct: Math.round((t.y + t.h / 2) * 100) };
         }
         const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
-        console.log('[cleaner] titles words:', words.length, 'bg.enabled:', req.titles.bg?.enabled, 'maxWords:', req.titles.maxWordsPerLine, 'fontSize:', style.fontSize);
-        console.log('[cleaner] ASS >>>\n' + ass + '\n<<< ASS');
+        console.log('[cleaner] titles words:', words.length, 'bg.enabled:', req.titles.bg?.enabled, 'fontSize:', style.fontSize);
         if (ass) {
           assPath = path.join(os.tmpdir(), `cl_sub_${Math.random().toString(36).slice(2, 8)}.ass`);
           fs.writeFileSync(assPath, ass, 'utf-8');
