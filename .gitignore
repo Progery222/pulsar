@@ -8,3 +8,5 @@ release/
 .env.local
 __pycache__/
 *.pyc
+assets/models/*.pb
+assets/models/*.onnx

@@ -46,18 +46,24 @@ export interface CleanerRequest {
 let cancelled = false;
 const active = new Set<ffmpeg.FfmpegCommand>();
 
+function resDir(...parts: string[]): string {
+  const base = app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd());
+  return path.join(base, ...parts);
+}
 function pythonScript(): string {
-  return app.isPackaged
-    ? path.join(process.resourcesPath, 'python', 'detect_overlays.py')
-    : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', 'detect_overlays.py');
+  return resDir('python', 'detect_overlays.py');
+}
+function eastModel(): string {
+  const p = resDir('assets', 'models', 'east.pb');
+  return fs.existsSync(p) ? p : '';
 }
 
 const PY_CANDIDATES =
   process.platform === 'win32' ? [['py', ['-3']], ['python', []], ['python3', []]] : [['python3', []], ['python', []]];
 
-function runPy(cmd: string, pre: string[], videoPath: string): Promise<{ out: string; err: string; code: number | null; spawnErr?: string }> {
+function runPy(cmd: string, pre: string[], args: string[]): Promise<{ out: string; err: string; code: number | null; spawnErr?: string }> {
   return new Promise((resolve) => {
-    const child = spawn(cmd, [...pre, pythonScript(), videoPath]);
+    const child = spawn(cmd, [...pre, ...args]);
     let out = '';
     let err = '';
     const timer = setTimeout(() => {
@@ -78,10 +84,17 @@ function runPy(cmd: string, pre: string[], videoPath: string): Promise<{ out: st
 }
 
 // Запуск Python-детектора (перебор интерпретаторов), парсинг JSON.
-async function detect(videoPath: string): Promise<DetectResult> {
+async function detect(videoPath: string, req: CleanerRequest): Promise<DetectResult> {
+  const args = [
+    pythonScript(),
+    videoPath,
+    req.detectTitles ? '1' : '0',
+    req.detectWatermarks ? '1' : '0',
+    eastModel(),
+  ];
   let lastErr = '';
   for (const [cmd, pre] of PY_CANDIDATES as [string, string[]][]) {
-    const { out, err, code, spawnErr } = await runPy(cmd, pre, videoPath);
+    const { out, err, code, spawnErr } = await runPy(cmd, pre, args);
     if (spawnErr === 'ENOENT' || /not found|ENOENT/i.test(spawnErr || '')) {
       lastErr = `${cmd}: не найден`;
       continue;
@@ -167,7 +180,7 @@ async function processOne(
   send: (status: string, percent: number, info?: string) => void
 ): Promise<void> {
   send('detecting', 3);
-  const det = await detect(video.path);
+  const det = await detect(video.path, req);
   if (cancelled) return;
   if (det.error) {
     send('error', 0, det.error);
