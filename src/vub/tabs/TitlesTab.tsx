@@ -120,6 +120,7 @@ export default function TitlesTab() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
           <Checkbox checked={titles.karaoke} onChange={(v) => setTitles({ karaoke: v })} label="Караоке (подсветка слов)" />
           <Checkbox checked={titles.uppercase} onChange={(v) => setTitles({ uppercase: v })} label="ЗАГЛАВНЫЕ" />
+          <Checkbox checked={titles.bold} onChange={(v) => setTitles({ bold: v })} label="Жирный" />
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>

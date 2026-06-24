@@ -56,7 +56,7 @@ export default function TitlePreview({
   const textStyle: React.CSSProperties = {
     fontFamily: `'${style.font}', sans-serif`,
     fontSize: fontPx,
-    fontWeight: 700,
+    fontWeight: style.bold ? 800 : 500,
     lineHeight: 1.15,
     textAlign: 'center',
     whiteSpace: 'nowrap',

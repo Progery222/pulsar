@@ -85,13 +85,14 @@ export function buildAss(words: TranscriptWord[], style: TitlesStyle, opts: AssB
 
   // Подложка = авто-обтекающий бокс (BorderStyle=3) — сам подгоняется под текст и перенос.
   // Иначе обычная обводка текста (BorderStyle=1).
+  const bold = style.bold ? 1 : 0;
   let styleLine: string;
   if (bg?.enabled) {
     const pad = Math.max(6, Math.round(style.fontSize * 0.22));
     const boxColour = `&H${alpha2(bg.opacity)}${color6(bg.color)}`;
-    styleLine = `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},${boxColour},&H00000000,1,0,0,0,100,100,0,0,3,${pad},0,5,${ml},${ml},0,1`;
+    styleLine = `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},${boxColour},&H00000000,${bold},0,0,0,100,100,0,0,3,${pad},0,5,${ml},${ml},0,1`;
   } else {
-    styleLine = `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},&H00000000,&H64000000,1,0,0,0,100,100,0,0,1,${style.outline},1,5,${ml},${ml},0,1`;
+    styleLine = `Style: D,${style.font},${style.fontSize},&H00${baseC},&H00${baseC},&H00000000,&H64000000,${bold},0,0,0,100,100,0,0,1,${style.outline},1,5,${ml},${ml},0,1`;
   }
 
   const header =

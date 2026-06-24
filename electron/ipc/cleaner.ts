@@ -316,7 +316,14 @@ async function processOne(
           } else {
             t = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
           }
-          style = { ...style, posXPct: Math.round((t.x + t.w / 2) * 100), posYPct: Math.round((t.y + t.h / 2) * 100) };
+          // Размер титра подгоняем под высоту зоны (как был старый титр).
+          const fitSize = Math.max(22, Math.min(110, Math.round(t.h * 1080 * 0.62)));
+          style = {
+            ...style,
+            posXPct: Math.round((t.x + t.w / 2) * 100),
+            posYPct: Math.round((t.y + t.h / 2) * 100),
+            fontSize: fitSize,
+          };
         }
         const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
         console.log('[cleaner] titles words:', words.length, 'bg.enabled:', req.titles.bg?.enabled, 'fontSize:', style.fontSize);

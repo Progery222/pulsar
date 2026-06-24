@@ -140,6 +140,7 @@ export const useVubStore = create<VubState>((set) => ({
     posYPct: 82,
     karaoke: true,
     uppercase: true,
+    bold: false,
     maxWordsPerLine: 4,
     bg: { enabled: true, color: '#000000', opacity: 55, widthPct: 72, heightPct: 14, radius: 16 },
   },

@@ -41,6 +41,7 @@ export interface TitlesStyle {
   posYPct: number; // позиция центра титра по Y, % высоты кадра (0..100)
   karaoke: boolean; // пословная подсветка
   uppercase: boolean;
+  bold: boolean; // жирное начертание
   maxWordsPerLine: number;
   bg: TitleBg; // подложка под текстом
 }
