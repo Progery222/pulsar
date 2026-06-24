@@ -27,7 +27,8 @@ export interface TitlesStyle {
   baseColor: string; // основной цвет текста
   highlightColor: string; // цвет подсветки активного слова (караоке)
   outline: number; // толщина обводки, px
-  position: 'top' | 'center' | 'bottom';
+  posXPct: number; // позиция центра титра по X, % ширины кадра (0..100)
+  posYPct: number; // позиция центра титра по Y, % высоты кадра (0..100)
   karaoke: boolean; // пословная подсветка
   uppercase: boolean;
   maxWordsPerLine: number;

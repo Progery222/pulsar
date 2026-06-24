@@ -1,5 +1,31 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap');
 
+/* Встроенные шрифты титров (assets/fonts) — для превью. media:// резолвится от корня приложения/ресурсов. */
+@font-face {
+  font-family: 'Montserrat';
+  src: url('media:///assets/fonts/Montserrat.ttf') format('truetype');
+  font-weight: 400 800;
+}
+@font-face {
+  font-family: 'Oswald';
+  src: url('media:///assets/fonts/Oswald.ttf') format('truetype');
+  font-weight: 400 700;
+}
+@font-face {
+  font-family: 'Rubik';
+  src: url('media:///assets/fonts/Rubik.ttf') format('truetype');
+  font-weight: 400 800;
+}
+@font-face {
+  font-family: 'Fira Sans';
+  src: url('media:///assets/fonts/FiraSans-Bold.ttf') format('truetype');
+  font-weight: 700;
+}
+@font-face {
+  font-family: 'Russo One';
+  src: url('media:///assets/fonts/RussoOne.ttf') format('truetype');
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;

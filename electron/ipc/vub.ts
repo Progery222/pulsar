@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
@@ -49,6 +49,13 @@ function getWords(videoPath: string, key: string, lang: string): Promise<Transcr
 // Экранирование пути для строки фильтра ffmpeg (Windows: D:\ -> D\:/).
 function escFilterPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/:/g, '\\:');
+}
+
+// Папка со встроенными шрифтами титров (dev vs упакованное приложение).
+function fontsDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', 'fonts')
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'assets', 'fonts');
 }
 
 interface ProbeResult {
@@ -133,8 +140,10 @@ async function processOne(
     }
   }
   // Путь к .ass: одинарные кавычки + экранированное двоеточие (иначе ffmpeg режет по ':').
-  // fontsdir не нужен — libass сам берёт системные шрифты (DirectWrite на Windows).
-  const assFilter = assPath ? `ass=filename='${escFilterPath(assPath)}'` : null;
+  // fontsdir — встроенные шрифты титров; системные libass тоже подхватывает (DirectWrite).
+  const assFilter = assPath
+    ? `ass=filename='${escFilterPath(assPath)}':fontsdir='${escFilterPath(fontsDir())}'`
+    : null;
 
   const cmd = ffmpeg(video.path).addInputOption('-nostdin');
 

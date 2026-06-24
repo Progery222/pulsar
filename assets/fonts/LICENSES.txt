@@ -1,0 +1,10 @@
+Встроенные шрифты титров. Все распространяются под SIL Open Font License 1.1
+(https://scripts.sil.org/OFL) и свободны для встраивания в приложение.
+
+- Montserrat.ttf      — Montserrat (Julieta Ulanovsky и др.)        OFL 1.1
+- Oswald.ttf          — Oswald (Vernon Adams и др.)                  OFL 1.1
+- Rubik.ttf           — Rubik (Hubert & Fischer, Meir Sadan)         OFL 1.1
+- FiraSans-Bold.ttf   — Fira Sans (Mozilla / Carrois Type Design)    OFL 1.1
+- RussoOne.ttf        — Russo One (Jovanny Lemonad)                  OFL 1.1
+
+Источник: github.com/google/fonts. Полный текст лицензии: https://openfontlicense.org

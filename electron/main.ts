@@ -74,6 +74,8 @@ const MIME: Record<string, string> = {
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
   '.aac': 'audio/aac',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
 };
 
 app.whenReady().then(() => {

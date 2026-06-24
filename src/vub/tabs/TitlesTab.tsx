@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react';
-import { useVubStore, type TitlesStyle } from '../store';
+import { useVubStore } from '../store';
 import { Block, Checkbox, Select, Slider, Switch } from '../components/ui';
+import TitlePreview from '../components/TitlePreview';
+
+// Встроенные (зашитые в assets/fonts, с кириллицей) + системные шрифты.
+const FONT_OPTIONS = [
+  { value: 'Montserrat', label: 'Montserrat (встроен)' },
+  { value: 'Oswald', label: 'Oswald — узкий (встроен)' },
+  { value: 'Rubik', label: 'Rubik — округлый (встроен)' },
+  { value: 'Fira Sans', label: 'Fira Sans (встроен)' },
+  { value: 'Russo One', label: 'Russo One — жирный (встроен)' },
+  { value: 'Arial', label: 'Arial (системный)' },
+  { value: 'Arial Black', label: 'Arial Black (системный)' },
+  { value: 'Impact', label: 'Impact (системный)' },
+];
 
 // Вкладка «Титры»: авто-транскрибация речи (AssemblyAI) + стиль наложения.
 export default function TitlesTab() {
@@ -38,7 +51,8 @@ export default function TitlesTab() {
   }
 
   return (
-    <div>
+    <div style={{ display: 'flex', gap: 24, alignItems: 'flex-start' }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
       <h2 className="font-semibold" style={{ fontSize: 20, marginBottom: 16 }}>
         Титры (авто-субтитры из речи)
       </h2>
@@ -108,34 +122,13 @@ export default function TitlesTab() {
         </div>
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+          <label style={{ fontSize: 13, color: 'var(--text-secondary)', gridColumn: '1 / -1' }}>
             Шрифт
             <div style={{ marginTop: 6 }}>
               <Select
                 value={titles.font}
-                options={[
-                  { value: 'Arial', label: 'Arial' },
-                  { value: 'Arial Black', label: 'Arial Black' },
-                  { value: 'Impact', label: 'Impact' },
-                  { value: 'Verdana', label: 'Verdana' },
-                  { value: 'Tahoma', label: 'Tahoma' },
-                ]}
+                options={FONT_OPTIONS}
                 onChange={(font) => setTitles({ font })}
-              />
-            </div>
-          </label>
-
-          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-            Позиция
-            <div style={{ marginTop: 6 }}>
-              <Select<TitlesStyle['position']>
-                value={titles.position}
-                options={[
-                  { value: 'top', label: 'Сверху' },
-                  { value: 'center', label: 'По центру' },
-                  { value: 'bottom', label: 'Снизу' },
-                ]}
-                onChange={(position) => setTitles({ position })}
               />
             </div>
           </label>
@@ -184,12 +177,42 @@ export default function TitlesTab() {
           </div>
           <Slider min={1} max={8} value={titles.maxWordsPerLine} onChange={(v) => setTitles({ maxWordsPerLine: v })} />
         </div>
+
+        <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Позиция X, %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={titles.posXPct}
+              onChange={(e) => setTitles({ posXPct: Math.min(100, Math.max(0, Number(e.target.value))) })}
+              style={{ display: 'block', marginTop: 6, width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 14 }}
+            />
+          </label>
+          <label style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            Позиция Y, %
+            <input
+              type="number"
+              min={0}
+              max={100}
+              value={titles.posYPct}
+              onChange={(e) => setTitles({ posYPct: Math.min(100, Math.max(0, Number(e.target.value))) })}
+              style={{ display: 'block', marginTop: 6, width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 14 }}
+            />
+          </label>
+        </div>
       </Block>
 
       <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
         Текст распознаётся один раз для каждого исходного видео; во всех вариациях слова одинаковые,
         отличается оформление и положение. Если речи нет — титры не добавляются.
       </p>
+      </div>
+
+      <div style={{ width: 240, flexShrink: 0, position: 'sticky', top: 0 }}>
+        <TitlePreview style={titles} onMove={(x, y) => setTitles({ posXPct: x, posYPct: y })} />
+      </div>
     </div>
   );
 }

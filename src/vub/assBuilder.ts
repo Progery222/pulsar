@@ -58,12 +58,10 @@ export function buildAss(
   const idx = opts.variationIndex ?? 0;
   const total = opts.variationTotal ?? 1;
 
-  // Выравнивание (numpad): низ=2, центр=5, верх=8.
-  const alignment = style.position === 'top' ? 8 : style.position === 'center' ? 5 : 2;
-  // Вертикальный отступ от края + лёгкий джиттер по номеру вариации (титры различаются).
-  const baseMargin = style.position === 'center' ? 0 : Math.round(height * 0.1);
-  const jitter = total > 1 ? Math.round((idx / Math.max(1, total - 1) - 0.5) * height * 0.04) : 0;
-  const marginV = Math.max(0, baseMargin + jitter);
+  // Точная позиция центра титра (\an5 + \pos) из процентов кадра.
+  const jitter = total > 1 ? (idx / Math.max(1, total - 1) - 0.5) * height * 0.03 : 0;
+  const posX = Math.round((style.posXPct / 100) * width);
+  const posY = Math.round((style.posYPct / 100) * height + jitter);
 
   const fontSize = style.fontSize;
   // В караоке: Primary = подсветка (активное слово), Secondary = базовый цвет.
@@ -82,13 +80,15 @@ export function buildAss(
     `Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, ` +
     `Alignment, MarginL, MarginR, MarginV, Encoding\n` +
     `Style: D,${style.font},${fontSize},${primary},${secondary},${outlineColor},&H64000000,` +
-    `1,0,0,0,100,100,0,0,1,${style.outline},1,${alignment},${Math.round(width * 0.06)},` +
-    `${Math.round(width * 0.06)},${marginV},1\n\n` +
+    `1,0,0,0,100,100,0,0,1,${style.outline},1,5,${Math.round(width * 0.06)},` +
+    `${Math.round(width * 0.06)},0,1\n\n` +
     `[Events]\n` +
     `Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
 
   const esc = (t: string) => t.replace(/[{}\\]/g, '').replace(/\n/g, ' ');
   const lines = groupLines(words, Math.max(1, style.maxWordsPerLine));
+  // Префикс позиции: центрируем блок на (posX, posY) + плавное появление.
+  const posTag = `{\\an5\\pos(${posX},${posY})\\fad(120,120)}`;
 
   const events = lines
     .map((line) => {
@@ -105,10 +105,10 @@ export function buildAss(
           .join('')
           .trimEnd();
       } else {
-        const joined = line.map((w) => (style.uppercase ? w.text.toUpperCase() : w.text)).join(' ');
-        text = `{\\fad(150,150)}${esc(joined)}`;
+        text = line.map((w) => (style.uppercase ? w.text.toUpperCase() : w.text)).join(' ');
+        text = esc(text);
       }
-      return `Dialogue: 0,${start},${end},D,,0,0,0,,${text}`;
+      return `Dialogue: 0,${start},${end},D,,0,0,0,,${posTag}${text}`;
     })
     .join('\n');
 
