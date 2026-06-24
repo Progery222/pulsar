@@ -30,12 +30,16 @@ interface CleanerState {
   setCoverMethod: (m: CoverMethod) => void;
   boxColor: string;
   setBoxColor: (c: string) => void;
+  boxRadius: number; // скругление сплошной плашки, px
+  setBoxRadius: (v: number) => void;
   minConf: number;
   setMinConf: (v: number) => void;
   addTitles: boolean;
   setAddTitles: (v: boolean) => void;
   titlesAtZone: boolean; // ставить свои титры по центру найденной зоны
   setTitlesAtZone: (v: boolean) => void;
+  titleZoneIndex: number; // индекс зоны для титров (ручной режим)
+  setTitleZoneIndex: (v: number) => void;
 
   manualZones: boolean; // использовать ручные зоны для всех роликов (вместо авто-детекта)
   setManualZones: (v: boolean) => void;
@@ -87,12 +91,16 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setCoverMethod: (m) => set({ coverMethod: m }),
   boxColor: '#000000',
   setBoxColor: (c) => set({ boxColor: c }),
+  boxRadius: 16,
+  setBoxRadius: (v) => set({ boxRadius: v }),
   minConf: 0.25,
   setMinConf: (v) => set({ minConf: v }),
   addTitles: false,
   setAddTitles: (v) => set({ addTitles: v }),
   titlesAtZone: true,
   setTitlesAtZone: (v) => set({ titlesAtZone: v }),
+  titleZoneIndex: 0,
+  setTitleZoneIndex: (v) => set({ titleZoneIndex: v }),
 
   manualZones: false,
   setManualZones: (v) => set({ manualZones: v }),

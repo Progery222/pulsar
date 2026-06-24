@@ -8,12 +8,14 @@ export default function ZoneEditor({
   onAdd,
   onRemove,
   width = 300,
+  titleZoneIndex = -1,
 }: {
   videoSrc: string;
   zones: Zone[];
   onAdd: (z: Zone) => void;
   onRemove: (i: number) => void;
   width?: number;
+  titleZoneIndex?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const vidRef = useRef<HTMLVideoElement>(null);
@@ -45,7 +47,9 @@ export default function ZoneEditor({
     window.addEventListener('pointerup', up);
   }
 
-  const rect = (z: Zone, i: number | null) => (
+  const rect = (z: Zone, i: number | null) => {
+    const isTitle = i !== null && i === titleZoneIndex;
+    return (
     <div
       key={i ?? 'draft'}
       style={{
@@ -54,10 +58,15 @@ export default function ZoneEditor({
         top: `${z.y * 100}%`,
         width: `${z.w * 100}%`,
         height: `${z.h * 100}%`,
-        border: '2px dashed var(--accent-green)',
-        background: 'rgba(204,255,0,0.12)',
+        border: isTitle ? '2px solid var(--accent-green)' : '2px dashed var(--accent-green)',
+        background: isTitle ? 'rgba(204,255,0,0.22)' : 'rgba(204,255,0,0.12)',
       }}
     >
+      {i !== null && (
+        <span style={{ position: 'absolute', top: 2, left: 4, fontSize: 11, color: '#000', background: 'var(--accent-green)', borderRadius: 3, padding: '0 4px', fontWeight: 600 }}>
+          {i + 1}{isTitle ? ' · Т' : ''}
+        </span>
+      )}
       {i !== null && (
         <button
           data-del="1"
@@ -68,7 +77,8 @@ export default function ZoneEditor({
         </button>
       )}
     </div>
-  );
+    );
+  };
 
   return (
     <div

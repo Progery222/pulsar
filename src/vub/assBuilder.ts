@@ -45,7 +45,7 @@ function groupLines(words: TranscriptWord[], maxWords: number): TranscriptWord[]
 }
 
 // Путь скруглённого прямоугольника (ASS \p) от верхнего-левого угла (0,0) до (w,h).
-function roundRectPath(w: number, h: number, r: number): string {
+export function roundRectPath(w: number, h: number, r: number): string {
   r = Math.max(0, Math.min(r, w / 2, h / 2));
   const R = (n: number) => Math.round(n);
   return (

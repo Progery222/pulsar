@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { transcribe } from './transcribe';
 import { getAssemblyKey } from './config';
-import { buildAss } from '../../src/vub/assBuilder';
+import { buildAss, roundRectPath } from '../../src/vub/assBuilder';
 import type { TitlesStyle, TranscriptWord } from '../../src/vub/types';
 
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
@@ -44,9 +44,11 @@ export interface CleanerRequest {
   detectWatermarks: boolean;
   coverMethod: 'delogo' | 'blur' | 'box';
   boxColor: string;
+  boxRadius?: number; // скругление сплошной плашки, px
   minConf: number;
   addTitles: boolean; // наложить свои титры поверх зачищенных
   titlesAtZone?: boolean; // ставить титры по центру найденной зоны
+  titleZoneIndex?: number; // индекс зоны для титров (ручной режим)
   titles?: TitlesStyle; // стиль титров (из вкладки Уникализатор → Титры)
   manualZones?: boolean; // использовать ручные зоны для всех роликов
   zones?: { x: number; y: number; w: number; h: number }[];
@@ -154,6 +156,33 @@ function color6(hex: string): string {
   const h = hex.replace('#', '');
   return `0x${h.slice(0, 6)}`;
 }
+// #RRGGBB -> ASS BBGGRR
+function assColor6(hex: string): string {
+  const h = hex.replace('#', '');
+  return `${h.slice(4, 6)}${h.slice(2, 4)}${h.slice(0, 2)}`.toUpperCase();
+}
+
+// Сплошная плашка со скруглением через .ass (drawbox без радиуса не умеет).
+function buildBoxAss(boxes: Box[], W: number, H: number, color: string, radius: number): string {
+  const fill = assColor6(color);
+  const events = boxes
+    .map((b) => {
+      const w = Math.round(b.w * W);
+      const h = Math.round(b.h * H);
+      const left = Math.round(b.x * W);
+      const top = Math.round(b.y * H);
+      const r = Math.max(0, Math.min(radius, w / 2, h / 2));
+      const pathStr = roundRectPath(w, h, r);
+      return `Dialogue: 0,0:00:00.00,9:59:59.00,D,,0,0,0,,{\\an7\\pos(${left},${top})\\1c&H${fill}&\\1a&H00&\\bord0\\shad0\\p1}${pathStr}`;
+    })
+    .join('\n');
+  return (
+    `[Script Info]\nScriptType: v4.00+\nPlayResX: ${W}\nPlayResY: ${H}\n\n` +
+    `[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n` +
+    `Style: D,Arial,20,&H00FFFFFF,&H00FFFFFF,&H00000000,&H00000000,0,0,0,0,100,100,0,0,1,0,0,7,0,0,0,1\n\n` +
+    `[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n${events}\n`
+  );
+}
 
 // Строит фильтр перекрытия по боксам (нормированные 0..1 -> пиксели).
 function buildCover(
@@ -244,7 +273,19 @@ async function processOne(
   }
   send('processing', 10, `зон: ${boxes.length}`);
 
-  const cover = buildCover(boxes, W, H, req.coverMethod, req.boxColor);
+  // Перекрытие: box -> скруглённая плашка через .ass; blur/delogo -> фильтры.
+  const cover: { vf?: string; complex?: string } = {};
+  let coverAssPath: string | null = null;
+  if (boxes.length) {
+    if (req.coverMethod === 'box') {
+      const a = buildBoxAss(boxes, W, H, req.boxColor, req.boxRadius ?? 0);
+      coverAssPath = path.join(os.tmpdir(), `cl_box_${Math.random().toString(36).slice(2, 8)}.ass`);
+      fs.writeFileSync(coverAssPath, a, 'utf-8');
+    } else {
+      Object.assign(cover, buildCover(boxes, W, H, req.coverMethod, req.boxColor));
+    }
+  }
+  const coverAssFilter = coverAssPath ? `ass=filename='${escFilterPath(coverAssPath)}'` : null;
 
   // Наложение своих титров (транскрибация + .ass) поверх зачищенного видео.
   let assPath: string | null = null;
@@ -257,10 +298,14 @@ async function processOne(
       const words = await getWords(video.path, key, req.titles.language);
       if (cancelled) return;
       if (words.length) {
-        // По умолчанию ставим титры по центру найденной зоны (крупнейшей).
         let style = { ...req.titles, enabled: true };
         if (req.titlesAtZone !== false && boxes.length) {
-          const t = boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
+          // Зона для титров: выбранная (ручной режим) или крупнейшая.
+          const idx = req.titleZoneIndex;
+          const t =
+            req.manualZones && idx != null && boxes[idx]
+              ? boxes[idx]
+              : boxes.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a));
           style = { ...style, posXPct: Math.round((t.x + t.w / 2) * 100), posYPct: Math.round((t.y + t.h / 2) * 100) };
         }
         const ass = buildAss(words, style, { width: W || 1080, height: H || 1920 });
@@ -281,17 +326,18 @@ async function processOne(
   const staged = out !== finalOut;
 
   const cmd = ffmpeg(video.path).addInputOption('-nostdin');
-  // Граф: перекрытие -> наши титры. Комбинируем complex (blur) или vf (box/delogo) с ass.
+  // Граф: перекрытие -> наши титры. blur = complex; box/delogo = vf-цепочка.
   if (cover.complex) {
     const complex = assFilter ? `${cover.complex};[outv]${assFilter}[v]` : cover.complex;
     cmd.complexFilter(complex, [assFilter ? 'v' : 'outv']);
   } else {
-    const vf = [cover.vf, assFilter].filter(Boolean).join(',');
+    const vf = [cover.vf, coverAssFilter, assFilter].filter(Boolean).join(',');
     if (vf) cmd.videoFilters(vf);
   }
 
   const cleanupAss = () => {
     if (assPath) fs.promises.unlink(assPath).catch(() => {});
+    if (coverAssPath) fs.promises.unlink(coverAssPath).catch(() => {});
   };
 
   cmd

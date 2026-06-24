@@ -14,8 +14,8 @@ export default function CleanerApp() {
   const {
     videos, addVideos, removeVideo,
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
-    coverMethod, setCoverMethod, boxColor, setBoxColor, minConf, setMinConf,
-    addTitles, setAddTitles, titlesAtZone, setTitlesAtZone,
+    coverMethod, setCoverMethod, boxColor, setBoxColor, boxRadius, setBoxRadius, minConf, setMinConf,
+    addTitles, setAddTitles, titlesAtZone, setTitlesAtZone, titleZoneIndex, setTitleZoneIndex,
     manualZones, setManualZones, zones, setZones, addZone, removeZone,
     outputDir, setOutputDir,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
@@ -66,9 +66,11 @@ export default function CleanerApp() {
         detectWatermarks,
         coverMethod,
         boxColor,
+        boxRadius,
         minConf,
         addTitles,
         titlesAtZone,
+        titleZoneIndex,
         titles: addTitles ? titles : undefined,
         manualZones,
         zones: manualZones ? zones : undefined,
@@ -143,6 +145,15 @@ export default function CleanerApp() {
               />
             </div>
           </div>
+          {coverMethod === 'box' && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Скругление плашки</span>
+                <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{boxRadius}px</span>
+              </div>
+              <Slider min={0} max={80} value={boxRadius} onChange={setBoxRadius} />
+            </div>
+          )}
         </Block>
 
         <Block>
@@ -180,6 +191,7 @@ export default function CleanerApp() {
                   zones={zones}
                   onAdd={addZone}
                   onRemove={removeZone}
+                  titleZoneIndex={addTitles && titlesAtZone ? titleZoneIndex : -1}
                 />
               ) : (
                 <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Загрузите видео, чтобы разметить зоны.</div>
@@ -203,6 +215,32 @@ export default function CleanerApp() {
                   >
                     Очистить ({zones.length})
                   </button>
+                )}
+
+                {addTitles && titlesAtZone && zones.length > 1 && (
+                  <div style={{ marginTop: 16 }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 8 }}>Зона для ваших титров:</div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                      {zones.map((_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setTitleZoneIndex(i)}
+                          style={{
+                            background: i === titleZoneIndex ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                            color: i === titleZoneIndex ? '#000' : 'var(--text-primary)',
+                            border: '1px solid var(--border)',
+                            borderRadius: 8,
+                            padding: '6px 14px',
+                            fontSize: 13,
+                            cursor: 'pointer',
+                            fontWeight: i === titleZoneIndex ? 600 : 400,
+                          }}
+                        >
+                          Зона {i + 1}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
