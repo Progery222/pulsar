@@ -31,6 +31,8 @@ const electronAPI = {
 
   // --- Модуль VUB (§4–5 ТЗ VUB) ---
   selectWatermark: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectWatermark'),
+  getVubApiKey: (): Promise<string> => ipcRenderer.invoke('vub:getKey'),
+  setVubApiKey: (key: string): Promise<{ ok: true }> => ipcRenderer.invoke('vub:setKey', key),
   processVub: (request: VubProcessRequest): Promise<{ ok: true }> =>
     ipcRenderer.invoke('vub:process', request),
   cancelVub: (): Promise<{ ok: true }> => ipcRenderer.invoke('vub:cancel'),

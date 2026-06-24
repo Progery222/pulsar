@@ -6,6 +6,7 @@ import { registerFileHandlers } from './ipc/files';
 import { registerAudioHandlers } from './ipc/audio';
 import { registerFfmpegHandlers } from './ipc/ffmpeg';
 import { registerVubHandlers } from './ipc/vub';
+import { registerConfigHandlers } from './ipc/config';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -127,6 +128,7 @@ app.whenReady().then(() => {
   registerAudioHandlers();
   registerFfmpegHandlers();
   registerVubHandlers();
+  registerConfigHandlers();
   createWindow();
 });
 

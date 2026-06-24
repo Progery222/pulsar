@@ -3,6 +3,7 @@ import type {
   FileProgress,
   MirrorMode,
   RangeParam,
+  TitlesStyle,
   VubEffects,
   VubParams,
   VubTabKey,
@@ -16,6 +17,7 @@ export type {
   FileProgress,
   MirrorMode,
   RangeParam,
+  TitlesStyle,
   VubEffects,
   VubParams,
   VubTabKey,
@@ -53,6 +55,9 @@ interface VubState {
 
   cleanMetadata: boolean;
   setCleanMetadata: (value: boolean) => void;
+
+  titles: TitlesStyle;
+  setTitles: (value: Partial<TitlesStyle>) => void;
 
   threads: number;
   setThreads: (value: number) => void;
@@ -119,6 +124,21 @@ export const useVubStore = create<VubState>((set) => ({
 
   cleanMetadata: true,
   setCleanMetadata: (value) => set({ cleanMetadata: value }),
+
+  titles: {
+    enabled: false,
+    language: 'auto',
+    font: 'Arial',
+    fontSize: 64,
+    baseColor: '#FFFFFF',
+    highlightColor: '#CCFF00',
+    outline: 3,
+    position: 'bottom',
+    karaoke: true,
+    uppercase: true,
+    maxWordsPerLine: 4,
+  },
+  setTitles: (value) => set((s) => ({ titles: { ...s.titles, ...value } })),
 
   threads: Math.max(1, Math.floor((navigator.hardwareConcurrency || 4) / 2)),
   setThreads: (value) => set({ threads: value }),

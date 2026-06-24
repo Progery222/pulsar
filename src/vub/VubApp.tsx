@@ -4,6 +4,7 @@ import ParamsTab from './tabs/ParamsTab';
 import EffectsTab from './tabs/EffectsTab';
 import WatermarkTab from './tabs/WatermarkTab';
 import TextTab from './tabs/TextTab';
+import TitlesTab from './tabs/TitlesTab';
 import TemplateTab from './tabs/TemplateTab';
 import MetadataTab from './tabs/MetadataTab';
 import PerformanceTab from './tabs/PerformanceTab';
@@ -14,6 +15,7 @@ const TABS: { key: VubTabKey; label: string }[] = [
   { key: 'effects', label: 'Видеоэффекты' },
   { key: 'watermark', label: 'Водяной знак' },
   { key: 'text', label: 'Текст' },
+  { key: 'titles', label: 'Титры' },
   { key: 'template', label: 'Шаблон (Склейка)' },
   { key: 'metadata', label: 'Метаданные' },
   { key: 'performance', label: 'Производительность' },
@@ -72,6 +74,7 @@ export default function VubApp() {
         {activeTab === 'effects' && <EffectsTab />}
         {activeTab === 'watermark' && <WatermarkTab />}
         {activeTab === 'text' && <TextTab />}
+        {activeTab === 'titles' && <TitlesTab />}
         {activeTab === 'template' && <TemplateTab />}
         {activeTab === 'metadata' && <MetadataTab />}
         {activeTab === 'performance' && <PerformanceTab />}

@@ -6,9 +6,32 @@ export type VubTabKey =
   | 'effects'
   | 'watermark'
   | 'text'
+  | 'titles'
   | 'template'
   | 'metadata'
   | 'performance';
+
+// Слово из транскрибации (тайминги в миллисекундах).
+export interface TranscriptWord {
+  text: string;
+  start: number;
+  end: number;
+}
+
+// Авто-титры: распознавание речи (AssemblyAI) + стиль наложения.
+export interface TitlesStyle {
+  enabled: boolean;
+  language: string; // 'auto' | 'ru' | 'en' | ...
+  font: string;
+  fontSize: number; // px в координатах кадра
+  baseColor: string; // основной цвет текста
+  highlightColor: string; // цвет подсветки активного слова (караоке)
+  outline: number; // толщина обводки, px
+  position: 'top' | 'center' | 'bottom';
+  karaoke: boolean; // пословная подсветка
+  uppercase: boolean;
+  maxWordsPerLine: number;
+}
 
 export interface VubVideo {
   id: string;
@@ -84,6 +107,7 @@ export interface VubProcessRequest {
   text: VubText;
   template: VubTemplate;
   cleanMetadata: boolean;
+  titles: TitlesStyle;
   threads: number;
   variations: number; // количество уникальных вариаций на каждое видео
   outputDir: string;

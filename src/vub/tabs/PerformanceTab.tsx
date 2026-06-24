@@ -8,7 +8,7 @@ const cores = navigator.hardwareConcurrency || 4;
 export default function PerformanceTab() {
   const {
     threads, setThreads, variations, setVariations, outputDir, setOutputDir,
-    videos, params, effects, watermark, text, template, cleanMetadata,
+    videos, params, effects, watermark, text, template, cleanMetadata, titles,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
   } = useVubStore();
 
@@ -48,6 +48,7 @@ export default function PerformanceTab() {
         text,
         template,
         cleanMetadata,
+        titles,
         threads,
         variations,
         outputDir,
