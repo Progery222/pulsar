@@ -3,6 +3,7 @@ import { useVubStore } from '../store';
 import { Block, Checkbox, Select, Slider, Switch } from '../components/ui';
 import TitlePreview from '../components/TitlePreview';
 import Scrubber from '../components/Scrubber';
+import { BUILTIN_TITLE_PRESETS, styleFromTitles, type TitlePreset } from '../titlePresets';
 
 // Встроенные (зашитые в assets/fonts, с кириллицей) + системные шрифты.
 const FONT_OPTIONS = [
@@ -24,10 +25,37 @@ export default function TitlesTab() {
   const [hasKey, setHasKey] = useState(false);
   const [testResult, setTestResult] = useState('');
   const [testing, setTesting] = useState(false);
+  const [customPresets, setCustomPresets] = useState<TitlePreset[]>([]);
 
   useEffect(() => {
     window.electronAPI.getVubApiKey().then((k) => setHasKey(!!k));
+    window.electronAPI.getSetting('titlePresets').then((p) => {
+      if (Array.isArray(p)) setCustomPresets(p as TitlePreset[]);
+    });
   }, []);
+
+  function applyPreset(p: TitlePreset) {
+    setTitles(p.style);
+  }
+  async function saveCurrentAsPreset() {
+    const name = window.prompt('Название пресета:');
+    if (!name?.trim()) return;
+    const next = [
+      ...customPresets,
+      { id: `${Date.now()}`, name: name.trim(), style: styleFromTitles(titles) },
+    ];
+    setCustomPresets(next);
+    await window.electronAPI.setSetting('titlePresets', next);
+  }
+  async function deletePreset(id: string) {
+    const next = customPresets.filter((p) => p.id !== id);
+    setCustomPresets(next);
+    await window.electronAPI.setSetting('titlePresets', next);
+  }
+  // Быстрое размещение: X по центру, Y — верх/центр/низ.
+  function placeTitle(posYPct: number) {
+    setTitles({ posXPct: 50, posYPct });
+  }
 
   async function testTranscribe() {
     if (!videos.length) {
@@ -92,6 +120,43 @@ export default function TitlesTab() {
             ]}
             onChange={(language) => setTitles({ language })}
           />
+        </div>
+      </Block>
+
+      {/* Пресеты стиля */}
+      <Block>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span style={{ fontSize: 14, fontWeight: 600 }}>Пресеты титров</span>
+          <button
+            onClick={saveCurrentAsPreset}
+            style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}
+          >
+            + Сохранить текущий
+          </button>
+        </div>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+          {BUILTIN_TITLE_PRESETS.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => applyPreset(p)}
+              style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 16, padding: '6px 14px', fontSize: 12, cursor: 'pointer' }}
+            >
+              {p.name}
+            </button>
+          ))}
+          {customPresets.map((p) => (
+            <span
+              key={p.id}
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg-tertiary)', border: '1px solid var(--accent-green)', borderRadius: 16, padding: '6px 10px 6px 14px', fontSize: 12 }}
+            >
+              <button onClick={() => applyPreset(p)} style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', padding: 0, fontSize: 12 }}>
+                {p.name}
+              </button>
+              <button onClick={() => deletePreset(p.id)} title="Удалить" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0, fontSize: 13, lineHeight: 1 }}>
+                ✕
+              </button>
+            </span>
+          ))}
         </div>
       </Block>
 
@@ -160,6 +225,38 @@ export default function TitlesTab() {
             <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{titles.maxWordsPerLine}</span>
           </div>
           <Slider min={1} max={8} value={titles.maxWordsPerLine} onChange={(v) => setTitles({ maxWordsPerLine: v })} />
+        </div>
+
+        <div style={{ marginTop: 16 }}>
+          <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6 }}>Быстрое размещение</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {[
+              { label: 'Верх', y: 12 },
+              { label: 'Центр', y: 50 },
+              { label: 'Низ', y: 88 },
+            ].map((b) => {
+              const active = titles.posXPct === 50 && titles.posYPct === b.y;
+              return (
+                <button
+                  key={b.label}
+                  onClick={() => placeTitle(b.y)}
+                  style={{
+                    flex: 1,
+                    background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                    color: active ? '#0D0D0D' : 'var(--text-primary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 8,
+                    padding: '8px 0',
+                    fontSize: 13,
+                    fontWeight: active ? 600 : 400,
+                    cursor: 'pointer',
+                  }}
+                >
+                  {b.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div style={{ marginTop: 16, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
