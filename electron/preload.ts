@@ -54,6 +54,10 @@ const electronAPI = {
     ipcRenderer.invoke('setup:status'),
   setupInstall: (engine: string): Promise<{ ok: true } | { error: string }> =>
     ipcRenderer.invoke('setup:install', engine),
+  setupInstallPython: (): Promise<{ needsRestart: true } | { error: string }> =>
+    ipcRenderer.invoke('setup:installPython'),
+  openPythonSite: (): Promise<void> => ipcRenderer.invoke('setup:openPythonSite'),
+  relaunchApp: (): Promise<void> => ipcRenderer.invoke('app:relaunch'),
   onSetupProgress: (cb: (ev: { line?: string; percent?: number; phase?: string }) => void): (() => void) => {
     const listener = (_e: unknown, ev: { line?: string; percent?: number; phase?: string }) => cb(ev);
     ipcRenderer.on('setup-progress', listener);

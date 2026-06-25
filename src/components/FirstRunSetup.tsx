@@ -9,7 +9,8 @@ interface Status {
 }
 
 const ENGINE_INFO: { id: string; name: string; note: string }[] = [
-  { id: 'xtts', name: 'XTTS-v2', note: 'Многоязычный + клонирование (рекомендуется, ~1.8 ГБ)' },
+  { id: 'gtts', name: 'Google TTS', note: 'Онлайн, бесплатно, без ключа, много языков (быстрая установка)' },
+  { id: 'xtts', name: 'XTTS-v2', note: 'Многоязычный + клонирование (~1.8 ГБ)' },
   { id: 'silero', name: 'Silero', note: 'Русский/английский, лёгкий и быстрый' },
   { id: 'kokoro', name: 'Kokoro', note: 'Английский, очень быстрый' },
 ];
@@ -36,7 +37,23 @@ export default function FirstRunSetup() {
   const [phase, setPhase] = useState('');
   const [log, setLog] = useState<string[]>([]);
   const [minimized, setMinimized] = useState(false);
+  const [pyInstalling, setPyInstalling] = useState(false);
+  const [needsRestart, setNeedsRestart] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
+
+  async function installPython() {
+    setPyInstalling(true);
+    setPercent(null);
+    setLog([]);
+    const r = await window.electronAPI.setupInstallPython();
+    setPyInstalling(false);
+    setPercent(null);
+    if ('needsRestart' in r) setNeedsRestart(true);
+    else {
+      setLog((p) => [...p, `Ошибка: ${r.error}`]);
+      refresh();
+    }
+  }
 
   async function refresh() {
     setStatus(await window.electronAPI.setupStatus());
@@ -83,15 +100,15 @@ export default function FirstRunSetup() {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
           <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
-            {installing ? `Установка ${installing}…` : 'Настройка движков'}
+            {installing ? `Установка ${installing}…` : pyInstalling ? 'Установка Python…' : 'Настройка движков'}
           </span>
           <button onClick={() => setMinimized(false)} title="Развернуть" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>
             ▢
           </button>
         </div>
-        <ProgressBar percent={installing ? percent : 100} />
+        <ProgressBar percent={installing || pyInstalling ? percent : 100} />
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {installing
+          {installing || pyInstalling
             ? `${percent != null ? Math.round(percent) + '% · ' : ''}${log[log.length - 1] ?? phase ?? 'Загрузка…'}`
             : 'Готово'}
         </div>
@@ -125,16 +142,46 @@ export default function FirstRunSetup() {
         </p>
 
         {/* Статус Python */}
-        <div style={{ ...card, marginBottom: 16 }}>
-          <div>
-            <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>Python</div>
-            <div style={{ fontSize: 12, color: status?.pythonOk ? 'var(--accent-green)' : 'var(--danger)' }}>
-              {status === null ? 'Проверка…' : status.pythonOk ? `Найден ${status.pythonVersion ?? ''}` : 'Не найден — установите Python 3.10+ с python.org'}
+        <div style={{ ...card, marginBottom: 16, flexDirection: pyInstalling ? 'column' : 'row', alignItems: pyInstalling ? 'stretch' : 'center' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, width: '100%' }}>
+            <div>
+              <div style={{ fontSize: 14, color: 'var(--text-primary)' }}>Python</div>
+              <div style={{ fontSize: 12, color: status?.pythonOk ? 'var(--accent-green)' : 'var(--danger)' }}>
+                {status === null ? 'Проверка…' : status.pythonOk ? `Найден ${status.pythonVersion ?? ''}` : 'Не найден — нужен для движков озвучки'}
+              </div>
             </div>
+            {needsRestart ? (
+              <button onClick={() => window.electronAPI.relaunchApp()} className="btn-primary" style={{ padding: '7px 16px', fontSize: 13 }}>
+                Перезапустить
+              </button>
+            ) : status?.pythonOk ? (
+              <button onClick={refresh} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                Проверить
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
+                <button onClick={() => window.electronAPI.openPythonSite()} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
+                  python.org
+                </button>
+                <button onClick={installPython} disabled={pyInstalling} className="btn-primary" style={{ padding: '7px 16px', fontSize: 13, opacity: pyInstalling ? 0.5 : 1 }}>
+                  {pyInstalling ? 'Установка…' : 'Скачать Python'}
+                </button>
+              </div>
+            )}
           </div>
-          <button onClick={refresh} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '6px 12px', fontSize: 12, cursor: 'pointer' }}>
-            Проверить
-          </button>
+          {pyInstalling && (
+            <div style={{ marginTop: 10 }}>
+              <ProgressBar percent={percent} />
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6 }}>
+                {log[log.length - 1] ?? 'Загрузка Python…'}
+              </div>
+            </div>
+          )}
+          {needsRestart && (
+            <div style={{ fontSize: 11, color: 'var(--accent-green)', marginTop: 8 }}>
+              Python установлен. Перезапустите приложение, чтобы он стал доступен.
+            </div>
+          )}
         </div>
 
         {/* Движки */}

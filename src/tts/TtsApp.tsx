@@ -11,6 +11,7 @@ const LANGS = [
 ];
 
 const ENGINES = [
+  { value: 'gtts', label: 'Google TTS (онлайн, бесплатно, без ключа)' },
   { value: 'xtts', label: 'XTTS-v2 (многоязычный, клонирование)' },
   { value: 'silero', label: 'Silero (рус/англ, лёгкий)' },
   { value: 'kokoro', label: 'Kokoro (англ, быстрый)' },
@@ -20,7 +21,7 @@ const ENGINES = [
 export default function TtsApp() {
   const [text, setText] = useState('');
   const [lang, setLang] = useState('ru');
-  const [engine, setEngine] = useState('xtts');
+  const [engine, setEngine] = useState('gtts');
   const [speed, setSpeed] = useState(1);
   const [speakerWav, setSpeakerWav] = useState('');
   const [outputDir, setOutputDir] = useState('');

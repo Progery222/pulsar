@@ -102,7 +102,8 @@ export function registerTtsHandlers() {
   ipcMain.handle('tts:synth', async (_e, req: SynthRequest) => {
     const sep = req.outputDir.includes('\\') ? '\\' : '/';
     const base = req.outName.replace(/\.[^.]+$/, '') || `voice_${Date.now()}`;
-    const wav = `${req.outputDir}${sep}${base}.wav`;
+    const ext = req.engine === 'gtts' ? 'mp3' : 'wav';
+    const wav = `${req.outputDir}${sep}${base}.${ext}`;
     const r = await runSynth(req.text, wav, req.lang, req.engine, req.speed, req.speakerWav || '');
     if ('error' in r) return r;
     if (req.attachVideo) {

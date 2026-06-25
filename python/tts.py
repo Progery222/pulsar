@@ -24,10 +24,18 @@ def _out(obj):
 
 
 ENGINES = {
+    "gtts": "Google TTS (онлайн, бесплатно, без ключа, много языков) — pip install gTTS",
     "xtts": "XTTS-v2 (многоязычный, клонирование) — pip install coqui-tts",
     "silero": "Silero (русский/английский, лёгкий) — pip install silero torch",
     "kokoro": "Kokoro (английский, быстрый) — pip install kokoro",
 }
+
+
+def synth_gtts(text, out, lang, speaker_wav, speed):
+    from gtts import gTTS  # online, free, без ключа
+    code = lang if lang and lang != "auto" else "en"
+    gTTS(text=text, lang=code).save(out)  # mp3
+    return out
 
 
 def synth_xtts(text, out, lang, speaker_wav, speed):
@@ -64,12 +72,12 @@ def synth_kokoro(text, out, lang, speaker_wav, speed):
     return out
 
 
-SYNTH = {"xtts": synth_xtts, "silero": synth_silero, "kokoro": synth_kokoro}
+SYNTH = {"gtts": synth_gtts, "xtts": synth_xtts, "silero": synth_silero, "kokoro": synth_kokoro}
 
 
 def _engine_available(engine):
     import importlib.util as u
-    mods = {"xtts": "TTS", "silero": "torch", "kokoro": "kokoro"}
+    mods = {"gtts": "gtts", "xtts": "TTS", "silero": "torch", "kokoro": "kokoro"}
     name = mods.get(engine)
     return bool(name and u.find_spec(name) is not None)
 

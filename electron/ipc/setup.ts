@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 
@@ -14,6 +14,7 @@ function pyCmd(): string {
 
 // pip-пакет для каждого движка озвучки.
 const PIP_PACKAGE: Record<string, string[]> = {
+  gtts: ['gTTS'],
   xtts: ['coqui-tts'],
   silero: ['silero', 'torch', 'soundfile'],
   kokoro: ['kokoro', 'soundfile'],
@@ -73,7 +74,7 @@ function meaningfulLines(s: string): string[] {
   for (const part of s.split(/[\r\n]+/)) {
     const t = part.trim();
     if (!t) continue;
-    if (/MB\/s|kB\/s|GB\/s|eta\s|━|╸|─/.test(t)) continue; // строки прогресс-бара
+    if (/MB\/s|kB\/s|GB\/s|eta\s|━|╸|─|█|▒|░|[KMG]B\s*\/\s*\d/.test(t)) continue; // строки прогресс-бара
     out.push(t);
   }
   return out;
@@ -124,7 +125,49 @@ function installEngine(engine: string): Promise<{ ok: true } | { error: string }
   });
 }
 
+// Установка Python через winget (Windows). После — нужен перезапуск (обновление PATH).
+function installPython(): Promise<{ needsRestart: true } | { error: string }> {
+  return new Promise((resolve) => {
+    if (process.platform !== 'win32') {
+      resolve({ error: 'Автоустановка только для Windows. Установите Python 3.10+ с python.org' });
+      return;
+    }
+    sendProgress({ line: 'Устанавливаю Python через winget…' });
+    const child = spawn(
+      'winget',
+      ['install', '-e', '--id', 'Python.Python.3.12', '--silent', '--accept-package-agreements', '--accept-source-agreements'],
+      { env: { ...process.env } }
+    );
+    const handle = (chunk: Buffer) => {
+      const s = chunk.toString();
+      const pct = parsePercent(s);
+      for (const line of meaningfulLines(s)) sendProgress({ line });
+      if (pct != null) sendProgress({ percent: pct });
+    };
+    child.stdout.on('data', handle);
+    child.stderr.on('data', handle);
+    child.on('error', (err) => {
+      sendProgress({ line: `winget недоступен: ${err.message}. Откройте python.org вручную.` });
+      resolve({ error: 'winget недоступен' });
+    });
+    child.on('close', (code) => {
+      if (code === 0) {
+        sendProgress({ line: 'Python установлен. Перезапустите приложение.', percent: 100 });
+        resolve({ needsRestart: true });
+      } else {
+        resolve({ error: `winget завершился с кодом ${code}` });
+      }
+    });
+  });
+}
+
 export function registerSetupHandlers() {
   ipcMain.handle('setup:status', () => checkStatus());
   ipcMain.handle('setup:install', (_e, engine: string) => installEngine(engine));
+  ipcMain.handle('setup:installPython', () => installPython());
+  ipcMain.handle('setup:openPythonSite', () => shell.openExternal('https://www.python.org/downloads/'));
+  ipcMain.handle('app:relaunch', () => {
+    app.relaunch();
+    app.exit(0);
+  });
 }
