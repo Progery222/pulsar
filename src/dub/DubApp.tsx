@@ -34,6 +34,7 @@ export default function DubApp() {
   const [targetLang, setTargetLang] = useState('en');
   const [voice, setVoice] = useState('');
   const [keepOriginal, setKeepOriginal] = useState(true);
+  const [syncTiming, setSyncTiming] = useState(true);
   const [outputDir, setOutputDir] = useState('');
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState('');
@@ -73,6 +74,7 @@ export default function DubApp() {
         voice: voice || undefined,
         keepOriginal,
         originalVolume: 0.12,
+        syncTiming,
         outputDir,
       });
       if ('error' in r) {
@@ -155,9 +157,13 @@ export default function DubApp() {
           </select>
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
           <input type="checkbox" checked={keepOriginal} onChange={(e) => setKeepOriginal(e.target.checked)} />
           Оставить оригинальный звук приглушённо (эффект закадрового перевода)
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+          <input type="checkbox" checked={syncTiming} onChange={(e) => setSyncTiming(e.target.checked)} />
+          Синхронизация: подгонять длину фраз под исходные тайминги
         </label>
 
         <div style={{ marginBottom: 20 }}>

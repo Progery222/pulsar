@@ -24,6 +24,7 @@ interface DubRequest {
   voice?: string;
   keepOriginal: boolean;
   originalVolume: number; // 0..1
+  syncTiming?: boolean; // подгонять длину фраз под исходные тайминги
   outputDir: string;
 }
 
@@ -97,10 +98,40 @@ function probeDuration(file: string): Promise<number> {
   });
 }
 
-// Собрать дублированную дорожку: каждый клип со своим adelay, затем amix; наложить на видео.
-function buildDub(video: string, clips: { file: string; startMs: number }[], out: string, keepOriginal: boolean, origVol: number): Promise<{ ok: true } | { error: string }> {
-  return new Promise(async (resolve) => {
-    const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 });
+// Цепочка atempo для ускорения в factor раз (atempo поддерживает 0.5..2.0 — чейним).
+function atempoChain(factor: number): string {
+  let f = Math.min(4, Math.max(1, factor));
+  const parts: string[] = [];
+  while (f > 2) {
+    parts.push('atempo=2.0');
+    f /= 2;
+  }
+  parts.push(`atempo=${f.toFixed(3)}`);
+  return parts.join(',');
+}
+
+interface DubClip {
+  file: string;
+  startMs: number;
+  targetMs: number; // длительность исходного сегмента (для синхронизации)
+}
+
+// Собрать дублированную дорожку: синхронизация длины (atempo) + расстановка по start (adelay) + amix.
+async function buildDub(video: string, clips: DubClip[], out: string, keepOriginal: boolean, origVol: number, syncTiming: boolean): Promise<{ ok: true } | { error: string }> {
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 });
+
+  // Подгонка: если озвучка длиннее слота — ускоряем, чтобы не наезжала на следующую фразу.
+  const factors: number[] = [];
+  for (const c of clips) {
+    if (syncTiming && c.targetMs > 200) {
+      const durMs = (await probeDuration(c.file)) * 1000;
+      factors.push(durMs > c.targetMs * 1.05 ? durMs / c.targetMs : 1);
+    } else {
+      factors.push(1);
+    }
+  }
+
+  return new Promise((resolve) => {
     const cmd = ffmpeg(video);
     clips.forEach((c) => cmd.input(c.file));
 
@@ -108,7 +139,8 @@ function buildDub(video: string, clips: { file: string; startMs: number }[], out
     const labels: string[] = [];
     clips.forEach((c, i) => {
       const idx = i + 1; // 0 — видео
-      filters.push(`[${idx}:a]adelay=${Math.round(c.startMs)}|${Math.round(c.startMs)}[d${i}]`);
+      const tempo = factors[i] > 1.01 ? `${atempoChain(factors[i])},` : '';
+      filters.push(`[${idx}:a]${tempo}adelay=${Math.round(c.startMs)}:all=1[d${i}]`);
       labels.push(`[d${i}]`);
     });
 
@@ -120,7 +152,7 @@ function buildDub(video: string, clips: { file: string; startMs: number }[], out
     }
 
     cmd
-      .complexFilter(filters, ['aout'])
+      .complexFilter(filters)
       .outputOptions('-map', '0:v:0', '-map', '[aout]')
       .outputOptions(venc)
       .outputOptions('-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart')
@@ -148,7 +180,7 @@ export function registerDubHandlers() {
       if ('error' in translated) return translated;
 
       // Озвучка каждого сегмента переведённым текстом.
-      const clips: { file: string; startMs: number }[] = [];
+      const clips: DubClip[] = [];
       for (let i = 0; i < segs.length; i++) {
         const txt = (translated[i] || '').trim();
         if (!txt) continue;
@@ -156,7 +188,7 @@ export function registerDubHandlers() {
         const r = await runSynth(txt, f, req.targetLang, 'edge', 1, req.voice || '');
         if ('error' in r) return r;
         tmpClips.push(f);
-        clips.push({ file: f, startMs: segs[i].start });
+        clips.push({ file: f, startMs: segs[i].start, targetMs: segs[i].end - segs[i].start });
         progress(`Озвучка ${i + 1}/${segs.length}…`, 30 + Math.round((i / segs.length) * 55));
       }
       if (!clips.length) return { error: 'Не удалось озвучить ни одного сегмента.' };
@@ -165,7 +197,7 @@ export function registerDubHandlers() {
       const sep = req.outputDir.includes('\\') ? '\\' : '/';
       const baseName = (req.videoPath.split(/[\\/]/).pop() || 'video').replace(/\.[^.]+$/, '');
       const out = `${req.outputDir}${sep}${baseName}_dub_${req.targetLang}.mp4`;
-      const m = await buildDub(req.videoPath, clips, out, req.keepOriginal, req.originalVolume);
+      const m = await buildDub(req.videoPath, clips, out, req.keepOriginal, req.originalVolume, req.syncTiming !== false);
       if ('error' in m) return m;
 
       progress('Готово', 100);
