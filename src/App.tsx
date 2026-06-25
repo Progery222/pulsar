@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useProjectStore } from './store/projectStore';
 import { useUIStore, type Tab } from './store/uiStore';
+import { useQueueStore, type JobStatus } from './store/queueStore';
 import { initHistory, undo } from './utils/history';
 import { shuffleMontage, regenerateMontage } from './utils/regenerate';
 import { fileName, isVideoFile } from './utils/media';
@@ -16,6 +17,7 @@ import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
 import SettingsScreen from './screens/SettingsScreen';
 import HistoryScreen from './screens/HistoryScreen';
+import QueueScreen from './screens/QueueScreen';
 import TopBar from './components/TopBar';
 import Toast from './components/Toast';
 
@@ -91,6 +93,22 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Глобальные слушатели прогресса для очереди (живут поверх всех режимов —
+  // прогресс не теряется при переключении вкладок/режимов).
+  useEffect(() => {
+    const update = useQueueStore.getState().updateJob;
+    const offVub = window.electronAPI.onVubProgress((p) =>
+      update(p.id, { status: p.status, percent: p.percent, error: p.error })
+    );
+    const offCleaner = window.electronAPI.onCleanerProgress((p) =>
+      update(p.id, { status: p.status as JobStatus, percent: p.percent })
+    );
+    return () => {
+      offVub();
+      offCleaner();
+    };
+  }, []);
+
   // Стартовый экран выбора режима (§3 ТЗ VUB).
   if (appMode === 'select') {
     return (
@@ -148,6 +166,19 @@ function App() {
       <>
         <div className="screen-fade">
           <HistoryScreen />
+        </div>
+        <TopBar />
+        <Toast />
+      </>
+    );
+  }
+
+  // Очередь задач (живой прогресс всех режимов).
+  if (appMode === 'queue') {
+    return (
+      <>
+        <div className="screen-fade">
+          <QueueScreen />
         </div>
         <TopBar />
         <Toast />

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useVubStore, type FileProgress } from '../store';
+import { useQueueStore } from '../../store/queueStore';
 import { Slider } from '../components/ui';
 import { outFileName } from '../naming';
 import { showToast } from '../../store/toastStore';
@@ -70,6 +71,9 @@ export default function PerformanceTab() {
       }
     }
     setProgress(initial);
+    useQueueStore.getState().addJobs(
+      initial.map((p) => ({ id: p.id, mode: 'vub' as const, name: p.name, status: 'queued' as const, percent: 0 }))
+    );
     setIsProcessing(true);
     try {
       await window.electronAPI.processVub({

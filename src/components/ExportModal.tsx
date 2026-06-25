@@ -4,6 +4,7 @@ import { useUIStore } from '../store/uiStore';
 import { buildAndRender } from '../utils/ffmpegBuilder';
 import { showToast } from '../store/toastStore';
 import { PLATFORM_PRESETS } from '../data/platformPresets';
+import { useQueueStore } from '../store/queueStore';
 import UniqualizerPanel from './UniqualizerPanel';
 
 type Quality = '720p' | '1080p' | '4k';
@@ -54,10 +55,16 @@ export default function ExportModal() {
     const sep = folder.includes('\\') ? '\\' : '/';
     const outputPath = `${folder}${sep}pulsar_${Date.now()}.mp4`;
 
+    const queue = useQueueStore.getState();
+    const jobId = `editor_${Date.now()}`;
+    queue.addJobs([{ id: jobId, mode: 'editor', name: `Монтаж • ${quality}`, status: 'processing', percent: 0 }]);
+
     try {
-      const ok = await buildAndRender(useProjectStore.getState(), outputPath, quality, (p) =>
-        setExportProgress(p)
-      );
+      const ok = await buildAndRender(useProjectStore.getState(), outputPath, quality, (p) => {
+        setExportProgress(p);
+        queue.updateJob(jobId, { percent: p });
+      });
+      queue.updateJob(jobId, ok ? { status: 'done', percent: 100 } : { status: 'error' });
       if (ok) {
         const count = useProjectStore.getState().uniqualizerCount;
         window.electronAPI.historyAdd({
@@ -76,6 +83,7 @@ export default function ExportModal() {
       }
       // При отмене (ok === false) — тихо, без уведомления.
     } catch (err) {
+      queue.updateJob(jobId, { status: 'error' });
       // §14: ошибка FFmpeg — диалоговое окно (с технической причиной для диагностики).
       const detail = err instanceof Error ? err.message : String(err);
       window.alert(

@@ -1,5 +1,6 @@
 import { useProjectStore } from '../store/projectStore';
 import { useUIStore } from '../store/uiStore';
+import { useQueueStore } from '../store/queueStore';
 import type { ScreenName } from '../types';
 
 // Предыдущий экран во внутреннем потоке Монтажа.
@@ -17,6 +18,7 @@ export default function TopBar() {
   const setAppMode = useUIStore((s) => s.setAppMode);
   const currentScreen = useProjectStore((s) => s.currentScreen);
   const setCurrentScreen = useProjectStore((s) => s.setCurrentScreen);
+  const activeJobs = useQueueStore((s) => s.jobs.filter((j) => j.status === 'queued' || j.status === 'processing' || j.status === 'detecting').length);
 
   function goBack() {
     // В режиме Монтаж — шаг назад по внутреннему потоку, с первого экрана — на старт.
@@ -68,6 +70,22 @@ export default function TopBar() {
         </svg>
         На главную
       </button>
+      {appMode !== 'queue' && activeJobs > 0 && (
+        <button title="Очередь" onClick={() => setAppMode('queue')} style={{ ...btn, borderColor: 'var(--accent-green)' }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="8" y1="6" x2="21" y2="6" />
+            <line x1="8" y1="12" x2="21" y2="12" />
+            <line x1="8" y1="18" x2="21" y2="18" />
+            <line x1="3" y1="6" x2="3.01" y2="6" />
+            <line x1="3" y1="12" x2="3.01" y2="12" />
+            <line x1="3" y1="18" x2="3.01" y2="18" />
+          </svg>
+          Очередь
+          <span style={{ background: 'var(--accent-green)', color: '#0D0D0D', borderRadius: 10, padding: '1px 7px', fontSize: 11, fontWeight: 600 }}>
+            {activeJobs}
+          </span>
+        </button>
+      )}
       <button title="Выход" onClick={quit} style={{ ...btn, color: 'var(--text-secondary)' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

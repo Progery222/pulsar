@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useCleanerStore, type CoverMethod } from './store';
 import { useVubStore } from '../vub/store';
 import { useUIStore } from '../store/uiStore';
+import { useQueueStore } from '../store/queueStore';
 import { Block, Checkbox, Select, Slider, Switch } from '../vub/components/ui';
 import ZoneEditor from './ZoneEditor';
 
@@ -60,6 +61,9 @@ export default function CleanerApp() {
   async function analyze() {
     if (!videos.length || !outputDir || isProcessing) return;
     setProgress(videos.map((v) => ({ id: v.id, name: v.name, status: 'queued', percent: 0 })));
+    useQueueStore.getState().addJobs(
+      videos.map((v) => ({ id: v.id, mode: 'cleaner' as const, name: v.name, status: 'queued' as const, percent: 0 }))
+    );
     setIsProcessing(true);
     try {
       await window.electronAPI.processCleaner({
