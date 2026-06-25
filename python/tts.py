@@ -24,21 +24,41 @@ def _out(obj):
 
 
 ENGINES = {
-    "gtts": "Google TTS (онлайн, бесплатно, без ключа, много языков) — pip install gTTS",
+    "edge": "Edge TTS (онлайн, бесплатно, без ключа, естественные нейроголоса) — pip install edge-tts",
+    "gtts": "Google TTS (онлайн, бесплатно, без ключа) — pip install gTTS",
     "xtts": "XTTS-v2 (многоязычный, клонирование) — pip install coqui-tts",
     "silero": "Silero (русский/английский, лёгкий) — pip install silero torch",
     "kokoro": "Kokoro (английский, быстрый) — pip install kokoro",
 }
 
+# Голос Edge по умолчанию для языка.
+EDGE_DEFAULT = {
+    "ru": "ru-RU-SvetlanaNeural", "en": "en-US-AriaNeural", "es": "es-ES-ElviraNeural",
+    "de": "de-DE-KatjaNeural", "fr": "fr-FR-DeniseNeural",
+}
 
-def synth_gtts(text, out, lang, speaker_wav, speed):
+
+def synth_edge(text, out, lang, speaker_wav, speed, voice=""):
+    import asyncio
+    import edge_tts
+    v = voice or EDGE_DEFAULT.get(lang if lang != "auto" else "en", "en-US-AriaNeural")
+    rate = f"{int(round((speed - 1) * 100)):+d}%"
+
+    async def run():
+        await edge_tts.Communicate(text, v, rate=rate).save(out)
+
+    asyncio.run(run())
+    return out
+
+
+def synth_gtts(text, out, lang, speaker_wav, speed, voice=""):
     from gtts import gTTS  # online, free, без ключа
     code = lang if lang and lang != "auto" else "en"
     gTTS(text=text, lang=code).save(out)  # mp3
     return out
 
 
-def synth_xtts(text, out, lang, speaker_wav, speed):
+def synth_xtts(text, out, lang, speaker_wav, speed, voice=""):
     from TTS.api import TTS  # coqui-tts
     model = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
     kwargs = dict(text=text, file_path=out, language=(lang if lang != "auto" else "en"), speed=speed)
@@ -51,7 +71,7 @@ def synth_xtts(text, out, lang, speaker_wav, speed):
     return out
 
 
-def synth_silero(text, out, lang, speaker_wav, speed):
+def synth_silero(text, out, lang, speaker_wav, speed, voice=""):
     import torch
     lang_map = {"ru": ("ru", "v4_ru", "xenia"), "en": ("en", "v3_en", "en_0")}
     code, repo, speaker = lang_map.get(lang if lang in lang_map else "ru")
@@ -62,7 +82,7 @@ def synth_silero(text, out, lang, speaker_wav, speed):
     return out
 
 
-def synth_kokoro(text, out, lang, speaker_wav, speed):
+def synth_kokoro(text, out, lang, speaker_wav, speed, voice=""):
     from kokoro import KPipeline
     import soundfile as sf
     import numpy as np
@@ -72,12 +92,12 @@ def synth_kokoro(text, out, lang, speaker_wav, speed):
     return out
 
 
-SYNTH = {"gtts": synth_gtts, "xtts": synth_xtts, "silero": synth_silero, "kokoro": synth_kokoro}
+SYNTH = {"edge": synth_edge, "gtts": synth_gtts, "xtts": synth_xtts, "silero": synth_silero, "kokoro": synth_kokoro}
 
 
 def _engine_available(engine):
     import importlib.util as u
-    mods = {"gtts": "gtts", "xtts": "TTS", "silero": "torch", "kokoro": "kokoro"}
+    mods = {"edge": "edge_tts", "gtts": "gtts", "xtts": "TTS", "silero": "torch", "kokoro": "kokoro"}
     name = mods.get(engine)
     return bool(name and u.find_spec(name) is not None)
 
@@ -93,6 +113,7 @@ def main():
     s.add_argument("--lang", default="auto")
     s.add_argument("--engine", default="xtts")
     s.add_argument("--speaker-wav", default="")
+    s.add_argument("--voice", default="")
     s.add_argument("--speed", type=float, default=1.0)
     args = ap.parse_args()
 
@@ -119,7 +140,7 @@ def main():
             if not text:
                 _out({"error": "Пустой текст"})
                 return
-            out = fn(text, args.out, args.lang, args.speaker_wav or "", args.speed)
+            out = fn(text, args.out, args.lang, args.speaker_wav or "", args.speed, args.voice or "")
             _out({"ok": True, "out": out})
         except ImportError as e:
             _out({"error": f"Не установлен движок '{args.engine}'. {ENGINES.get(args.engine, '')}. Детали: {e}"})

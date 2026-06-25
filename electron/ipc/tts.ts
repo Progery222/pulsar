@@ -22,6 +22,7 @@ interface SynthRequest {
   engine: string;
   speed: number;
   speakerWav?: string;
+  voice?: string;
   outputDir: string;
   outName: string;
   attachVideo?: string; // если задан — наложить озвучку на это видео
@@ -29,14 +30,15 @@ interface SynthRequest {
   originalVolume?: number; // 0..1 при keepOriginal
 }
 
-// Запуск python tts.py synth → wav.
-function runSynth(text: string, outWav: string, lang: string, engine: string, speed: number, speakerWav: string): Promise<{ ok: true } | { error: string }> {
+// Запуск python tts.py synth → аудиофайл.
+function runSynth(text: string, outWav: string, lang: string, engine: string, speed: number, speakerWav: string, voice: string): Promise<{ ok: true } | { error: string }> {
   return new Promise((resolve) => {
     const tmpTxt = path.join(os.tmpdir(), `pulsar_tts_${Date.now()}.txt`);
     fs.writeFileSync(tmpTxt, text, 'utf-8');
     const py = process.platform === 'win32' ? 'python' : 'python3';
     const argsv = ['synth', '--text-file', tmpTxt, '--out', outWav, '--lang', lang, '--engine', engine, '--speed', String(speed)];
     if (speakerWav) argsv.push('--speaker-wav', speakerWav);
+    if (voice) argsv.push('--voice', voice);
     const child = spawn(py, [scriptPath(), ...argsv]);
     let stdout = '';
     let stderr = '';
@@ -102,9 +104,9 @@ export function registerTtsHandlers() {
   ipcMain.handle('tts:synth', async (_e, req: SynthRequest) => {
     const sep = req.outputDir.includes('\\') ? '\\' : '/';
     const base = req.outName.replace(/\.[^.]+$/, '') || `voice_${Date.now()}`;
-    const ext = req.engine === 'gtts' ? 'mp3' : 'wav';
+    const ext = req.engine === 'gtts' || req.engine === 'edge' ? 'mp3' : 'wav';
     const wav = `${req.outputDir}${sep}${base}.${ext}`;
-    const r = await runSynth(req.text, wav, req.lang, req.engine, req.speed, req.speakerWav || '');
+    const r = await runSynth(req.text, wav, req.lang, req.engine, req.speed, req.speakerWav || '', req.voice || '');
     if ('error' in r) return r;
     if (req.attachVideo) {
       const outMp4 = `${req.outputDir}${sep}${base}_video.mp4`;

@@ -11,17 +11,37 @@ const LANGS = [
 ];
 
 const ENGINES = [
-  { value: 'gtts', label: 'Google TTS (онлайн, бесплатно, без ключа)' },
+  { value: 'edge', label: 'Edge TTS (живые нейроголоса, бесплатно, без ключа)' },
+  { value: 'gtts', label: 'Google TTS (онлайн, бесплатно)' },
   { value: 'xtts', label: 'XTTS-v2 (многоязычный, клонирование)' },
   { value: 'silero', label: 'Silero (рус/англ, лёгкий)' },
   { value: 'kokoro', label: 'Kokoro (англ, быстрый)' },
 ];
 
+// Естественные нейроголоса Edge по языкам.
+const EDGE_VOICES: Record<string, { value: string; label: string }[]> = {
+  ru: [
+    { value: 'ru-RU-SvetlanaNeural', label: 'Светлана (ж)' },
+    { value: 'ru-RU-DariyaNeural', label: 'Дария (ж)' },
+    { value: 'ru-RU-DmitryNeural', label: 'Дмитрий (м)' },
+  ],
+  en: [
+    { value: 'en-US-AriaNeural', label: 'Aria (ж)' },
+    { value: 'en-US-JennyNeural', label: 'Jenny (ж)' },
+    { value: 'en-US-GuyNeural', label: 'Guy (м)' },
+    { value: 'en-GB-RyanNeural', label: 'Ryan UK (м)' },
+  ],
+  es: [{ value: 'es-ES-ElviraNeural', label: 'Elvira (ж)' }, { value: 'es-ES-AlvaroNeural', label: 'Álvaro (м)' }],
+  de: [{ value: 'de-DE-KatjaNeural', label: 'Katja (ж)' }, { value: 'de-DE-ConradNeural', label: 'Conrad (м)' }],
+  fr: [{ value: 'fr-FR-DeniseNeural', label: 'Denise (ж)' }, { value: 'fr-FR-HenriNeural', label: 'Henri (м)' }],
+};
+
 // Раздел «Озвучка»: текст → речь, опционально наложить на видео.
 export default function TtsApp() {
   const [text, setText] = useState('');
   const [lang, setLang] = useState('ru');
-  const [engine, setEngine] = useState('gtts');
+  const [engine, setEngine] = useState('edge');
+  const [voice, setVoice] = useState('');
   const [speed, setSpeed] = useState(1);
   const [speakerWav, setSpeakerWav] = useState('');
   const [outputDir, setOutputDir] = useState('');
@@ -61,6 +81,7 @@ export default function TtsApp() {
         lang,
         engine,
         speed,
+        voice: engine === 'edge' ? voice || undefined : undefined,
         speakerWav: speakerWav || undefined,
         outputDir,
         outName: name,
@@ -122,11 +143,21 @@ export default function TtsApp() {
           </div>
           <div>
             <label style={label}>Движок</label>
-            <select value={engine} onChange={(e) => setEngine(e.target.value)} style={field}>
+            <select value={engine} onChange={(e) => { setEngine(e.target.value); setVoice(''); }} style={field}>
               {ENGINES.map((en) => <option key={en.value} value={en.value}>{en.label}</option>)}
             </select>
           </div>
         </div>
+
+        {engine === 'edge' && (EDGE_VOICES[lang] ?? []).length > 0 && (
+          <div style={{ marginBottom: 16 }}>
+            <label style={label}>Голос</label>
+            <select value={voice} onChange={(e) => setVoice(e.target.value)} style={field}>
+              <option value="">По умолчанию</option>
+              {(EDGE_VOICES[lang] ?? []).map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
+            </select>
+          </div>
+        )}
 
         <div style={{ marginBottom: 16 }}>
           <label style={label}>Скорость: {speed.toFixed(2)}×</label>
@@ -175,8 +206,8 @@ export default function TtsApp() {
         </button>
 
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 20, lineHeight: 1.5 }}>
-          Движок ставится отдельно (Python): XTTS — <code>pip install coqui-tts</code>; первая генерация скачает модель.
-          Для русского лучше XTTS или Silero. Прогресс виден в окне «Очередь».
+          Движок ставится в «Настройках → Установка движков». Edge TTS — самые живые голоса бесплатно (<code>pip install edge-tts</code>, онлайн).
+          XTTS — лучшее качество + клонирование (оффлайн). Прогресс виден в окне «Очередь».
         </p>
       </div>
     </div>

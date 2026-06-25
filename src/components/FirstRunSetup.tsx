@@ -87,6 +87,13 @@ export default function FirstRunSetup() {
     await window.electronAPI.setSetting('firstRunDone', true);
     setShowSetup(false);
   }
+  async function closeMinimized() {
+    // Полностью убрать индикатор и больше не показывать мастер автоматически.
+    await window.electronAPI.setSetting('firstRunDone', true);
+    setShowSetup(false);
+  }
+
+  const busy = !!installing || pyInstalling;
 
   // ── Свёрнутый индикатор: компактная плашка внизу, работа продолжается ──
   if (minimized) {
@@ -102,9 +109,14 @@ export default function FirstRunSetup() {
           <span style={{ fontSize: 13, color: 'var(--text-primary)' }}>
             {installing ? `Установка ${installing}…` : pyInstalling ? 'Установка Python…' : 'Настройка движков'}
           </span>
-          <button onClick={() => setMinimized(false)} title="Развернуть" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>
-            ▢
-          </button>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <button onClick={() => setMinimized(false)} title="Развернуть" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>
+              ▢
+            </button>
+            <button onClick={closeMinimized} title="Закрыть" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>
+              ✕
+            </button>
+          </div>
         </div>
         <ProgressBar percent={installing || pyInstalling ? percent : 100} />
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -233,10 +245,10 @@ export default function FirstRunSetup() {
         )}
 
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-          <button onClick={() => setMinimized(true)} disabled={!installing} style={{ background: 'none', border: '1px solid var(--border)', color: installing ? 'var(--text-primary)' : 'var(--text-secondary)', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer', opacity: installing ? 1 : 0.5 }}>
+          <button onClick={() => setMinimized(true)} disabled={!busy} style={{ background: 'none', border: '1px solid var(--border)', color: busy ? 'var(--text-primary)' : 'var(--text-secondary)', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer', opacity: busy ? 1 : 0.5 }}>
             Свернуть
           </button>
-          <button onClick={finish} disabled={!!installing} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer', opacity: installing ? 0.5 : 1 }}>
+          <button onClick={finish} disabled={busy} style={{ background: 'none', border: '1px solid var(--border)', color: 'var(--text-secondary)', borderRadius: 8, padding: '10px 20px', fontSize: 14, cursor: 'pointer', opacity: busy ? 0.5 : 1 }}>
             {status?.engines && Object.values(status.engines).some(Boolean) ? 'Готово' : 'Пропустить'}
           </button>
         </div>
