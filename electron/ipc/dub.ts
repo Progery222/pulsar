@@ -187,12 +187,14 @@ interface DubClip {
 async function buildDub(video: string, clips: DubClip[], out: string, keepOriginal: boolean, origVol: number, syncTiming: boolean, assPath: string | null): Promise<{ ok: true } | { error: string }> {
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 });
 
-  // Подгонка: если озвучка длиннее слота — ускоряем, чтобы не наезжала на следующую фразу.
+  // Подгонка: если озвучка длиннее слота — слегка ускоряем. Потолок 1.5x:
+  // выше речь звучит «роботом/бурундуком». Если перевод сильно длиннее — лучше
+  // дать ему чуть наехать на следующую фразу, чем ускорять до неразборчивости.
   const factors: number[] = [];
   for (const c of clips) {
     if (syncTiming && c.targetMs > 200) {
       const durMs = (await probeDuration(c.file)) * 1000;
-      factors.push(durMs > c.targetMs * 1.05 ? durMs / c.targetMs : 1);
+      factors.push(durMs > c.targetMs * 1.05 ? Math.min(1.5, durMs / c.targetMs) : 1);
     } else {
       factors.push(1);
     }
