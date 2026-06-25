@@ -9,6 +9,8 @@ interface FunnelState {
   toggleLanguage: (code: string) => void;
   uniqueize: boolean;
   setUniqueize: (v: boolean) => void;
+  varyVoices: boolean;
+  setVaryVoices: (v: boolean) => void;
   outputDir: string;
   setOutputDir: (v: string) => void;
   running: boolean;
@@ -31,6 +33,8 @@ export const useFunnelStore = create<FunnelState>((set) => ({
     })),
   uniqueize: true,
   setUniqueize: (v) => set({ uniqueize: v }),
+  varyVoices: true,
+  setVaryVoices: (v) => set({ varyVoices: v }),
   outputDir: '',
   setOutputDir: (v) => set({ outputDir: v }),
   running: false,

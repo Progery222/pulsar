@@ -34,7 +34,8 @@ const BRANCH_HELP = [
 export default function FunnelApp() {
   const {
     url, setUrl, targetLanguages, toggleLanguage, uniqueize, setUniqueize,
-    outputDir, setOutputDir, running, setRunning, items, applyProgress, reset,
+    varyVoices, setVaryVoices, outputDir, setOutputDir, running, setRunning,
+    items, applyProgress, reset,
   } = useFunnelStore();
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [cancelling, setCancelling] = useState(false);
@@ -71,7 +72,7 @@ export default function FunnelApp() {
     const model = ((await window.electronAPI.getSetting('funnel_model')) as string) || 'google/gemini-3.5-flash';
     const asr = (((await window.electronAPI.getSetting('asr_provider')) as 'assemblyai' | 'whisper') || 'whisper');
     try {
-      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, outputDir, model, asr });
+      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, varyVoices, outputDir, model, asr });
       if ('error' in r) {
         showToast(`Ошибка: ${r.error}`);
       } else {
@@ -158,9 +159,13 @@ export default function FunnelApp() {
           </div>
         </div>
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
           <input type="checkbox" checked={uniqueize} onChange={(e) => setUniqueize(e.target.checked)} />
           Уникализировать результат (лёгкие вариации + очистка метаданных)
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+          <input type="checkbox" checked={varyVoices} onChange={(e) => setVaryVoices(e.target.checked)} />
+          Разнообразить голоса дубляжа (случайный нейроголос для каждого видео)
         </label>
 
         <div style={{ marginBottom: 20 }}>

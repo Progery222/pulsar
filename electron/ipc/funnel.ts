@@ -21,6 +21,7 @@ import { detect } from './cleaner';
 import { runDub } from './dub';
 import { videoEncoderOptions } from './encoder';
 import { buildVubPlan } from '../../src/vub/ffmpegBuild';
+import { randomVoice } from '../../src/tts/edgeVoices';
 import type { VubEffects, VubParams, VubText } from '../../src/vub/types';
 import type { FunnelStartRequest, FunnelProgressEvent } from '../../src/funnel/types';
 
@@ -545,6 +546,8 @@ async function processBranchLang(
   stage: (label: string) => void
 ): Promise<{ ok: true; out: string } | { error: string }> {
   const dubLang = LANG_MAP[langCode] || langCode;
+  // Разнообразие: для каждого видео+языка берём случайный нейроголос (если включено).
+  const voice = req.varyVoices === false ? '' : randomVoice(dubLang);
   const sep = req.outputDir.includes('\\') ? '\\' : '/';
   const finalOut = `${req.outputDir}${sep}${baseName}_b${branch}_${langCode}.mp4`;
   const temps: string[] = [];
@@ -557,6 +560,7 @@ async function processBranchLang(
         videoPath: input,
         sourceLang: cls.language && cls.language !== 'unknown' ? cls.language : 'auto',
         targetLang: dubLang,
+        voice,
         keepOriginal: true,
         originalVolume: 0.12,
         syncTiming: true,

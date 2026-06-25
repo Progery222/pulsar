@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { useQueueStore } from '../store/queueStore';
+import { EDGE_VOICES } from './edgeVoices';
 
 const LANGS = [
   { value: 'ru', label: 'Русский' },
@@ -21,90 +22,8 @@ const LANGS = [
 ];
 
 // Естественные нейроголоса Edge по языкам.
-export const EDGE_VOICES: Record<string, { value: string; label: string }[]> = {
-  ru: [
-    { value: 'ru-RU-SvetlanaNeural', label: 'Светлана (ж)' },
-    { value: 'ru-RU-DariyaNeural', label: 'Дария (ж)' },
-    { value: 'ru-RU-DmitryNeural', label: 'Дмитрий (м)' },
-  ],
-  en: [
-    { value: 'en-US-AriaNeural', label: 'Aria — US (ж)' },
-    { value: 'en-US-JennyNeural', label: 'Jenny — US (ж)' },
-    { value: 'en-US-MichelleNeural', label: 'Michelle — US (ж)' },
-    { value: 'en-US-AnaNeural', label: 'Ana — US, детский (ж)' },
-    { value: 'en-US-GuyNeural', label: 'Guy — US (м)' },
-    { value: 'en-US-ChristopherNeural', label: 'Christopher — US (м)' },
-    { value: 'en-US-EricNeural', label: 'Eric — US (м)' },
-    { value: 'en-US-RogerNeural', label: 'Roger — US (м)' },
-    { value: 'en-GB-SoniaNeural', label: 'Sonia — UK (ж)' },
-    { value: 'en-GB-LibbyNeural', label: 'Libby — UK (ж)' },
-    { value: 'en-GB-RyanNeural', label: 'Ryan — UK (м)' },
-    { value: 'en-GB-ThomasNeural', label: 'Thomas — UK (м)' },
-    { value: 'en-AU-NatashaNeural', label: 'Natasha — AU (ж)' },
-    { value: 'en-AU-WilliamNeural', label: 'William — AU (м)' },
-  ],
-  uk: [
-    { value: 'uk-UA-PolinaNeural', label: 'Поліна (ж)' },
-    { value: 'uk-UA-OstapNeural', label: 'Остап (м)' },
-  ],
-  es: [
-    { value: 'es-ES-ElviraNeural', label: 'Elvira — ES (ж)' },
-    { value: 'es-ES-AlvaroNeural', label: 'Álvaro — ES (м)' },
-    { value: 'es-MX-DaliaNeural', label: 'Dalia — MX (ж)' },
-    { value: 'es-MX-JorgeNeural', label: 'Jorge — MX (м)' },
-  ],
-  de: [
-    { value: 'de-DE-KatjaNeural', label: 'Katja (ж)' },
-    { value: 'de-DE-AmalaNeural', label: 'Amala (ж)' },
-    { value: 'de-DE-ConradNeural', label: 'Conrad (м)' },
-    { value: 'de-DE-KillianNeural', label: 'Killian (м)' },
-  ],
-  fr: [
-    { value: 'fr-FR-DeniseNeural', label: 'Denise (ж)' },
-    { value: 'fr-FR-EloiseNeural', label: 'Eloise (ж)' },
-    { value: 'fr-FR-HenriNeural', label: 'Henri (м)' },
-  ],
-  it: [
-    { value: 'it-IT-ElsaNeural', label: 'Elsa (ж)' },
-    { value: 'it-IT-IsabellaNeural', label: 'Isabella (ж)' },
-    { value: 'it-IT-DiegoNeural', label: 'Diego (м)' },
-  ],
-  pt: [
-    { value: 'pt-BR-FranciscaNeural', label: 'Francisca — BR (ж)' },
-    { value: 'pt-BR-AntonioNeural', label: 'Antônio — BR (м)' },
-    { value: 'pt-PT-RaquelNeural', label: 'Raquel — PT (ж)' },
-  ],
-  pl: [
-    { value: 'pl-PL-ZofiaNeural', label: 'Zofia (ж)' },
-    { value: 'pl-PL-MarekNeural', label: 'Marek (м)' },
-  ],
-  tr: [
-    { value: 'tr-TR-EmelNeural', label: 'Emel (ж)' },
-    { value: 'tr-TR-AhmetNeural', label: 'Ahmet (м)' },
-  ],
-  ar: [
-    { value: 'ar-SA-ZariyahNeural', label: 'Zariyah (ж)' },
-    { value: 'ar-SA-HamedNeural', label: 'Hamed (м)' },
-  ],
-  hi: [
-    { value: 'hi-IN-SwaraNeural', label: 'Swara (ж)' },
-    { value: 'hi-IN-MadhurNeural', label: 'Madhur (м)' },
-  ],
-  ja: [
-    { value: 'ja-JP-NanamiNeural', label: 'Nanami (ж)' },
-    { value: 'ja-JP-KeitaNeural', label: 'Keita (м)' },
-  ],
-  ko: [
-    { value: 'ko-KR-SunHiNeural', label: 'SunHi (ж)' },
-    { value: 'ko-KR-InJoonNeural', label: 'InJoon (м)' },
-  ],
-  zh: [
-    { value: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao (ж)' },
-    { value: 'zh-CN-XiaoyiNeural', label: 'Xiaoyi (ж)' },
-    { value: 'zh-CN-YunxiNeural', label: 'Yunxi (м)' },
-    { value: 'zh-CN-YunyangNeural', label: 'Yunyang (м)' },
-  ],
-};
+// Каталог голосов вынесен в общий модуль (используется и в Дубляже, и в Воронке).
+export { EDGE_VOICES };
 
 const SAMPLE_TEXT: Record<string, string> = {
   ru: 'Привет! Это пример голоса в Pulsar.',
