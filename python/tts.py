@@ -49,7 +49,8 @@ def synth_edge(text, out, lang, speed, voice=""):
 
 def _engine_available(engine):
     import importlib.util as u
-    return engine == "edge" and u.find_spec("edge_tts") is not None
+    mod = {"edge": "edge_tts", "translate": "deep_translator", "download": "yt_dlp"}.get(engine)
+    return mod is not None and u.find_spec(mod) is not None
 
 
 def main():
@@ -71,7 +72,8 @@ def main():
         return
 
     if args.cmd == "check":
-        _out({"ok": True, "python": sys.version.split()[0], "engines": {"edge": _engine_available("edge")}})
+        _out({"ok": True, "python": sys.version.split()[0],
+              "engines": {k: _engine_available(k) for k in ("edge", "translate", "download")}})
         return
 
     if args.cmd == "synth":

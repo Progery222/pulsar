@@ -113,15 +113,15 @@ export default function SettingsScreen() {
 
         {/* Движки озвучки */}
         <div style={section}>
-          <label style={label}>Движки озвучки (TTS)</label>
+          <label style={label}>Компоненты приложения</label>
           <button
             onClick={() => setShowSetup(true)}
             className="btn-primary"
             style={{ padding: '8px 20px', fontSize: 13 }}
           >
-            Установка / проверка движков
+            Установка / проверка компонентов
           </button>
-          <p style={hint}>Проверить наличие Python и скачать движок синтеза речи (XTTS / Silero / Kokoro).</p>
+          <p style={hint}>Проверить Python и установить компоненты: озвучка (Edge TTS), перевод, загрузка по ссылке.</p>
         </div>
 
         {/* Папка сохранения по умолчанию */}
