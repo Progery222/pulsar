@@ -37,6 +37,7 @@ export default function FunnelApp() {
     outputDir, setOutputDir, running, setRunning, items, applyProgress, reset,
   } = useFunnelStore();
   const [hasKey, setHasKey] = useState<boolean | null>(null);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     window.electronAPI.getSetting('defaultOutputDir').then((d) => d && !outputDir && setOutputDir(d as string));
@@ -89,13 +90,15 @@ export default function FunnelApp() {
       }
     } finally {
       setRunning(false);
+      setCancelling(false);
     }
   }
 
   async function cancel() {
+    // Не сбрасываем running здесь — бэкенд завершит пайплайн и start() сам снимет флаг.
+    setCancelling(true);
     await window.electronAPI.funnelCancel();
-    setRunning(false);
-    showToast('Обработка отменена');
+    showToast('Останавливаю обработку…');
   }
 
   const list = Object.values(items);
@@ -181,9 +184,10 @@ export default function FunnelApp() {
           {running && (
             <button
               onClick={cancel}
-              style={{ padding: '12px 24px', fontSize: 15, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, cursor: 'pointer' }}
+              disabled={cancelling}
+              style={{ padding: '12px 24px', fontSize: 15, background: 'var(--bg-tertiary)', border: '1px solid var(--danger)', color: 'var(--danger)', borderRadius: 8, cursor: cancelling ? 'default' : 'pointer', opacity: cancelling ? 0.6 : 1 }}
             >
-              Отмена
+              {cancelling ? 'Останавливаю…' : '⏹ Стоп'}
             </button>
           )}
         </div>

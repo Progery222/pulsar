@@ -40,6 +40,29 @@ function ffmpegDir(): string | null {
   return ffmpegPath ? path.dirname(ffmpegPath) : null;
 }
 
+// Надёжное завершение процесса вместе с дочерними (yt-dlp порождает ffmpeg).
+// На Windows обычный kill не убивает дерево — используем taskkill /T /F.
+function killTree(child: ChildProcess) {
+  if (!child.pid) return;
+  if (process.platform === 'win32') {
+    try {
+      spawn('taskkill', ['/pid', String(child.pid), '/T', '/F']);
+    } catch {
+      try {
+        child.kill('SIGKILL');
+      } catch {
+        /* noop */
+      }
+    }
+  } else {
+    try {
+      child.kill('SIGKILL');
+    } catch {
+      /* noop */
+    }
+  }
+}
+
 const VIDEO_EXT = /\.(mp4|mov|avi|webm|mkv)$/i;
 
 // Коды целевых языков воронки -> языки дубляжа/перевода (BR = бразильский португальский).
@@ -691,13 +714,7 @@ export function registerFunnelHandlers() {
       }
     }
     activeFfmpeg.clear();
-    for (const proc of activeProc) {
-      try {
-        proc.kill();
-      } catch {
-        /* noop */
-      }
-    }
+    for (const proc of activeProc) killTree(proc);
     activeProc.clear();
     for (const ac of activeAborts) {
       try {
