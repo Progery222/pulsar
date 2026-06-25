@@ -253,7 +253,9 @@ def detect(path, do_titles, do_watermarks, model, dynamic_only=False):
         except Exception as e:  # noqa
             return {"error": f"east: {e}", "width": W, "height": H}
 
-    if do_watermarks:
+    # В режиме «только субтитры» водяные знаки/лого не ищем — это ровно то, что
+    # нужно игнорировать (иначе лого/статика добавляют лишние зоны мимо плашки-фильтра).
+    if do_watermarks and not dynamic_only:
         wm, motion = detect_watermarks(frames)
         for (x0, y0, x1, y1, conf) in wm:
             boxes.append({"x": round(x0, 4), "y": round(y0, 4), "w": round(x1 - x0, 4), "h": round(y1 - y0, 4), "kind": "static", "conf": round(conf, 3)})
