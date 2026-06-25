@@ -92,6 +92,13 @@ function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Первый запуск: показать мастер установки движков.
+  useEffect(() => {
+    window.electronAPI.getSetting('firstRunDone').then((done) => {
+      if (!done) useUIStore.getState().setShowSetup(true);
+    });
+  }, []);
+
   // Глобальные слушатели прогресса для очереди (живут поверх всех режимов —
   // прогресс не теряется при переключении вкладок/режимов).
   useEffect(() => {

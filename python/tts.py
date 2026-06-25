@@ -7,6 +7,7 @@
 
 CLI:
     tts.py engines
+    tts.py check
     tts.py synth --text-file <txt> --out <wav> --lang ru --engine xtts \
                  [--speaker-wav <ref.wav>] [--speed 1.0]
 
@@ -66,10 +67,18 @@ def synth_kokoro(text, out, lang, speaker_wav, speed):
 SYNTH = {"xtts": synth_xtts, "silero": synth_silero, "kokoro": synth_kokoro}
 
 
+def _engine_available(engine):
+    import importlib.util as u
+    mods = {"xtts": "TTS", "silero": "torch", "kokoro": "kokoro"}
+    name = mods.get(engine)
+    return bool(name and u.find_spec(name) is not None)
+
+
 def main():
     ap = argparse.ArgumentParser()
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("engines")
+    sub.add_parser("check")
     s = sub.add_parser("synth")
     s.add_argument("--text-file", required=True)
     s.add_argument("--out", required=True)
@@ -81,6 +90,14 @@ def main():
 
     if args.cmd == "engines":
         _out({"ok": True, "engines": ENGINES})
+        return
+
+    if args.cmd == "check":
+        _out({
+            "ok": True,
+            "python": sys.version.split()[0],
+            "engines": {k: _engine_available(k) for k in ENGINES},
+        })
         return
 
     if args.cmd == "synth":

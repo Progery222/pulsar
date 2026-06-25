@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { showToast } from '../store/toastStore';
+import { useUIStore } from '../store/uiStore';
 
 type GpuMode = 'auto' | 'gpu' | 'cpu';
 
@@ -7,6 +8,7 @@ const GPU_LABELS: Record<GpuMode, string> = { auto: 'Авто', gpu: 'GPU', cpu:
 
 // Экран настроек (доступен со стартового окна). Здесь же — API-ключ AssemblyAI.
 export default function SettingsScreen() {
+  const setShowSetup = useUIStore((s) => s.setShowSetup);
   const [apiKey, setApiKey] = useState('');
   const [savedKey, setSavedKey] = useState(false);
   const [gpuMode, setGpuMode] = useState<GpuMode>('auto');
@@ -107,6 +109,19 @@ export default function SettingsScreen() {
           <p style={hint}>
             Авто — использовать видеокарту (NVIDIA/Intel/AMD) при наличии, иначе процессор. GPU ускоряет рендер в разы.
           </p>
+        </div>
+
+        {/* Движки озвучки */}
+        <div style={section}>
+          <label style={label}>Движки озвучки (TTS)</label>
+          <button
+            onClick={() => setShowSetup(true)}
+            className="btn-primary"
+            style={{ padding: '8px 20px', fontSize: 13 }}
+          >
+            Установка / проверка движков
+          </button>
+          <p style={hint}>Проверить наличие Python и скачать движок синтеза речи (XTTS / Silero / Kokoro).</p>
         </div>
 
         {/* Папка сохранения по умолчанию */}

@@ -24,6 +24,9 @@ interface UIState {
   showHistory: boolean;
   toggleHistory: () => void;
   setShowHistory: (value: boolean) => void;
+  // Мастер первичной настройки / установки движков.
+  showSetup: boolean;
+  setShowSetup: (value: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -41,4 +44,6 @@ export const useUIStore = create<UIState>((set) => ({
   showHistory: false,
   toggleHistory: () => set((s) => ({ showHistory: !s.showHistory })),
   setShowHistory: (value) => set({ showHistory: value }),
+  showSetup: false,
+  setShowSetup: (value) => set({ showSetup: value }),
 }));

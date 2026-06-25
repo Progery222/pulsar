@@ -49,6 +49,17 @@ const electronAPI = {
     request: unknown
   ): Promise<{ ok: true; out: string } | { error: string }> => ipcRenderer.invoke('tts:synth', request),
 
+  // Первичная настройка / установка движков.
+  setupStatus: (): Promise<{ pythonOk: boolean; pythonVersion?: string; engines?: Record<string, boolean>; error?: string }> =>
+    ipcRenderer.invoke('setup:status'),
+  setupInstall: (engine: string): Promise<{ ok: true } | { error: string }> =>
+    ipcRenderer.invoke('setup:install', engine),
+  onSetupProgress: (cb: (line: string) => void): (() => void) => {
+    const listener = (_e: unknown, line: string) => cb(line);
+    ipcRenderer.on('setup-progress', listener);
+    return () => ipcRenderer.removeListener('setup-progress', listener);
+  },
+
   // История выполненных задач.
   historyList: (): Promise<unknown[]> => ipcRenderer.invoke('history:list'),
   historyAdd: (entry: unknown): Promise<{ ok: true }> => ipcRenderer.invoke('history:add', entry),
