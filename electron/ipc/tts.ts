@@ -105,6 +105,15 @@ export function registerTtsHandlers() {
     });
   });
 
+  // Короткий пример голоса во временную папку (для предпрослушивания).
+  ipcMain.handle('tts:sample', async (_e, req: Omit<SynthRequest, 'outputDir' | 'outName' | 'attachVideo'>) => {
+    const ext = req.engine === 'edge' ? 'mp3' : 'wav';
+    const out = path.join(os.tmpdir(), `pulsar_sample_${Date.now()}.${ext}`);
+    const r = await runSynth(req.text, out, req.lang, req.engine, req.speed ?? 1, req.speakerWav || '', req.voice || '', req.promptText || '', req.apiUrl || '');
+    if ('error' in r) return r;
+    return { ok: true, out };
+  });
+
   ipcMain.handle('tts:synth', async (_e, req: SynthRequest) => {
     const sep = req.outputDir.includes('\\') ? '\\' : '/';
     const base = req.outName.replace(/\.[^.]+$/, '') || `voice_${Date.now()}`;

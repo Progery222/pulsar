@@ -48,6 +48,9 @@ const electronAPI = {
   ttsSynth: (
     request: unknown
   ): Promise<{ ok: true; out: string } | { error: string }> => ipcRenderer.invoke('tts:synth', request),
+  ttsSample: (
+    request: unknown
+  ): Promise<{ ok: true; out: string } | { error: string }> => ipcRenderer.invoke('tts:sample', request),
 
   // Первичная настройка / установка движков.
   setupStatus: (): Promise<{ pythonOk: boolean; pythonVersion?: string; engines?: Record<string, boolean>; error?: string }> =>

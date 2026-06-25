@@ -49,6 +49,41 @@ export default function TtsApp() {
   const [attachVideo, setAttachVideo] = useState('');
   const [keepOriginal, setKeepOriginal] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [sampling, setSampling] = useState(false);
+
+  // Короткая фраза-пример по языку.
+  const SAMPLE_TEXT: Record<string, string> = {
+    ru: 'Привет! Это пример голоса в Pulsar.',
+    en: 'Hi! This is a voice sample in Pulsar.',
+    es: '¡Hola! Esta es una muestra de voz en Pulsar.',
+    de: 'Hallo! Das ist eine Sprachprobe in Pulsar.',
+    fr: 'Salut ! Ceci est un exemple de voix dans Pulsar.',
+  };
+
+  async function playSample() {
+    if (sampling) return;
+    setSampling(true);
+    try {
+      const r = await window.electronAPI.ttsSample({
+        text: SAMPLE_TEXT[lang] ?? SAMPLE_TEXT.en,
+        lang,
+        engine,
+        speed,
+        voice: engine === 'edge' ? voice || undefined : undefined,
+        speakerWav: speakerWav || undefined,
+        promptText: engine === 'gptsovits' ? promptText || undefined : undefined,
+        apiUrl: engine === 'gptsovits' ? apiUrl || undefined : undefined,
+      });
+      if ('error' in r) {
+        showToast(`Не удалось создать пример: ${r.error}`);
+      } else {
+        const audio = new Audio(`media:///${encodeURIComponent(r.out)}`);
+        audio.play().catch(() => showToast('Не удалось воспроизвести пример'));
+      }
+    } finally {
+      setSampling(false);
+    }
+  }
 
   useEffect(() => {
     window.electronAPI.getSetting('defaultOutputDir').then((d) => {
@@ -161,6 +196,22 @@ export default function TtsApp() {
             </select>
           </div>
         )}
+
+        <div style={{ marginBottom: 16 }}>
+          <button
+            onClick={playSample}
+            disabled={sampling}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', opacity: sampling ? 0.5 : 1 }}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+              <path d="M8 5v14l11-7z" />
+            </svg>
+            {sampling ? 'Генерирую пример…' : 'Прослушать пример'}
+          </button>
+          <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 10 }}>
+            короткая фраза текущим движком и голосом
+          </span>
+        </div>
 
         <div style={{ marginBottom: 16 }}>
           <label style={label}>Скорость: {speed.toFixed(2)}×</label>
