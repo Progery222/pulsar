@@ -94,17 +94,26 @@ function installYtdlp(): Promise<{ ok: true } | { error: string }> {
   });
 }
 
-// Скачивает по ссылке (одно видео или весь аккаунт/плейлист) в outDir.
-// onPercent — суммарный прогресс скачивания 0..100. Возвращает список файлов.
+// Максимум видео при ссылке на аккаунт/плейлист (защита от выкачивания всего профиля).
+const PLAYLIST_LIMIT = 20;
+
+// Скачивает по ссылке (одно видео или аккаунт/плейлист) в outDir.
+// onReport — прогресс текущего файла (0..100) и/или человекочитаемая метка этапа.
+// Возвращает список файлов. «Ленивый» плейлист: качает по мере перечисления (не ждёт весь список).
 function runDownload(
   url: string,
   outDir: string,
-  onPercent: (pct: number) => void
+  onReport: (r: { percent?: number; label?: string }) => void
 ): Promise<{ ok: true; files: string[] } | { error: string }> {
   return new Promise((resolve) => {
     const args = [
       '-m', 'yt_dlp',
       '--yes-playlist',
+      '--lazy-playlist', // начинать загрузку сразу, не перечисляя весь аккаунт
+      '--playlist-end', String(PLAYLIST_LIMIT),
+      '--ignore-errors', // один сбойный ролик не валит всю пачку
+      '--socket-timeout', '30',
+      '--retries', '3',
       '--no-warnings',
       '--newline',
       '-f', 'bv*+ba/b',
@@ -115,13 +124,19 @@ function runDownload(
     if (dir) args.push('--ffmpeg-location', dir);
     args.push(url);
 
+    onReport({ label: 'Получаю список видео…' });
     const child = spawn(pyCmd(), args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
     activeProc.add(child);
     let stderr = '';
     const onOut = (chunk: Buffer) => {
       const s = chunk.toString();
+      // Номер текущего ролика в пачке.
+      const item = [...s.matchAll(/Downloading (?:item|video) (\d+) of (\d+)/gi)].pop();
+      if (item) onReport({ label: `Скачиваю видео ${item[1]} из ${item[2]}…`, percent: 0 });
+      // Процент текущего файла.
       const m = [...s.matchAll(/\[download\]\s+(\d+(?:\.\d+)?)%/g)];
-      if (m.length) onPercent(parseFloat(m[m.length - 1][1]));
+      if (m.length) onReport({ percent: parseFloat(m[m.length - 1][1]) });
+      if (/\[Merger\]|Merging formats/i.test(s)) onReport({ label: 'Склеиваю дорожки…' });
     };
     child.stdout.on('data', onOut);
     child.stderr.on('data', (c: Buffer) => {
@@ -134,16 +149,16 @@ function runDownload(
     });
     child.on('close', (code) => {
       activeProc.delete(child);
-      if (code !== 0) {
-        const tail = stderr.trim().split(/\r?\n/).filter(Boolean).pop() ?? `код ${code}`;
-        resolve({ error: `Ошибка загрузки: ${tail}` });
-        return;
-      }
       const files = fs.existsSync(outDir)
         ? fs.readdirSync(outDir).filter((n) => VIDEO_EXT.test(n)).map((n) => path.join(outDir, n))
         : [];
-      if (!files.length) resolve({ error: 'Видео скачано, но не найдено на диске' });
-      else resolve({ ok: true, files });
+      // С --ignore-errors код может быть ненулевым, но часть файлов скачана — это успех.
+      if (files.length) {
+        resolve({ ok: true, files });
+        return;
+      }
+      const tail = stderr.trim().split(/\r?\n/).filter(Boolean).pop() ?? `код ${code}`;
+      resolve({ error: `Ошибка загрузки: ${tail}` });
     });
   });
 }
@@ -627,8 +642,13 @@ export function registerFunnelHandlers() {
     const dlDir = path.join(app.getPath('downloads'), 'Beatleap', 'funnel', String(Date.now()));
     fs.mkdirSync(dlDir, { recursive: true });
     send(win, { id: 'download', name: 'Скачивание', stage: 'downloading', percent: 0, stageLabel: 'Скачивание видео…' });
-    const dl = await runDownload(req.url.trim(), dlDir, (pct) =>
-      send(win, { id: 'download', stage: 'downloading', percent: Math.round(pct * 0.1) })
+    const dl = await runDownload(req.url.trim(), dlDir, (r) =>
+      send(win, {
+        id: 'download',
+        stage: 'downloading',
+        percent: r.percent != null ? Math.max(2, Math.round(r.percent * 0.1)) : undefined,
+        stageLabel: r.label,
+      })
     );
     if (cancelled) return { ok: true };
     if ('error' in dl) {
