@@ -6,7 +6,16 @@ import ffprobeStatic from 'ffprobe-static';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import dns from 'node:dns';
 import { getOpenRouterKey } from './config';
+
+// Node 18 fetch (undici) без Happy Eyeballs: если DNS возвращает IPv6, а IPv6 не
+// работает — запрос падает с «fetch failed». Принудительно предпочитаем IPv4.
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* noop */
+}
 import { detect } from './cleaner';
 import { runDub } from './dub';
 import { videoEncoderOptions } from './encoder';
