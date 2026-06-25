@@ -144,24 +144,70 @@ function assTime(ms: number): string {
   return `${h}:${p2(m)}:${p2(s)}.${p2(c)}`;
 }
 
-// Сборка .ass с субтитрами-переводом (по одному событию на сегмент).
+// Перенос текста максимум в 2 сбалансированные строки (по словам).
+function twoLineWrap(text: string): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= 1) return text;
+  const total = text.length;
+  let line1 = '';
+  let i = 0;
+  for (; i < words.length; i++) {
+    const cand = line1 ? `${line1} ${words[i]}` : words[i];
+    if (line1 && cand.length > total / 2) break;
+    line1 = cand;
+  }
+  const line2 = words.slice(i).join(' ');
+  return line2 ? `${line1}\\N${line2}` : line1;
+}
+
+// Разбить длинную фразу на части, каждая помещается в 2 строки (≤ maxChars символов).
+function chunkByChars(text: string, maxChars: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const chunks: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    const cand = cur ? `${cur} ${w}` : w;
+    if (cur && cand.length > maxChars) {
+      chunks.push(cur);
+      cur = w;
+    } else {
+      cur = cand;
+    }
+  }
+  if (cur) chunks.push(cur);
+  return chunks.length ? chunks : [text];
+}
+
+// Сборка .ass с субтитрами-переводом: максимум 2 строки, по центру чуть ниже середины.
 function buildSubsAss(segs: Segment[], texts: string[], w: number, h: number): string {
-  const fontSize = Math.round(h * 0.045);
+  const fontSize = Math.round(h * 0.042);
+  const charsPerLine = Math.max(12, Math.floor(w / (fontSize * 0.55)));
+  const maxChars = charsPerLine * 2; // максимум на 2 строки
+  const posX = Math.round(w / 2);
+  const posY = Math.round(h * 0.58); // чуть ниже центра кадра
   const head =
-    `[Script Info]\nScriptType: v4.00+\nPlayResX: ${w}\nPlayResY: ${h}\nWrapStyle: 0\n\n` +
+    `[Script Info]\nScriptType: v4.00+\nPlayResX: ${w}\nPlayResY: ${h}\nWrapStyle: 2\n\n` +
     `[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n` +
-    `Style: Def,Montserrat,${fontSize},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,60,60,${Math.round(h * 0.06)},1\n\n` +
+    `Style: Def,Montserrat,${fontSize},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,5,40,40,40,1\n\n` +
     `[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
-  const lines = segs
-    .map((s, i) => {
-      const t = (texts[i] || '').trim().replace(/[{}]/g, '').replace(/\r?\n/g, '\\N');
-      if (!t) return '';
-      return `Dialogue: 0,${assTime(s.start)},${assTime(s.end)},Def,,0,0,0,,${t}`;
-    })
-    .filter(Boolean)
-    .join('\n');
+  const events: string[] = [];
+  segs.forEach((s, i) => {
+    const raw = (texts[i] || '').trim().replace(/[{}]/g, '').replace(/\r?\n/g, ' ');
+    if (!raw) return;
+    const chunks = chunkByChars(raw, maxChars);
+    const dur = Math.max(1, s.end - s.start);
+    const totalLen = chunks.reduce((a, c) => a + c.length, 0) || 1;
+    let acc = s.start;
+    chunks.forEach((c) => {
+      const cd = Math.max(300, Math.round(dur * (c.length / totalLen)));
+      const st = acc;
+      const en = Math.min(s.end, acc + cd);
+      acc = en;
+      events.push(`Dialogue: 0,${assTime(st)},${assTime(en)},Def,,0,0,0,,{\\an5\\pos(${posX},${posY})}${twoLineWrap(c)}`);
+    });
+  });
   const file = path.join(os.tmpdir(), `pulsar_dubsub_${Date.now()}.ass`);
-  fs.writeFileSync(file, head + lines, 'utf-8');
+  fs.writeFileSync(file, head + events.join('\n'), 'utf-8');
   return file;
 }
 
