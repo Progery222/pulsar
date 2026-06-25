@@ -25,6 +25,7 @@ interface DubRequest {
   keepOriginal: boolean;
   originalVolume: number; // 0..1
   syncTiming?: boolean; // подгонять длину фраз под исходные тайминги
+  burnSubs?: boolean; // выжечь субтитры с переводом
   outputDir: string;
 }
 
@@ -98,6 +99,55 @@ function probeDuration(file: string): Promise<number> {
   });
 }
 
+function probeSize(file: string): Promise<{ w: number; h: number }> {
+  return new Promise((resolve) => {
+    ffmpeg.ffprobe(file, (e, d) => {
+      const v = d?.streams?.find((s) => s.codec_type === 'video');
+      resolve({ w: v?.width ?? 1080, h: v?.height ?? 1920 });
+    });
+  });
+}
+
+function fontsDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', 'fonts')
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'assets', 'fonts');
+}
+function escFilterPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/:/g, '\\:');
+}
+
+function assTime(ms: number): string {
+  const cs = Math.max(0, Math.round(ms / 10));
+  const h = Math.floor(cs / 360000);
+  const m = Math.floor((cs % 360000) / 6000);
+  const s = Math.floor((cs % 6000) / 100);
+  const c = cs % 100;
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `${h}:${p2(m)}:${p2(s)}.${p2(c)}`;
+}
+
+// Сборка .ass с субтитрами-переводом (по одному событию на сегмент).
+function buildSubsAss(segs: Segment[], texts: string[], w: number, h: number): string {
+  const fontSize = Math.round(h * 0.045);
+  const head =
+    `[Script Info]\nScriptType: v4.00+\nPlayResX: ${w}\nPlayResY: ${h}\nWrapStyle: 0\n\n` +
+    `[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\n` +
+    `Style: Def,Montserrat,${fontSize},&H00FFFFFF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,3,1,2,60,60,${Math.round(h * 0.06)},1\n\n` +
+    `[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
+  const lines = segs
+    .map((s, i) => {
+      const t = (texts[i] || '').trim().replace(/[{}]/g, '').replace(/\r?\n/g, '\\N');
+      if (!t) return '';
+      return `Dialogue: 0,${assTime(s.start)},${assTime(s.end)},Def,,0,0,0,,${t}`;
+    })
+    .filter(Boolean)
+    .join('\n');
+  const file = path.join(os.tmpdir(), `pulsar_dubsub_${Date.now()}.ass`);
+  fs.writeFileSync(file, head + lines, 'utf-8');
+  return file;
+}
+
 // Цепочка atempo для ускорения в factor раз (atempo поддерживает 0.5..2.0 — чейним).
 function atempoChain(factor: number): string {
   let f = Math.min(4, Math.max(1, factor));
@@ -117,7 +167,7 @@ interface DubClip {
 }
 
 // Собрать дублированную дорожку: синхронизация длины (atempo) + расстановка по start (adelay) + amix.
-async function buildDub(video: string, clips: DubClip[], out: string, keepOriginal: boolean, origVol: number, syncTiming: boolean): Promise<{ ok: true } | { error: string }> {
+async function buildDub(video: string, clips: DubClip[], out: string, keepOriginal: boolean, origVol: number, syncTiming: boolean, assPath: string | null): Promise<{ ok: true } | { error: string }> {
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 });
 
   // Подгонка: если озвучка длиннее слота — ускоряем, чтобы не наезжала на следующую фразу.
@@ -151,9 +201,16 @@ async function buildDub(video: string, clips: DubClip[], out: string, keepOrigin
       filters.push(`${labels.join('')}amix=inputs=${labels.length}:normalize=0[aout]`);
     }
 
+    // Выжигание субтитров (видеофильтр ass) при наличии.
+    let videoMap = '0:v:0';
+    if (assPath) {
+      filters.push(`[0:v]ass='${escFilterPath(assPath)}':fontsdir='${escFilterPath(fontsDir())}'[v]`);
+      videoMap = '[v]';
+    }
+
     cmd
       .complexFilter(filters)
-      .outputOptions('-map', '0:v:0', '-map', '[aout]')
+      .outputOptions('-map', videoMap, '-map', '[aout]')
       .outputOptions(venc)
       .outputOptions('-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart')
       .output(out)
@@ -193,11 +250,19 @@ export function registerDubHandlers() {
       }
       if (!clips.length) return { error: 'Не удалось озвучить ни одного сегмента.' };
 
+      // Субтитры с переводом (опц.).
+      let assPath: string | null = null;
+      if (req.burnSubs) {
+        const { w, h } = await probeSize(req.videoPath);
+        assPath = buildSubsAss(segs, translated, w, h);
+      }
+
       progress('Склейка с видео…', 90);
       const sep = req.outputDir.includes('\\') ? '\\' : '/';
       const baseName = (req.videoPath.split(/[\\/]/).pop() || 'video').replace(/\.[^.]+$/, '');
       const out = `${req.outputDir}${sep}${baseName}_dub_${req.targetLang}.mp4`;
-      const m = await buildDub(req.videoPath, clips, out, req.keepOriginal, req.originalVolume, req.syncTiming !== false);
+      const m = await buildDub(req.videoPath, clips, out, req.keepOriginal, req.originalVolume, req.syncTiming !== false, assPath);
+      if (assPath) fs.promises.unlink(assPath).catch(() => {});
       if ('error' in m) return m;
 
       progress('Готово', 100);

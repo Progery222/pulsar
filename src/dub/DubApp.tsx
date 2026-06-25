@@ -35,6 +35,7 @@ export default function DubApp() {
   const [voice, setVoice] = useState('');
   const [keepOriginal, setKeepOriginal] = useState(true);
   const [syncTiming, setSyncTiming] = useState(true);
+  const [burnSubs, setBurnSubs] = useState(false);
   const [outputDir, setOutputDir] = useState('');
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState('');
@@ -75,6 +76,7 @@ export default function DubApp() {
         keepOriginal,
         originalVolume: 0.12,
         syncTiming,
+        burnSubs,
         outputDir,
       });
       if ('error' in r) {
@@ -161,9 +163,13 @@ export default function DubApp() {
           <input type="checkbox" checked={keepOriginal} onChange={(e) => setKeepOriginal(e.target.checked)} />
           Оставить оригинальный звук приглушённо (эффект закадрового перевода)
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
           <input type="checkbox" checked={syncTiming} onChange={(e) => setSyncTiming(e.target.checked)} />
           Синхронизация: подгонять длину фраз под исходные тайминги
+        </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+          <input type="checkbox" checked={burnSubs} onChange={(e) => setBurnSubs(e.target.checked)} />
+          Выжечь субтитры с переводом (видны в любом плеере и соцсетях)
         </label>
 
         <div style={{ marginBottom: 20 }}>
