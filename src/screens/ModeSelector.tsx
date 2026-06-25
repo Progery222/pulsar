@@ -139,6 +139,22 @@ export default function ModeSelector() {
             </svg>
           }
         />
+        <ModeCard
+          index={4}
+          title="Дубляж (AI)"
+          description="Перевод и озвучка видео на другой язык по таймингам"
+          onClick={() => setAppMode('dub')}
+          icon={
+            <svg {...I(30)}>
+              <path d="M5 8l6 6" />
+              <path d="M4 14l6-6 2-3" />
+              <path d="M2 5h12" />
+              <path d="M7 2h1" />
+              <path d="M22 22l-5-10-5 10" />
+              <path d="M14 18h6" />
+            </svg>
+          }
+        />
       </div>
 
       {/* Вспомогательные разделы: очередь и история — мини-окна; настройки — экран. */}

@@ -52,6 +52,15 @@ const electronAPI = {
     request: unknown
   ): Promise<{ ok: true; out: string } | { error: string }> => ipcRenderer.invoke('tts:sample', request),
 
+  // Дубляж видео.
+  dubRun: (request: unknown): Promise<{ ok: true; out: string } | { error: string }> =>
+    ipcRenderer.invoke('dub:run', request),
+  onDubProgress: (cb: (e: { stage: string; percent: number }) => void): (() => void) => {
+    const listener = (_e: unknown, ev: { stage: string; percent: number }) => cb(ev);
+    ipcRenderer.on('dub-progress', listener);
+    return () => ipcRenderer.removeListener('dub-progress', listener);
+  },
+
   // Первичная настройка / установка движков.
   setupStatus: (): Promise<{ pythonOk: boolean; pythonVersion?: string; engines?: Record<string, boolean>; error?: string }> =>
     ipcRenderer.invoke('setup:status'),

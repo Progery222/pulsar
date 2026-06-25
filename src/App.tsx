@@ -16,6 +16,7 @@ import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
 import TtsApp from './tts/TtsApp';
+import DubApp from './dub/DubApp';
 import SettingsScreen from './screens/SettingsScreen';
 import TopBar from './components/TopBar';
 import Overlays from './components/Overlays';
@@ -165,6 +166,19 @@ function App() {
       <>
         <div className="screen-fade">
           <TtsApp />
+        </div>
+        <TopBar />
+        <Overlays />
+      </>
+    );
+  }
+
+  // Дубляж.
+  if (appMode === 'dub') {
+    return (
+      <>
+        <div className="screen-fade">
+          <DubApp />
         </div>
         <TopBar />
         <Overlays />
