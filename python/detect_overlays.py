@@ -101,7 +101,15 @@ def merge_lines(boxes, W, frame_count):
                 vo = min(it[3], o[3]) - max(it[1], o[1])
                 minh = max(1.0, min(it[3] - it[1], o[3] - o[1]))
                 gap = max(it[0], o[0]) - min(it[2], o[2])
-                if vo > 0.4 * minh and gap < 0.28 * W:
+                # 1) одна строка: вертикальное перекрытие + малый горизонтальный зазор
+                same_line = vo > 0.4 * minh and gap < 0.28 * W
+                # 2) один блок: горизонтальное перекрытие + малый вертикальный зазор
+                #    (многострочный субтитр и «дрожание» текста по кадрам → одна зона)
+                ho = min(it[2], o[2]) - max(it[0], o[0])
+                minw = max(1.0, min(it[2] - it[0], o[2] - o[0]))
+                vgap = max(it[1], o[1]) - min(it[3], o[3])
+                stacked = ho > 0.3 * minw and vgap < 0.9 * minh
+                if same_line or stacked:
                     o[0] = min(o[0], it[0]); o[1] = min(o[1], it[1])
                     o[2] = max(o[2], it[2]); o[3] = max(o[3], it[3])
                     o[4] |= it[4]
