@@ -12,6 +12,7 @@ const ENGINE_INFO: { id: string; name: string; note: string }[] = [
   { id: 'edge', name: 'Edge TTS (озвучка)', note: 'Живые нейроголоса, бесплатно, без ключа, много языков' },
   { id: 'translate', name: 'Перевод', note: 'Перевод текста для дубляжа и субтитров (deep-translator, бесплатно)' },
   { id: 'download', name: 'Загрузка по ссылке', note: 'Скачивание видео из TikTok/YouTube/Instagram (yt-dlp)' },
+  { id: 'gemini', name: 'AI-классификация (Воронка)', note: 'Мультимодальный анализ видео через Gemini (google-generativeai)' },
 ];
 
 // Полоса прогресса: определённая (percent) или «бегущая» (indeterminate).

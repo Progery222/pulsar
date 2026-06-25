@@ -4,7 +4,7 @@ export type Tab = 'tools' | 'edit' | 'filters';
 
 // Режим приложения: стартовый экран выбора / редактор (Монтаж) / VUB (Уникализатор) /
 // cleaner / tts (Озвучка) / dub (Дубляж) / settings. История и Очередь — плавающие мини-окна.
-export type AppMode = 'select' | 'editor' | 'vub' | 'cleaner' | 'tts' | 'dub' | 'settings';
+export type AppMode = 'select' | 'editor' | 'vub' | 'cleaner' | 'tts' | 'dub' | 'funnel' | 'settings';
 
 // UI-состояние редактора (вкладка, модалка экспорта, play/pause-колбэк),
 // отдельно от ProjectState (§15).

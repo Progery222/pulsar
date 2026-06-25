@@ -70,12 +70,26 @@ export function getAssemblyKey(): string {
   return decode(readRaw().assemblyai);
 }
 
+// API-ключ Gemini (модуль «Воронка») — шифруется так же, как ключ AssemblyAI.
+export function getGeminiKey(): string {
+  return decode(readRaw().gemini);
+}
+
 export function registerConfigHandlers() {
   ipcMain.handle('vub:getKey', () => getAssemblyKey());
   ipcMain.handle('vub:setKey', (_e, key: string) => {
     const data = readRaw();
     if (key) data.assemblyai = encode(key);
     else delete data.assemblyai;
+    writeRaw(data);
+    return { ok: true };
+  });
+  // Ключ Gemini для модуля «Воронка».
+  ipcMain.handle('funnel:getKey', () => getGeminiKey());
+  ipcMain.handle('funnel:setKey', (_e, key: string) => {
+    const data = readRaw();
+    if (key) data.gemini = encode(key);
+    else delete data.gemini;
     writeRaw(data);
     return { ok: true };
   });

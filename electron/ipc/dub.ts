@@ -17,7 +17,7 @@ if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
 const ffprobePath = ffprobeStatic.path?.replace('app.asar', 'app.asar.unpacked');
 if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
 
-interface DubRequest {
+export interface DubRequest {
   videoPath: string;
   sourceLang: string; // 'auto' | 'ru' | ...
   targetLang: string;
@@ -220,57 +220,65 @@ async function buildDub(video: string, clips: DubClip[], out: string, keepOrigin
   });
 }
 
-export function registerDubHandlers() {
-  ipcMain.handle('dub:run', async (_e, req: DubRequest) => {
-    const key = getAssemblyKey();
-    if (!key) return { error: 'Не задан ключ AssemblyAI (Настройки). Он нужен для распознавания речи.' };
+// Полный конвейер дубляжа одного ролика. Вынесен в отдельную функцию, чтобы его
+// мог переиспользовать модуль «Воронка» (Funnel) без дублирования логики.
+// onProgress — опциональный колбэк (по умолчанию шлёт событие 'dub-progress' в renderer).
+export async function runDub(
+  req: DubRequest,
+  onProgress: (stage: string, percent: number) => void = progress
+): Promise<{ ok: true; out: string } | { error: string }> {
+  const key = getAssemblyKey();
+  if (!key) return { error: 'Не задан ключ AssemblyAI (Настройки). Он нужен для распознавания речи.' };
 
-    const tmpClips: string[] = [];
-    try {
-      progress('Распознавание речи…', 5);
-      const words = await transcribe(req.videoPath, key, req.sourceLang);
-      if (!words.length) return { error: 'Речь не распознана (нет голоса или только музыка).' };
+  const tmpClips: string[] = [];
+  try {
+    onProgress('Распознавание речи…', 5);
+    const words = await transcribe(req.videoPath, key, req.sourceLang);
+    if (!words.length) return { error: 'Речь не распознана (нет голоса или только музыка).' };
 
-      const segs = groupSegments(words);
-      progress('Перевод…', 25);
-      const translated = await translateBatch(segs.map((s) => s.text), req.sourceLang, req.targetLang);
-      if ('error' in translated) return translated;
+    const segs = groupSegments(words);
+    onProgress('Перевод…', 25);
+    const translated = await translateBatch(segs.map((s) => s.text), req.sourceLang, req.targetLang);
+    if ('error' in translated) return translated;
 
-      // Озвучка каждого сегмента переведённым текстом.
-      const clips: DubClip[] = [];
-      for (let i = 0; i < segs.length; i++) {
-        const txt = (translated[i] || '').trim();
-        if (!txt) continue;
-        const f = path.join(os.tmpdir(), `pulsar_dub_${Date.now()}_${i}.mp3`);
-        const r = await runSynth(txt, f, req.targetLang, 'edge', 1, req.voice || '');
-        if ('error' in r) return r;
-        tmpClips.push(f);
-        clips.push({ file: f, startMs: segs[i].start, targetMs: segs[i].end - segs[i].start });
-        progress(`Озвучка ${i + 1}/${segs.length}…`, 30 + Math.round((i / segs.length) * 55));
-      }
-      if (!clips.length) return { error: 'Не удалось озвучить ни одного сегмента.' };
-
-      // Субтитры с переводом (опц.).
-      let assPath: string | null = null;
-      if (req.burnSubs) {
-        const { w, h } = await probeSize(req.videoPath);
-        assPath = buildSubsAss(segs, translated, w, h);
-      }
-
-      progress('Склейка с видео…', 90);
-      const sep = req.outputDir.includes('\\') ? '\\' : '/';
-      const baseName = (req.videoPath.split(/[\\/]/).pop() || 'video').replace(/\.[^.]+$/, '');
-      const out = `${req.outputDir}${sep}${baseName}_dub_${req.targetLang}.mp4`;
-      const m = await buildDub(req.videoPath, clips, out, req.keepOriginal, req.originalVolume, req.syncTiming !== false, assPath);
-      if (assPath) fs.promises.unlink(assPath).catch(() => {});
-      if ('error' in m) return m;
-
-      progress('Готово', 100);
-      return { ok: true, out };
-    } catch (e) {
-      return { error: e instanceof Error ? e.message : String(e) };
-    } finally {
-      for (const f of tmpClips) fs.promises.unlink(f).catch(() => {});
+    // Озвучка каждого сегмента переведённым текстом.
+    const clips: DubClip[] = [];
+    for (let i = 0; i < segs.length; i++) {
+      const txt = (translated[i] || '').trim();
+      if (!txt) continue;
+      const f = path.join(os.tmpdir(), `pulsar_dub_${Date.now()}_${i}.mp3`);
+      const r = await runSynth(txt, f, req.targetLang, 'edge', 1, req.voice || '');
+      if ('error' in r) return r;
+      tmpClips.push(f);
+      clips.push({ file: f, startMs: segs[i].start, targetMs: segs[i].end - segs[i].start });
+      onProgress(`Озвучка ${i + 1}/${segs.length}…`, 30 + Math.round((i / segs.length) * 55));
     }
-  });
+    if (!clips.length) return { error: 'Не удалось озвучить ни одного сегмента.' };
+
+    // Субтитры с переводом (опц.).
+    let assPath: string | null = null;
+    if (req.burnSubs) {
+      const { w, h } = await probeSize(req.videoPath);
+      assPath = buildSubsAss(segs, translated, w, h);
+    }
+
+    onProgress('Склейка с видео…', 90);
+    const sep = req.outputDir.includes('\\') ? '\\' : '/';
+    const baseName = (req.videoPath.split(/[\\/]/).pop() || 'video').replace(/\.[^.]+$/, '');
+    const out = `${req.outputDir}${sep}${baseName}_dub_${req.targetLang}.mp4`;
+    const m = await buildDub(req.videoPath, clips, out, req.keepOriginal, req.originalVolume, req.syncTiming !== false, assPath);
+    if (assPath) fs.promises.unlink(assPath).catch(() => {});
+    if ('error' in m) return m;
+
+    onProgress('Готово', 100);
+    return { ok: true, out };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    for (const f of tmpClips) fs.promises.unlink(f).catch(() => {});
+  }
+}
+
+export function registerDubHandlers() {
+  ipcMain.handle('dub:run', async (_e, req: DubRequest) => runDub(req));
 }

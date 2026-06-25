@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { BeatData } from '../src/types';
 import type { VubProcessRequest, VubProgressEvent } from '../src/vub/types';
+import type { FunnelStartRequest, FunnelProgressEvent } from '../src/funnel/types';
 
 // IPC bridge между renderer и main процессами (contextBridge).
 const electronAPI = {
@@ -118,6 +119,18 @@ const electronAPI = {
     const listener = (_e: unknown, ev: { stage?: string; percent?: number; line?: string }) => cb(ev);
     ipcRenderer.on('download-progress', listener);
     return () => ipcRenderer.removeListener('download-progress', listener);
+  },
+
+  // --- Модуль «Воронка» (Funnel) ---
+  getGeminiKey: (): Promise<string> => ipcRenderer.invoke('funnel:getKey'),
+  setGeminiKey: (key: string): Promise<{ ok: true }> => ipcRenderer.invoke('funnel:setKey', key),
+  funnelStart: (request: FunnelStartRequest): Promise<{ ok: true } | { error: string }> =>
+    ipcRenderer.invoke('funnel:start', request),
+  funnelCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('funnel:cancel'),
+  onFunnelProgress: (cb: (e: FunnelProgressEvent) => void): (() => void) => {
+    const listener = (_e: unknown, ev: FunnelProgressEvent) => cb(ev);
+    ipcRenderer.on('funnel-progress', listener);
+    return () => ipcRenderer.removeListener('funnel-progress', listener);
   },
 
   // --- Режим «Замена титров» ---

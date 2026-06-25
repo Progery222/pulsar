@@ -17,7 +17,7 @@ if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
 const ffprobePath = ffprobeStatic.path?.replace('app.asar', 'app.asar.unpacked');
 if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
 
-interface Box {
+export interface Box {
   x: number;
   y: number;
   w: number;
@@ -25,7 +25,7 @@ interface Box {
   kind?: string;
   conf?: number;
 }
-interface DetectResult {
+export interface DetectResult {
   width: number;
   height: number;
   duration: number;
@@ -121,7 +121,8 @@ function runPy(cmd: string, pre: string[], args: string[]): Promise<{ out: strin
 }
 
 // Запуск Python-детектора (перебор интерпретаторов), парсинг JSON.
-async function detect(videoPath: string, req: Pick<CleanerRequest, 'detectTitles' | 'detectWatermarks' | 'dynamicTextOnly'>): Promise<DetectResult> {
+// Экспортируется для переиспользования в модуле «Воронка» (детект субтитров/плашек).
+export async function detect(videoPath: string, req: Pick<CleanerRequest, 'detectTitles' | 'detectWatermarks' | 'dynamicTextOnly'>): Promise<DetectResult> {
   const args = [
     pythonScript(),
     videoPath,

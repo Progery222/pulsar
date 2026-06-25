@@ -11,11 +11,14 @@ export default function SettingsScreen() {
   const setShowSetup = useUIStore((s) => s.setShowSetup);
   const [apiKey, setApiKey] = useState('');
   const [savedKey, setSavedKey] = useState(false);
+  const [geminiKey, setGeminiKey] = useState('');
+  const [savedGemini, setSavedGemini] = useState(false);
   const [gpuMode, setGpuMode] = useState<GpuMode>('auto');
   const [outputDir, setOutputDir] = useState<string>('');
 
   useEffect(() => {
     window.electronAPI.getVubApiKey().then((k) => setApiKey(k || ''));
+    window.electronAPI.getGeminiKey().then((k) => setGeminiKey(k || ''));
     window.electronAPI.getGpuMode().then(setGpuMode);
     window.electronAPI.getSetting('defaultOutputDir').then((d) => setOutputDir((d as string) || ''));
   }, []);
@@ -24,6 +27,12 @@ export default function SettingsScreen() {
     await window.electronAPI.setVubApiKey(apiKey.trim());
     setSavedKey(true);
     setTimeout(() => setSavedKey(false), 1500);
+  }
+
+  async function saveGemini() {
+    await window.electronAPI.setGeminiKey(geminiKey.trim());
+    setSavedGemini(true);
+    setTimeout(() => setSavedGemini(false), 1500);
   }
 
   function changeGpu(m: GpuMode) {
@@ -78,6 +87,28 @@ export default function SettingsScreen() {
           </div>
           <p style={hint}>
             Нужен для распознавания речи и автоматических субтитров в режимах «Уникализатор» и «Замена титров».
+            Ключ шифруется и хранится только на этом компьютере.
+          </p>
+        </div>
+
+        {/* API-ключ Gemini (AI-классификация в модуле «Воронка») */}
+        <div style={section}>
+          <label style={label}>Ключ API Gemini</label>
+          <input
+            type="password"
+            value={geminiKey}
+            onChange={(e) => setGeminiKey(e.target.value)}
+            placeholder="Вставьте ключ для модуля «Воронка»"
+            style={input}
+          />
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10 }}>
+            <button onClick={saveGemini} className="btn-primary" style={{ padding: '8px 20px', fontSize: 13 }}>
+              Сохранить ключ
+            </button>
+            {savedGemini && <span style={{ fontSize: 13, color: 'var(--accent-green)' }}>Сохранено ✓</span>}
+          </div>
+          <p style={hint}>
+            Нужен для AI-классификации видео в модуле «Воронка» (Gemini Flash, мультимодальный анализ).
             Ключ шифруется и хранится только на этом компьютере.
           </p>
         </div>

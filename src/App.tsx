@@ -17,6 +17,7 @@ import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
 import TtsApp from './tts/TtsApp';
 import DubApp from './dub/DubApp';
+import FunnelApp from './funnel/FunnelApp';
 import SettingsScreen from './screens/SettingsScreen';
 import TopBar from './components/TopBar';
 import Overlays from './components/Overlays';
@@ -178,6 +179,19 @@ function App() {
       <>
         <div className="screen-fade">
           <DubApp />
+        </div>
+        <TopBar />
+        <Overlays />
+      </>
+    );
+  }
+
+  // Модуль «Воронка» (Funnel) — авто-обработка видео с AI-классификацией.
+  if (appMode === 'funnel') {
+    return (
+      <>
+        <div className="screen-fade">
+          <FunnelApp />
         </div>
         <TopBar />
         <Overlays />
