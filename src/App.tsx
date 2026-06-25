@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useProjectStore } from './store/projectStore';
 import { useUIStore, type Tab } from './store/uiStore';
 import { useQueueStore, type JobStatus } from './store/queueStore';
@@ -19,6 +19,7 @@ import TtsApp from './tts/TtsApp';
 import SettingsScreen from './screens/SettingsScreen';
 import TopBar from './components/TopBar';
 import Overlays from './components/Overlays';
+import IntroOverlay, { introAlreadyPlayed } from './components/IntroOverlay';
 
 // Ctrl+O: добавление медиафайлов через диалог.
 async function addMediaViaDialog() {
@@ -40,6 +41,7 @@ async function addMediaViaDialog() {
 function App() {
   const currentScreen = useProjectStore((state) => state.currentScreen);
   const appMode = useUIStore((state) => state.appMode);
+  const [showIntro, setShowIntro] = useState(!introAlreadyPlayed());
 
   // Горячие клавиши (§13).
   useEffect(() => {
@@ -119,9 +121,13 @@ function App() {
   if (appMode === 'select') {
     return (
       <>
-        <div className="screen-fade">
-          <ModeSelector />
-        </div>
+        {showIntro ? (
+          <IntroOverlay onDone={() => setShowIntro(false)} />
+        ) : (
+          <div className="screen-fade">
+            <ModeSelector />
+          </div>
+        )}
         <Overlays />
       </>
     );
