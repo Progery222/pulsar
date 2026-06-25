@@ -561,6 +561,7 @@ async function processBranchLang(
         originalVolume: 0.12,
         syncTiming: true,
         burnSubs,
+        asr: req.asr || 'whisper', // воронка по умолчанию использует офлайн-Whisper
         outputDir: os.tmpdir(),
       },
       () => {}

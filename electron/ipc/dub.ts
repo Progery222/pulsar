@@ -6,7 +6,7 @@ import ffprobeStatic from 'ffprobe-static';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { transcribe } from './transcribe';
+import { transcribe, transcribeWhisper } from './transcribe';
 import { getAssemblyKey } from './config';
 import { runSynth } from './tts';
 import { videoEncoderOptions } from './encoder';
@@ -26,7 +26,24 @@ export interface DubRequest {
   originalVolume: number; // 0..1
   syncTiming?: boolean; // подгонять длину фраз под исходные тайминги
   burnSubs?: boolean; // выжечь субтитры с переводом
+  asr?: 'assemblyai' | 'whisper'; // движок распознавания речи
   outputDir: string;
+}
+
+// Выбор движка распознавания: Whisper (офлайн) либо AssemblyAI (облако) с
+// авто-фолбэком на Whisper, если облако недоступно или ключ не задан.
+async function asrWords(videoPath: string, sourceLang: string, asr?: 'assemblyai' | 'whisper'): Promise<TranscriptWord[]> {
+  if (asr !== 'whisper') {
+    const key = getAssemblyKey();
+    if (key) {
+      try {
+        return await transcribe(videoPath, key, sourceLang);
+      } catch (e) {
+        console.warn('[dub] AssemblyAI недоступен, фолбэк на Whisper:', e instanceof Error ? e.message : e);
+      }
+    }
+  }
+  return await transcribeWhisper(videoPath, sourceLang);
 }
 
 interface Segment {
@@ -227,13 +244,10 @@ export async function runDub(
   req: DubRequest,
   onProgress: (stage: string, percent: number) => void = progress
 ): Promise<{ ok: true; out: string } | { error: string }> {
-  const key = getAssemblyKey();
-  if (!key) return { error: 'Не задан ключ AssemblyAI (Настройки). Он нужен для распознавания речи.' };
-
   const tmpClips: string[] = [];
   try {
     onProgress('Распознавание речи…', 5);
-    const words = await transcribe(req.videoPath, key, req.sourceLang);
+    const words = await asrWords(req.videoPath, req.sourceLang, req.asr);
     if (!words.length) return { error: 'Речь не распознана (нет голоса или только музыка).' };
 
     const segs = groupSegments(words);

@@ -30,6 +30,7 @@ export interface FunnelStartRequest {
   uniqueize: boolean; // применять лёгкую уникализацию к результату
   outputDir: string;
   model?: string; // slug модели OpenRouter для классификации
+  asr?: 'assemblyai' | 'whisper'; // движок распознавания речи для дубляжа
 }
 
 // Задача воронки в очереди (одно скачанное видео).

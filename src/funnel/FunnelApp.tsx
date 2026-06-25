@@ -69,8 +69,9 @@ export default function FunnelApp() {
     // Сохраняем выбор языков по умолчанию для будущих запусков.
     window.electronAPI.setSetting('funnel_default_target_languages', targetLanguages);
     const model = ((await window.electronAPI.getSetting('funnel_model')) as string) || 'google/gemini-3.5-flash';
+    const asr = (((await window.electronAPI.getSetting('asr_provider')) as 'assemblyai' | 'whisper') || 'whisper');
     try {
-      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, outputDir, model });
+      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, outputDir, model, asr });
       if ('error' in r) {
         showToast(`Ошибка: ${r.error}`);
       } else {

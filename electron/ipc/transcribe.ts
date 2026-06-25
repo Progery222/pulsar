@@ -1,3 +1,5 @@
+import { app } from 'electron';
+import { spawn } from 'node:child_process';
 import ffmpeg from 'fluent-ffmpeg';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -76,6 +78,45 @@ export async function transcribe(
       await sleep(3000);
     }
     throw new Error('transcription timeout');
+  } finally {
+    fs.promises.unlink(wav).catch(() => {});
+  }
+}
+
+// ── Офлайн-распознавание через faster-whisper (whisper_asr.py) ────────────────
+// Альтернатива AssemblyAI, когда облако недоступно (блокировка/нет интернета).
+function pyCmd(): string {
+  return process.platform === 'win32' ? 'python' : 'python3';
+}
+function whisperScript(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'python', 'whisper_asr.py')
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', 'whisper_asr.py');
+}
+
+export async function transcribeWhisper(videoPath: string, language: string, model = 'small'): Promise<TranscriptWord[]> {
+  const wav = await extractAudio(videoPath);
+  try {
+    return await new Promise<TranscriptWord[]>((resolve, reject) => {
+      const args = [whisperScript(), wav, '--language', language || 'auto', '--model', model];
+      // Модель Whisper качается с HuggingFace; в заблокированных сетях — через зеркало.
+      const env = { ...process.env, HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com' };
+      const child = spawn(pyCmd(), args, { env });
+      let out = '';
+      let err = '';
+      child.stdout.on('data', (c) => (out += c.toString()));
+      child.stderr.on('data', (c) => (err += c.toString()));
+      child.on('error', (e) => reject(e));
+      child.on('close', () => {
+        try {
+          const r = JSON.parse(out.trim());
+          if (r.ok) resolve((r.words ?? []) as TranscriptWord[]);
+          else reject(new Error(r.error || 'Ошибка Whisper'));
+        } catch {
+          reject(new Error(err.trim() || 'whisper_asr.py недоступен'));
+        }
+      });
+    });
   } finally {
     fs.promises.unlink(wav).catch(() => {});
   }
