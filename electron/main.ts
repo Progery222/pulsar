@@ -12,6 +12,7 @@ import { registerStoreHandlers } from './ipc/store';
 import { registerTtsHandlers } from './ipc/tts';
 import { registerSetupHandlers } from './ipc/setup';
 import { registerDubHandlers } from './ipc/dub';
+import { registerDownloadHandlers } from './ipc/download';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -142,6 +143,7 @@ app.whenReady().then(() => {
   registerTtsHandlers();
   registerSetupHandlers();
   registerDubHandlers();
+  registerDownloadHandlers();
   createWindow();
 });
 

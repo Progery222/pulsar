@@ -105,6 +105,17 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('vub-progress', listener);
   },
 
+  // Скачивание видео по ссылке (TikTok, YouTube, Instagram, …).
+  downloadVideo: (url: string): Promise<{ ok: true; path: string } | { error: string }> =>
+    ipcRenderer.invoke('download:url', url),
+  onDownloadProgress: (
+    cb: (e: { stage?: string; percent?: number; line?: string }) => void
+  ): (() => void) => {
+    const listener = (_e: unknown, ev: { stage?: string; percent?: number; line?: string }) => cb(ev);
+    ipcRenderer.on('download-progress', listener);
+    return () => ipcRenderer.removeListener('download-progress', listener);
+  },
+
   // --- Режим «Замена титров» ---
   processCleaner: (request: unknown): Promise<{ ok: true }> =>
     ipcRenderer.invoke('cleaner:process', request),
