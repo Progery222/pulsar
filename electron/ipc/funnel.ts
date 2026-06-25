@@ -288,29 +288,43 @@ async function analyze(
       content.push({ type: 'text', text: 'Аудиодорожка отсутствует — считай has_voice=false.' });
     }
 
-    const controller = new AbortController();
-    activeAborts.add(controller);
-    let resp: Response;
-    try {
-      resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          'Content-Type': 'application/json',
-          'HTTP-Referer': 'https://beatleap.local',
-          'X-Title': 'Beatleap Atom Funnel',
-        },
-        body: JSON.stringify({
-          model,
-          messages: [{ role: 'user', content }],
-          response_format: { type: 'json_object' },
-          temperature: 0.1,
-        }),
-        signal: controller.signal,
-      });
-    } finally {
-      activeAborts.delete(controller);
+    const body = JSON.stringify({
+      model,
+      messages: [{ role: 'user', content }],
+      response_format: { type: 'json_object' },
+      temperature: 0.1,
+    });
+
+    // Запрос к OpenRouter с одной повторной попыткой при сетевом сбое.
+    let resp: Response | null = null;
+    let netErr = '';
+    for (let attempt = 0; attempt < 2; attempt++) {
+      if (cancelled) return { error: 'отменено' };
+      const controller = new AbortController();
+      activeAborts.add(controller);
+      try {
+        resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            'Content-Type': 'application/json',
+            'HTTP-Referer': 'https://beatleap.local',
+            'X-Title': 'Beatleap Atom Funnel',
+          },
+          body,
+          signal: controller.signal,
+        });
+        break;
+      } catch (fe) {
+        // undici прячет реальную причину в .cause — раскрываем её.
+        const cause = (fe as { cause?: unknown })?.cause;
+        const causeMsg = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+        netErr = `${fe instanceof Error ? fe.message : String(fe)}${causeMsg ? ` (${causeMsg})` : ''}`;
+      } finally {
+        activeAborts.delete(controller);
+      }
     }
+    if (!resp) return { error: `Сеть OpenRouter недоступна: ${netErr}. Проверьте интернет/прокси/VPN.` };
 
     if (!resp.ok) {
       const t = await resp.text().catch(() => '');
@@ -333,7 +347,10 @@ async function analyze(
     };
   } catch (e) {
     if (cancelled) return { error: 'отменено' };
-    return { error: e instanceof Error ? e.message : String(e) };
+    const cause = (e as { cause?: unknown })?.cause;
+    const causeMsg = cause instanceof Error ? cause.message : cause ? String(cause) : '';
+    const msg = e instanceof Error ? e.message : String(e);
+    return { error: causeMsg ? `${msg} (${causeMsg})` : msg };
   } finally {
     cleanup();
   }
