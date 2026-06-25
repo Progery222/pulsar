@@ -43,11 +43,42 @@ function checkStatus(): Promise<SetupStatus> {
   });
 }
 
-function sendProgress(line: string) {
-  BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('setup-progress', line));
+interface ProgressEvent {
+  line?: string;
+  percent?: number; // 0..100 текущей загрузки
+  phase?: string; // имя пакета, который качается
 }
 
-// Установка движка через pip (стриминг логов в renderer).
+function sendProgress(ev: ProgressEvent) {
+  BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('setup-progress', ev));
+}
+
+// Извлечь процент из вывода pip: "45.2/203.1 MB" либо завершающий "NN%".
+function parsePercent(s: string): number | null {
+  const mb = [...s.matchAll(/(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)\s*MB/g)];
+  if (mb.length) {
+    const m = mb[mb.length - 1];
+    const done = parseFloat(m[1]);
+    const total = parseFloat(m[2]);
+    if (total > 0) return Math.min(100, (done / total) * 100);
+  }
+  const pct = [...s.matchAll(/(\d{1,3})%/g)];
+  if (pct.length) return Math.min(100, parseInt(pct[pct.length - 1][1], 10));
+  return null;
+}
+
+// Содержательные строки лога (без спама прогресс-бара pip с \r).
+function meaningfulLine(s: string): string | null {
+  for (const part of s.split(/[\r\n]+/)) {
+    const t = part.trim();
+    if (/^(Collecting|Downloading|Installing|Building|Successfully|Requirement|Using cached|ERROR|WARNING)/i.test(t)) {
+      return t;
+    }
+  }
+  return null;
+}
+
+// Установка движка через pip (стриминг прогресса в renderer).
 function installEngine(engine: string): Promise<{ ok: true } | { error: string }> {
   return new Promise((resolve) => {
     const pkgs = PIP_PACKAGE[engine];
@@ -55,14 +86,27 @@ function installEngine(engine: string): Promise<{ ok: true } | { error: string }
       resolve({ error: `Неизвестный движок: ${engine}` });
       return;
     }
-    sendProgress(`Устанавливаю: pip install ${pkgs.join(' ')} …`);
+    sendProgress({ line: `Устанавливаю: pip install ${pkgs.join(' ')} …`, percent: 0 });
     const child = spawn(pyCmd(), ['-m', 'pip', 'install', '--upgrade', ...pkgs]);
-    child.stdout.on('data', (c) => sendProgress(c.toString().trimEnd()));
-    child.stderr.on('data', (c) => sendProgress(c.toString().trimEnd()));
+    const handle = (chunk: Buffer) => {
+      const s = chunk.toString();
+      const ev: ProgressEvent = {};
+      const pct = parsePercent(s);
+      if (pct != null) ev.percent = pct;
+      const line = meaningfulLine(s);
+      if (line) {
+        ev.line = line;
+        const dl = /^Downloading\s+([^\s(]+)/i.exec(line);
+        if (dl) ev.phase = dl[1];
+      }
+      if (ev.line || ev.percent != null) sendProgress(ev);
+    };
+    child.stdout.on('data', handle);
+    child.stderr.on('data', handle);
     child.on('error', (err) => resolve({ error: err.message }));
     child.on('close', (code) => {
       if (code === 0) {
-        sendProgress('Готово. Движок установлен.');
+        sendProgress({ line: 'Готово. Движок установлен.', percent: 100 });
         resolve({ ok: true });
       } else {
         resolve({ error: `pip завершился с кодом ${code}` });
