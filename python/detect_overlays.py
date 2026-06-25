@@ -89,7 +89,7 @@ def iou(a, b):
 
 # Слияние боксов в строки (титр горизонтальный): объединяем по вертикальному
 # перекрытию + малому горизонтальному зазору. conf = доля кадров, где зона есть.
-def merge_lines(boxes, W, frame_count):
+def merge_lines(boxes, W, H, frame_count):
     items = [[b[0], b[1], b[2], b[3], {b[4]}] for b in boxes]  # x0,y0,x1,y1,{frame_ids}
     changed = True
     while changed:
@@ -103,12 +103,15 @@ def merge_lines(boxes, W, frame_count):
                 gap = max(it[0], o[0]) - min(it[2], o[2])
                 # 1) одна строка: вертикальное перекрытие + малый горизонтальный зазор
                 same_line = vo > 0.4 * minh and gap < 0.28 * W
-                # 2) один блок: горизонтальное перекрытие + малый вертикальный зазор
-                #    (многострочный субтитр и «дрожание» текста по кадрам → одна зона)
+                # 2) соседние строки одного субтитра: сильное горизонтальное перекрытие +
+                #    плотный вертикальный зазор. Итоговый бокс не должен превышать ~1/5
+                #    высоты кадра — иначе это сцепка несвязанного текста (субтитр + надпись
+                #    на одежде/лого), её НЕ делаем.
                 ho = min(it[2], o[2]) - max(it[0], o[0])
                 minw = max(1.0, min(it[2] - it[0], o[2] - o[0]))
                 vgap = max(it[1], o[1]) - min(it[3], o[3])
-                stacked = ho > 0.3 * minw and vgap < 0.9 * minh
+                new_h = max(it[3], o[3]) - min(it[1], o[1])
+                stacked = ho > 0.45 * minw and vgap < 0.5 * minh and new_h < 0.2 * H
                 if same_line or stacked:
                     o[0] = min(o[0], it[0]); o[1] = min(o[1], it[1])
                     o[2] = max(o[2], it[2]); o[3] = max(o[3], it[3])
@@ -197,10 +200,14 @@ def detect(path, do_titles, do_watermarks, model, dynamic_only=False):
                 for dw in scales:
                     for bx in east_boxes(f, net, dw, thr=0.4):
                         all_t.append([bx[0], bx[1], bx[2], bx[3], fi])
-            for (x0, y0, x1, y1, frac) in merge_lines(all_t, W, len(frames)):
+            for (x0, y0, x1, y1, frac) in merge_lines(all_t, W, H, len(frames)):
                 bw, bh = x1 - x0, y1 - y0
                 # Отбрасываем мелочь-шум.
                 if bw < W * 0.05 or bh < H * 0.012:
+                    continue
+                # Субтитр — тонкая горизонтальная полоса; аномально высокий бокс
+                # (вертикальный артефакт/край/сцепка) субтитром быть не может.
+                if bh > H * 0.4:
                     continue
                 # Только меняющийся текст (субтитры): выкидываем статичные надписи/лого.
                 if dynamic_only and region_std(frames, x0, y0, x1, y1) < 12.0:
