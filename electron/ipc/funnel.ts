@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import dns from 'node:dns';
+import https from 'node:https';
 import { getOpenRouterKey } from './config';
 
 // Node 18 fetch (undici) без Happy Eyeballs: если DNS возвращает IPv6, а IPv6 не
@@ -253,6 +254,44 @@ function extractAudio(src: string, out: string, maxSec: number): Promise<boolean
   });
 }
 
+// POST в OpenRouter через node:https с принудительным IPv4 (обход бага undici/Happy
+// Eyeballs в Node 18, из-за которого fetch падал «fetch failed» на IPv6-резолве).
+function postOpenRouter(apiKey: string, body: string): Promise<{ status: number; text: string }> {
+  return new Promise((resolve, reject) => {
+    const ac = new AbortController();
+    activeAborts.add(ac);
+    const done = (fn: () => void) => {
+      activeAborts.delete(ac);
+      fn();
+    };
+    const req = https.request(
+      'https://openrouter.ai/api/v1/chat/completions',
+      {
+        method: 'POST',
+        family: 4, // только IPv4
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+          'HTTP-Referer': 'https://beatleap.local',
+          'X-Title': 'Beatleap Atom Funnel',
+        },
+      },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (c) => (data += c));
+        res.on('end', () => done(() => resolve({ status: res.statusCode || 0, text: data })));
+      }
+    );
+    req.setTimeout(120000, () => req.destroy(new Error('таймаут запроса (120с)')));
+    ac.signal.addEventListener('abort', () => req.destroy(new Error('отменено')));
+    req.on('error', (e) => done(() => reject(e)));
+    req.write(body);
+    req.end();
+  });
+}
+
 // Вычисление ветки из признаков — подстраховка, если модель не вернула branch.
 function deriveBranch(d: Partial<Classification>): number {
   const voice = !!d.has_voice;
@@ -305,41 +344,24 @@ async function analyze(
     });
 
     // Запрос к OpenRouter с одной повторной попыткой при сетевом сбое.
-    let resp: Response | null = null;
+    let res: { status: number; text: string } | null = null;
     let netErr = '';
     for (let attempt = 0; attempt < 2; attempt++) {
       if (cancelled) return { error: 'отменено' };
-      const controller = new AbortController();
-      activeAborts.add(controller);
       try {
-        resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            'Content-Type': 'application/json',
-            'HTTP-Referer': 'https://beatleap.local',
-            'X-Title': 'Beatleap Atom Funnel',
-          },
-          body,
-          signal: controller.signal,
-        });
+        res = await postOpenRouter(apiKey, body);
         break;
       } catch (fe) {
-        // undici прячет реальную причину в .cause — раскрываем её.
         const cause = (fe as { cause?: unknown })?.cause;
         const causeMsg = cause instanceof Error ? cause.message : cause ? String(cause) : '';
         netErr = `${fe instanceof Error ? fe.message : String(fe)}${causeMsg ? ` (${causeMsg})` : ''}`;
-      } finally {
-        activeAborts.delete(controller);
       }
     }
-    if (!resp) return { error: `Сеть OpenRouter недоступна: ${netErr}. Проверьте интернет/прокси/VPN.` };
-
-    if (!resp.ok) {
-      const t = await resp.text().catch(() => '');
-      return { error: `OpenRouter ${resp.status}: ${t.slice(0, 200)}` };
+    if (!res) return { error: `Сеть OpenRouter недоступна: ${netErr}. Проверьте интернет/прокси/VPN.` };
+    if (res.status < 200 || res.status >= 300) {
+      return { error: `OpenRouter ${res.status}: ${res.text.slice(0, 300)}` };
     }
-    const data = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+    const data = JSON.parse(res.text) as { choices?: { message?: { content?: string } }[] };
     let raw = (data.choices?.[0]?.message?.content || '').trim();
     if (raw.startsWith('```')) raw = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/, '').trim();
     if (!raw.startsWith('{')) raw = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
