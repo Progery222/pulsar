@@ -29,6 +29,10 @@ const electronAPI = {
   openFolder: (folderPath: string): Promise<string> =>
     ipcRenderer.invoke('shell:openPath', folderPath),
 
+  // Показать файл в проводнике с выделением.
+  showItemInFolder: (filePath: string): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('shell:showItem', filePath),
+
   // Режим GPU-кодирования (auto/gpu/cpu).
   getGpuMode: (): Promise<'auto' | 'gpu' | 'cpu'> => ipcRenderer.invoke('settings:getGpuMode'),
   setGpuMode: (mode: 'auto' | 'gpu' | 'cpu'): Promise<{ ok: true }> =>

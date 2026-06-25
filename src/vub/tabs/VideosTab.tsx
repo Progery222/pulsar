@@ -17,6 +17,7 @@ export default function VideosTab() {
   const [dlStatus, setDlStatus] = useState<string | null>(null);
   const [dlPercent, setDlPercent] = useState(0);
   const [dlError, setDlError] = useState<string | null>(null);
+  const [dlSaved, setDlSaved] = useState<string | null>(null);
 
   useEffect(() => {
     const off = window.electronAPI.onDownloadProgress((e) => {
@@ -36,6 +37,7 @@ export default function VideosTab() {
     if (!link || downloading) return;
     setDownloading(true);
     setDlError(null);
+    setDlSaved(null);
     setDlPercent(0);
     setDlStatus('Подготовка…');
     try {
@@ -46,6 +48,7 @@ export default function VideosTab() {
         addVideos([res.path]);
         setUrl('');
         setDlStatus(null);
+        setDlSaved(res.path);
       }
     } finally {
       setDownloading(false);
@@ -109,7 +112,29 @@ export default function VideosTab() {
       {dlError && (
         <div style={{ fontSize: 13, color: '#ff6b6b', marginBottom: 16 }}>{dlError}</div>
       )}
-      {!downloading && !dlError && <div style={{ marginBottom: 12 }} />}
+      {dlSaved && !downloading && (
+        <div style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            Сохранено: {dlSaved}
+          </span>
+          <button
+            onClick={() => window.electronAPI.showItemInFolder(dlSaved)}
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
+              borderRadius: 6,
+              padding: '4px 10px',
+              fontSize: 12,
+              cursor: 'pointer',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            Показать в папке
+          </button>
+        </div>
+      )}
+      {!downloading && !dlError && !dlSaved && <div style={{ marginBottom: 12 }} />}
 
       <div
         onDragOver={(e) => {
@@ -154,6 +179,13 @@ export default function VideosTab() {
             <span style={{ flex: 1, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {v.name}
             </span>
+            <button
+              onClick={() => window.electronAPI.showItemInFolder(v.path)}
+              style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}
+              title={`Показать в папке: ${v.path}`}
+            >
+              📁
+            </button>
             <button
               onClick={() => removeVideo(v.id)}
               style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 18 }}

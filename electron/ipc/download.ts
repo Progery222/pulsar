@@ -123,7 +123,7 @@ export function registerDownloadHandlers() {
       if ('error' in inst) return inst;
       if (!(await ytdlpInstalled())) return { error: 'yt-dlp не установился. Проверьте Python.' };
     }
-    const outDir = path.join(app.getPath('temp'), 'beatleap-dl', String(Date.now()));
+    const outDir = path.join(app.getPath('downloads'), 'Beatleap', String(Date.now()));
     fs.mkdirSync(outDir, { recursive: true });
     try {
       return await runDownload(url.trim(), outDir);

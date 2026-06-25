@@ -39,4 +39,10 @@ export function registerFileHandlers() {
   ipcMain.handle('shell:openPath', async (_event, folderPath: string) => {
     return shell.openPath(folderPath);
   });
+
+  // Показать файл в проводнике (с выделением).
+  ipcMain.handle('shell:showItem', async (_event, filePath: string) => {
+    shell.showItemInFolder(filePath);
+    return { ok: true };
+  });
 }
