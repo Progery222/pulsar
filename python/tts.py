@@ -49,9 +49,17 @@ def synth_edge(text, out, lang, speed, voice=""):
 
 def _engine_available(engine):
     import importlib.util as u
+    import os
     mod = {"edge": "edge_tts", "translate": "deep_translator", "download": "yt_dlp",
            "whisper": "faster_whisper"}.get(engine)
-    return mod is not None and u.find_spec(mod) is not None
+    if mod is None or u.find_spec(mod) is None:
+        return False
+    # Whisper считается готовым только когда скачана и модель (иначе распознавание не работает).
+    if engine == "whisper":
+        model = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                             "models", "faster-whisper-small", "model.bin")
+        return os.path.exists(model)
+    return True
 
 
 def main():

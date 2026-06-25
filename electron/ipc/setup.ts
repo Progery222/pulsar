@@ -8,6 +8,12 @@ function ttsScript(): string {
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', 'tts.py');
 }
 
+function pyScript(name: string): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'python', name)
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', name);
+}
+
 function pyCmd(): string {
   return process.platform === 'win32' ? 'python' : 'python3';
 }
@@ -80,6 +86,36 @@ function meaningfulLines(s: string): string[] {
   return out;
 }
 
+// Загрузка модели Whisper (faster-whisper) с зеркала, стриминг прогресса.
+function downloadWhisperModel(): Promise<{ ok: true } | { error: string }> {
+  return new Promise((resolve) => {
+    sendProgress({ line: 'Скачиваю модель распознавания (Whisper)…' });
+    const child = spawn(pyCmd(), ['-u', pyScript('download_whisper.py'), '--model', 'small'], {
+      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    });
+    const handle = (chunk: Buffer) => {
+      for (const line of chunk.toString().split(/\r?\n/)) {
+        const t = line.trim();
+        if (!t) continue;
+        const mb = /PROGRESS\s+([\d.]+)\/([\d.]+)\s*MB/.exec(t);
+        if (mb) {
+          const done = parseFloat(mb[1]);
+          const total = parseFloat(mb[2]);
+          if (total > 0) sendProgress({ percent: Math.min(100, (done / total) * 100), line: `Модель: ${Math.round(done)}/${Math.round(total)} МБ` });
+        } else if (t !== 'MODEL_READY') {
+          sendProgress({ line: t });
+        }
+      }
+    };
+    child.stdout.on('data', handle);
+    child.stderr.on('data', handle);
+    child.on('error', (err) => resolve({ error: `Загрузчик модели недоступен: ${err.message}` }));
+    child.on('close', (code) =>
+      code === 0 ? resolve({ ok: true }) : resolve({ error: `Не удалось скачать модель Whisper (код ${code})` })
+    );
+  });
+}
+
 // Установка движка через pip (стриминг прогресса в renderer).
 function installEngine(engine: string): Promise<{ ok: true } | { error: string }> {
   return new Promise((resolve) => {
@@ -114,13 +150,21 @@ function installEngine(engine: string): Promise<{ ok: true } | { error: string }
       sendProgress({ line: `Не удалось запустить Python/pip: ${err.message}` });
       resolve({ error: err.message });
     });
-    child.on('close', (code) => {
-      if (code === 0) {
-        sendProgress({ line: 'Готово. Движок установлен.', percent: 100 });
-        resolve({ ok: true });
-      } else {
+    child.on('close', async (code) => {
+      if (code !== 0) {
         resolve({ error: `pip завершился с кодом ${code}` });
+        return;
       }
+      // Whisper: после пакета сразу скачиваем модель (иначе распознавание не заработает).
+      if (engine === 'whisper') {
+        const m = await downloadWhisperModel();
+        if ('error' in m) {
+          resolve(m);
+          return;
+        }
+      }
+      sendProgress({ line: 'Готово. Движок установлен.', percent: 100 });
+      resolve({ ok: true });
     });
   });
 }
