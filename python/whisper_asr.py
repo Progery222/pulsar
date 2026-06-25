@@ -14,6 +14,7 @@ CLI:
 """
 import argparse
 import json
+import os
 import sys
 
 
@@ -31,8 +32,16 @@ def main():
     try:
         from faster_whisper import WhisperModel
 
+        # Если рядом со скриптом лежит локальная папка модели — используем её
+        # (без обращения к HuggingFace; нужно при блокировках/троттлинге сети).
+        script_dir = os.path.dirname(os.path.abspath(__file__))
+        local_dir = os.path.join(script_dir, "models", "faster-whisper-" + args.model)
+        model_ref = args.model
+        if os.path.isdir(local_dir) and os.path.exists(os.path.join(local_dir, "model.bin")):
+            model_ref = local_dir
+
         # CPU + int8: работает без видеокарты, модель компактная.
-        model = WhisperModel(args.model, device="cpu", compute_type="int8")
+        model = WhisperModel(model_ref, device="cpu", compute_type="int8")
         lang = None if args.language in ("auto", "", None) else args.language
         segments, info = model.transcribe(args.audio, language=lang, word_timestamps=True)
 
