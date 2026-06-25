@@ -9,10 +9,9 @@ interface Status {
 }
 
 const ENGINE_INFO: { id: string; name: string; note: string }[] = [
-  { id: 'gtts', name: 'Google TTS', note: 'Онлайн, бесплатно, без ключа, много языков (быстрая установка)' },
-  { id: 'xtts', name: 'XTTS-v2', note: 'Многоязычный + клонирование (~1.8 ГБ)' },
+  { id: 'edge', name: 'Edge TTS', note: 'Живые нейроголоса, бесплатно, без ключа (быстрая установка)' },
+  { id: 'xtts', name: 'XTTS-v2', note: 'Многоязычный + клонирование голоса (~1.8 ГБ)' },
   { id: 'silero', name: 'Silero', note: 'Русский/английский, лёгкий и быстрый' },
-  { id: 'kokoro', name: 'Kokoro', note: 'Английский, очень быстрый' },
 ];
 
 // Полоса прогресса: определённая (percent) или «бегущая» (indeterminate).

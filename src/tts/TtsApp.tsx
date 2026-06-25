@@ -12,10 +12,9 @@ const LANGS = [
 
 const ENGINES = [
   { value: 'edge', label: 'Edge TTS (живые нейроголоса, бесплатно, без ключа)' },
-  { value: 'gtts', label: 'Google TTS (онлайн, бесплатно)' },
   { value: 'xtts', label: 'XTTS-v2 (многоязычный, клонирование)' },
   { value: 'silero', label: 'Silero (рус/англ, лёгкий)' },
-  { value: 'kokoro', label: 'Kokoro (англ, быстрый)' },
+  { value: 'gptsovits', label: 'GPT-SoVITS (топ рус-клонирование, через сервер)' },
 ];
 
 // Естественные нейроголоса Edge по языкам.
@@ -44,6 +43,8 @@ export default function TtsApp() {
   const [voice, setVoice] = useState('');
   const [speed, setSpeed] = useState(1);
   const [speakerWav, setSpeakerWav] = useState('');
+  const [promptText, setPromptText] = useState('');
+  const [apiUrl, setApiUrl] = useState('http://127.0.0.1:9880');
   const [outputDir, setOutputDir] = useState('');
   const [attachVideo, setAttachVideo] = useState('');
   const [keepOriginal, setKeepOriginal] = useState(false);
@@ -83,6 +84,8 @@ export default function TtsApp() {
         speed,
         voice: engine === 'edge' ? voice || undefined : undefined,
         speakerWav: speakerWav || undefined,
+        promptText: engine === 'gptsovits' ? promptText || undefined : undefined,
+        apiUrl: engine === 'gptsovits' ? apiUrl || undefined : undefined,
         outputDir,
         outName: name,
         attachVideo: attachVideo || undefined,
@@ -164,12 +167,28 @@ export default function TtsApp() {
           <input type="range" min={0.5} max={1.5} step={0.05} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} style={{ width: '100%' }} />
         </div>
 
-        {engine === 'xtts' && (
+        {(engine === 'xtts' || engine === 'gptsovits') && (
           <div style={{ marginBottom: 16 }}>
-            <label style={label}>Образец голоса для клонирования (опц., аудиофайл)</label>
+            <label style={label}>
+              Образец голоса для клонирования {engine === 'gptsovits' ? '(обязательно, 3–10 сек)' : '(опц., аудиофайл)'}
+            </label>
             <button onClick={pickSpeaker} style={{ ...field, textAlign: 'left', cursor: 'pointer', color: speakerWav ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
               {speakerWav ? speakerWav.split(/[\\/]/).pop() : 'Выбрать аудио-образец…'}
             </button>
+          </div>
+        )}
+
+        {engine === 'gptsovits' && (
+          <div style={{ marginBottom: 16, padding: 14, border: '1px solid var(--border)', borderRadius: 10 }}>
+            <div style={{ marginBottom: 12 }}>
+              <label style={label}>Расшифровка образца (что говорят в образце)</label>
+              <input value={promptText} onChange={(e) => setPromptText(e.target.value)} placeholder="Текст из аудио-образца" style={field} />
+            </div>
+            <label style={label}>Адрес сервера GPT-SoVITS</label>
+            <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="http://127.0.0.1:9880" style={field} />
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
+              Требуется запущенный сервер GPT-SoVITS (его <code>api.py</code>). Лучшее клонирование русского голоса.
+            </p>
           </div>
         )}
 

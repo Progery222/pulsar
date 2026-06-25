@@ -15,10 +15,8 @@ function pyCmd(): string {
 // pip-пакет для каждого движка озвучки.
 const PIP_PACKAGE: Record<string, string[]> = {
   edge: ['edge-tts'],
-  gtts: ['gTTS'],
   xtts: ['coqui-tts'],
   silero: ['silero', 'torch', 'soundfile'],
-  kokoro: ['kokoro', 'soundfile'],
 };
 
 interface SetupStatus {

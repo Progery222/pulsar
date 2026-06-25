@@ -2,8 +2,8 @@
 # -*- coding: utf-8 -*-
 """Pulsar TTS worker — генерация речи из текста.
 
-Движок подключаемый. Дефолт — XTTS-v2 (многоязычный, вкл. русский, клонирование голоса).
-Альтернативы: silero (рус, лёгкий), kokoro (англ, быстрый).
+Движок подключаемый. Дефолт — edge (живые нейроголоса, онлайн, бесплатно).
+Альтернативы: xtts (клонирование, оффлайн), silero (рус, лёгкий), gptsovits (через сервер).
 
 CLI:
     tts.py engines
@@ -25,10 +25,9 @@ def _out(obj):
 
 ENGINES = {
     "edge": "Edge TTS (онлайн, бесплатно, без ключа, естественные нейроголоса) — pip install edge-tts",
-    "gtts": "Google TTS (онлайн, бесплатно, без ключа) — pip install gTTS",
     "xtts": "XTTS-v2 (многоязычный, клонирование) — pip install coqui-tts",
     "silero": "Silero (русский/английский, лёгкий) — pip install silero torch",
-    "kokoro": "Kokoro (английский, быстрый) — pip install kokoro",
+    "gptsovits": "GPT-SoVITS (топ рус-клонирование, через локальный сервер)",
 }
 
 # Голос Edge по умолчанию для языка.
@@ -38,7 +37,7 @@ EDGE_DEFAULT = {
 }
 
 
-def synth_edge(text, out, lang, speaker_wav, speed, voice=""):
+def synth_edge(text, out, lang, speaker_wav, speed, voice="", **kw):
     import asyncio
     import edge_tts
     v = voice or EDGE_DEFAULT.get(lang if lang != "auto" else "en", "en-US-AriaNeural")
@@ -51,14 +50,7 @@ def synth_edge(text, out, lang, speaker_wav, speed, voice=""):
     return out
 
 
-def synth_gtts(text, out, lang, speaker_wav, speed, voice=""):
-    from gtts import gTTS  # online, free, без ключа
-    code = lang if lang and lang != "auto" else "en"
-    gTTS(text=text, lang=code).save(out)  # mp3
-    return out
-
-
-def synth_xtts(text, out, lang, speaker_wav, speed, voice=""):
+def synth_xtts(text, out, lang, speaker_wav, speed, voice="", **kw):
     from TTS.api import TTS  # coqui-tts
     model = TTS("tts_models/multilingual/multi-dataset/xtts_v2")
     kwargs = dict(text=text, file_path=out, language=(lang if lang != "auto" else "en"), speed=speed)
@@ -71,7 +63,7 @@ def synth_xtts(text, out, lang, speaker_wav, speed, voice=""):
     return out
 
 
-def synth_silero(text, out, lang, speaker_wav, speed, voice=""):
+def synth_silero(text, out, lang, speaker_wav, speed, voice="", **kw):
     import torch
     lang_map = {"ru": ("ru", "v4_ru", "xenia"), "en": ("en", "v3_en", "en_0")}
     code, repo, speaker = lang_map.get(lang if lang in lang_map else "ru")
@@ -82,22 +74,38 @@ def synth_silero(text, out, lang, speaker_wav, speed, voice=""):
     return out
 
 
-def synth_kokoro(text, out, lang, speaker_wav, speed, voice=""):
-    from kokoro import KPipeline
-    import soundfile as sf
-    import numpy as np
-    pipe = KPipeline(lang_code="a")
-    chunks = [audio for _, _, audio in pipe(text, voice="af_heart", speed=speed)]
-    sf.write(out, np.concatenate(chunks), 24000)
+def synth_gptsovits(text, out, lang, speaker_wav, speed, voice="", prompt_text="", api_url="http://127.0.0.1:9880", **kw):
+    # Обращаемся к локальному API GPT-SoVITS (api.py). Требуется запущенный сервер + референс-аудио.
+    import urllib.request
+    import urllib.parse
+    code = lang if lang and lang != "auto" else "ru"
+    if not speaker_wav:
+        raise RuntimeError("GPT-SoVITS требует референс-аудио (образец голоса)")
+    params = {
+        "refer_wav_path": speaker_wav,
+        "prompt_text": prompt_text,
+        "prompt_language": code,
+        "text": text,
+        "text_language": code,
+    }
+    url = (api_url or "http://127.0.0.1:9880").rstrip("/") + "/?" + urllib.parse.urlencode(params)
+    try:
+        data = urllib.request.urlopen(url, timeout=600).read()
+    except Exception as e:  # noqa: BLE001
+        raise RuntimeError(f"Сервер GPT-SoVITS недоступен ({api_url}). Запустите его api.py. {e}")
+    with open(out, "wb") as f:
+        f.write(data)
     return out
 
 
-SYNTH = {"edge": synth_edge, "gtts": synth_gtts, "xtts": synth_xtts, "silero": synth_silero, "kokoro": synth_kokoro}
+SYNTH = {"edge": synth_edge, "xtts": synth_xtts, "silero": synth_silero, "gptsovits": synth_gptsovits}
 
 
 def _engine_available(engine):
     import importlib.util as u
-    mods = {"edge": "edge_tts", "gtts": "gtts", "xtts": "TTS", "silero": "torch", "kokoro": "kokoro"}
+    mods = {"edge": "edge_tts", "xtts": "TTS", "silero": "torch"}
+    if engine == "gptsovits":
+        return True  # внешний сервер — наличие проверяется при запросе
     name = mods.get(engine)
     return bool(name and u.find_spec(name) is not None)
 
@@ -111,9 +119,11 @@ def main():
     s.add_argument("--text-file", required=True)
     s.add_argument("--out", required=True)
     s.add_argument("--lang", default="auto")
-    s.add_argument("--engine", default="xtts")
+    s.add_argument("--engine", default="edge")
     s.add_argument("--speaker-wav", default="")
     s.add_argument("--voice", default="")
+    s.add_argument("--prompt-text", default="")
+    s.add_argument("--api-url", default="")
     s.add_argument("--speed", type=float, default=1.0)
     args = ap.parse_args()
 
@@ -140,7 +150,10 @@ def main():
             if not text:
                 _out({"error": "Пустой текст"})
                 return
-            out = fn(text, args.out, args.lang, args.speaker_wav or "", args.speed, args.voice or "")
+            out = fn(
+                text, args.out, args.lang, args.speaker_wav or "", args.speed, args.voice or "",
+                prompt_text=args.prompt_text or "", api_url=args.api_url or "",
+            )
             _out({"ok": True, "out": out})
         except ImportError as e:
             _out({"error": f"Не установлен движок '{args.engine}'. {ENGINES.get(args.engine, '')}. Детали: {e}"})
