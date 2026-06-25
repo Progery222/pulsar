@@ -9,6 +9,7 @@ import { registerVubHandlers } from './ipc/vub';
 import { registerConfigHandlers, loadSettings } from './ipc/config';
 import { registerCleanerHandlers } from './ipc/cleaner';
 import { registerStoreHandlers } from './ipc/store';
+import { registerTtsHandlers } from './ipc/tts';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -136,6 +137,7 @@ app.whenReady().then(() => {
   loadSettings();
   registerCleanerHandlers();
   registerStoreHandlers();
+  registerTtsHandlers();
   createWindow();
 });
 

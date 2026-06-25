@@ -42,6 +42,13 @@ const electronAPI = {
   setSetting: (key: string, value: unknown): Promise<{ ok: true }> =>
     ipcRenderer.invoke('settings:set', key, value),
 
+  // Озвучка (TTS).
+  ttsEngines: (): Promise<{ ok: true; engines: Record<string, string> } | { error: string }> =>
+    ipcRenderer.invoke('tts:engines'),
+  ttsSynth: (
+    request: unknown
+  ): Promise<{ ok: true; out: string } | { error: string }> => ipcRenderer.invoke('tts:synth', request),
+
   // История выполненных задач.
   historyList: (): Promise<unknown[]> => ipcRenderer.invoke('history:list'),
   historyAdd: (entry: unknown): Promise<{ ok: true }> => ipcRenderer.invoke('history:add', entry),
