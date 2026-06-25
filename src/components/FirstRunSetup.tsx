@@ -91,7 +91,9 @@ export default function FirstRunSetup() {
         </div>
         <ProgressBar percent={installing ? percent : 100} />
         <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {installing ? (percent != null ? `${Math.round(percent)}%${phase ? ' · ' + phase : ''}` : (phase || 'Загрузка…')) : 'Готово'}
+          {installing
+            ? `${percent != null ? Math.round(percent) + '% · ' : ''}${log[log.length - 1] ?? phase ?? 'Загрузка…'}`
+            : 'Готово'}
         </div>
       </div>
     );

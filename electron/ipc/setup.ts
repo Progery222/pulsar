@@ -67,15 +67,16 @@ function parsePercent(s: string): number | null {
   return null;
 }
 
-// Содержательные строки лога (без спама прогресс-бара pip с \r).
-function meaningfulLine(s: string): string | null {
+// Содержательные строки лога (без спама прогресс-бара pip: глифы, скорость, eta).
+function meaningfulLines(s: string): string[] {
+  const out: string[] = [];
   for (const part of s.split(/[\r\n]+/)) {
     const t = part.trim();
-    if (/^(Collecting|Downloading|Installing|Building|Successfully|Requirement|Using cached|ERROR|WARNING)/i.test(t)) {
-      return t;
-    }
+    if (!t) continue;
+    if (/MB\/s|kB\/s|GB\/s|eta\s|━|╸|─/.test(t)) continue; // строки прогресс-бара
+    out.push(t);
   }
-  return null;
+  return out;
 }
 
 // Установка движка через pip (стриминг прогресса в renderer).
@@ -86,24 +87,32 @@ function installEngine(engine: string): Promise<{ ok: true } | { error: string }
       resolve({ error: `Неизвестный движок: ${engine}` });
       return;
     }
-    sendProgress({ line: `Устанавливаю: pip install ${pkgs.join(' ')} …`, percent: 0 });
-    const child = spawn(pyCmd(), ['-m', 'pip', 'install', '--upgrade', ...pkgs]);
+    sendProgress({ line: `Устанавливаю: pip install ${pkgs.join(' ')} …` });
+    const child = spawn(
+      pyCmd(),
+      ['-u', '-m', 'pip', 'install', '--upgrade', '--progress-bar', 'on', ...pkgs],
+      { env: { ...process.env, PYTHONUNBUFFERED: '1', PIP_DISABLE_PIP_VERSION_CHECK: '1' } }
+    );
     const handle = (chunk: Buffer) => {
       const s = chunk.toString();
-      const ev: ProgressEvent = {};
       const pct = parsePercent(s);
-      if (pct != null) ev.percent = pct;
-      const line = meaningfulLine(s);
-      if (line) {
-        ev.line = line;
-        const dl = /^Downloading\s+([^\s(]+)/i.exec(line);
-        if (dl) ev.phase = dl[1];
+      const lines = meaningfulLines(s);
+      if (lines.length) {
+        for (const line of lines) {
+          const ev: ProgressEvent = { line };
+          const dl = /Downloading\s+([^\s(]+)/i.exec(line);
+          if (dl) ev.phase = dl[1];
+          sendProgress(ev);
+        }
       }
-      if (ev.line || ev.percent != null) sendProgress(ev);
+      if (pct != null) sendProgress({ percent: pct });
     };
     child.stdout.on('data', handle);
     child.stderr.on('data', handle);
-    child.on('error', (err) => resolve({ error: err.message }));
+    child.on('error', (err) => {
+      sendProgress({ line: `Не удалось запустить Python/pip: ${err.message}` });
+      resolve({ error: err.message });
+    });
     child.on('close', (code) => {
       if (code === 0) {
         sendProgress({ line: 'Готово. Движок установлен.', percent: 100 });
