@@ -82,6 +82,11 @@ function send(win: BrowserWindow | null, ev: FunnelProgressEvent) {
   win?.webContents.send('funnel-progress', ev);
 }
 
+// Лог этапов воронки в stdout main-процесса (попадает в дев-лог для диагностики).
+function logF(...a: unknown[]) {
+  console.log('[funnel]', ...a);
+}
+
 // ── Probe ──────────────────────────────────────────────────────────────────
 interface Probe {
   duration: number;
@@ -646,15 +651,19 @@ async function processVideo(
   const emit = (ev: Omit<FunnelProgressEvent, 'id'>) => send(win, { id, ...ev });
 
   const { height, hasAudio } = await probe(src);
+  logF('video:', baseName, 'hasAudio:', hasAudio, 'h:', height);
 
   // AI-классификация (OpenRouter).
   emit({ stage: 'analyzing', percent: 12, stageLabel: 'AI-анализ (OpenRouter)…' });
+  logF('classify start, model:', req.model || 'google/gemini-3.5-flash');
   const cls = await analyze(src, apiKey, req.model || 'google/gemini-3.5-flash', hasAudio);
   if (cancelled) return;
   if ('error' in cls) {
+    logF('classify ERROR:', cls.error);
     emit({ stage: 'error', percent: 0, error: cls.error });
     return;
   }
+  logF('classified branch=', cls.branch, 'voice=', cls.has_voice, 'subs=', cls.has_subtitles, 'plate=', cls.has_text_overlay, 'lang=', cls.language);
   emit({ stage: 'processing', percent: 15, branch: cls.branch, stageLabel: `Ветка ${cls.branch}` });
 
   // Ветка 1: только уникализация (без привязки к языку).
@@ -664,8 +673,13 @@ async function processVideo(
     emit({ stage: 'processing', percent: 40, stageLabel: 'Уникализация' });
     const r = req.uniqueize ? await uniqueize(src, out) : await fs.promises.copyFile(src, out).then(() => ({ ok: true as const }));
     if (cancelled) return;
-    if ('error' in r) emit({ stage: 'error', percent: 0, error: r.error });
-    else emit({ stage: 'done', percent: 100, output: out, stageLabel: 'Готово' });
+    if ('error' in r) {
+      logF('branch1 ERROR:', r.error);
+      emit({ stage: 'error', percent: 0, error: r.error });
+    } else {
+      logF('branch1 done ->', out);
+      emit({ stage: 'done', percent: 100, output: out, stageLabel: 'Готово' });
+    }
     return;
   }
 
@@ -676,26 +690,35 @@ async function processVideo(
   for (let i = 0; i < langs.length; i++) {
     if (cancelled) return;
     const base = 15 + (i / langs.length) * 75;
-    const r = await processBranchLang(src, cls.branch, langs[i], cls, req, baseName, height, (label) =>
-      emit({ stage: 'processing', percent: Math.round(base + 5), branch: cls.branch, stageLabel: label })
-    );
+    logF('branch', cls.branch, 'lang', langs[i], 'start');
+    const r = await processBranchLang(src, cls.branch, langs[i], cls, req, baseName, height, (label) => {
+      logF('  ·', label);
+      emit({ stage: 'processing', percent: Math.round(base + 5), branch: cls.branch, stageLabel: label });
+    });
     if (cancelled) return;
     if ('error' in r) {
+      logF('lang', langs[i], 'ERROR:', r.error);
       if (!firstErr) firstErr = r.error;
     } else {
+      logF('lang', langs[i], 'done ->', r.out);
       produced++;
       emit({ stage: 'processing', percent: Math.round(15 + ((i + 1) / langs.length) * 75), output: r.out });
     }
   }
 
-  if (produced === 0) emit({ stage: 'error', percent: 0, error: firstErr || 'Не удалось обработать ни один язык' });
-  else emit({ stage: 'done', percent: 100, stageLabel: `Готово (${produced})` });
+  if (produced === 0) {
+    logF('all langs failed:', firstErr);
+    emit({ stage: 'error', percent: 0, error: firstErr || 'Не удалось обработать ни один язык' });
+  } else {
+    emit({ stage: 'done', percent: 100, stageLabel: `Готово (${produced})` });
+  }
 }
 
 export function registerFunnelHandlers() {
   ipcMain.handle('funnel:start', async (event, req: FunnelStartRequest) => {
     cancelled = false;
     const win = BrowserWindow.fromWebContents(event.sender);
+    logF('start url=', req.url, 'langs=', req.targetLanguages, 'uniqueize=', req.uniqueize, 'model=', req.model);
 
     const apiKey = getOpenRouterKey();
     if (!apiKey) return { error: 'Не задан ключ OpenRouter API (Настройки). Он нужен для AI-классификации.' };
@@ -723,9 +746,11 @@ export function registerFunnelHandlers() {
     );
     if (cancelled) return { ok: true };
     if ('error' in dl) {
+      logF('download ERROR:', dl.error);
       send(win, { id: 'download', stage: 'error', percent: 0, error: dl.error });
       return dl;
     }
+    logF('downloaded', dl.files.length, 'file(s)');
     // Заводим задачи в очереди по числу скачанных видео.
     const items = dl.files.map((f, i) => ({ id: `funnel_${Date.now()}_${i}`, path: f }));
     send(win, {
