@@ -70,9 +70,9 @@ export function getAssemblyKey(): string {
   return decode(readRaw().assemblyai);
 }
 
-// API-ключ Gemini (модуль «Воронка») — шифруется так же, как ключ AssemblyAI.
-export function getGeminiKey(): string {
-  return decode(readRaw().gemini);
+// API-ключ OpenRouter (модуль «Воронка») — шифруется так же, как ключ AssemblyAI.
+export function getOpenRouterKey(): string {
+  return decode(readRaw().openrouter);
 }
 
 export function registerConfigHandlers() {
@@ -84,12 +84,12 @@ export function registerConfigHandlers() {
     writeRaw(data);
     return { ok: true };
   });
-  // Ключ Gemini для модуля «Воронка».
-  ipcMain.handle('funnel:getKey', () => getGeminiKey());
+  // Ключ OpenRouter для модуля «Воронка».
+  ipcMain.handle('funnel:getKey', () => getOpenRouterKey());
   ipcMain.handle('funnel:setKey', (_e, key: string) => {
     const data = readRaw();
-    if (key) data.gemini = encode(key);
-    else delete data.gemini;
+    if (key) data.openrouter = encode(key);
+    else delete data.openrouter;
     writeRaw(data);
     return { ok: true };
   });

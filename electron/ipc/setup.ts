@@ -17,7 +17,6 @@ const PIP_PACKAGE: Record<string, string[]> = {
   edge: ['edge-tts'],
   translate: ['deep-translator'],
   download: ['yt-dlp'],
-  gemini: ['google-generativeai'],
 };
 
 interface SetupStatus {

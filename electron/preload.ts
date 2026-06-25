@@ -122,8 +122,8 @@ const electronAPI = {
   },
 
   // --- Модуль «Воронка» (Funnel) ---
-  getGeminiKey: (): Promise<string> => ipcRenderer.invoke('funnel:getKey'),
-  setGeminiKey: (key: string): Promise<{ ok: true }> => ipcRenderer.invoke('funnel:setKey', key),
+  getOpenRouterKey: (): Promise<string> => ipcRenderer.invoke('funnel:getKey'),
+  setOpenRouterKey: (key: string): Promise<{ ok: true }> => ipcRenderer.invoke('funnel:setKey', key),
   funnelStart: (request: FunnelStartRequest): Promise<{ ok: true } | { error: string }> =>
     ipcRenderer.invoke('funnel:start', request),
   funnelCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('funnel:cancel'),

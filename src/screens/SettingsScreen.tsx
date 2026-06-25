@@ -11,14 +11,16 @@ export default function SettingsScreen() {
   const setShowSetup = useUIStore((s) => s.setShowSetup);
   const [apiKey, setApiKey] = useState('');
   const [savedKey, setSavedKey] = useState(false);
-  const [geminiKey, setGeminiKey] = useState('');
-  const [savedGemini, setSavedGemini] = useState(false);
+  const [orKey, setOrKey] = useState('');
+  const [savedOr, setSavedOr] = useState(false);
+  const [orModel, setOrModel] = useState('');
   const [gpuMode, setGpuMode] = useState<GpuMode>('auto');
   const [outputDir, setOutputDir] = useState<string>('');
 
   useEffect(() => {
     window.electronAPI.getVubApiKey().then((k) => setApiKey(k || ''));
-    window.electronAPI.getGeminiKey().then((k) => setGeminiKey(k || ''));
+    window.electronAPI.getOpenRouterKey().then((k) => setOrKey(k || ''));
+    window.electronAPI.getSetting('funnel_model').then((m) => setOrModel((m as string) || 'google/gemini-2.5-flash'));
     window.electronAPI.getGpuMode().then(setGpuMode);
     window.electronAPI.getSetting('defaultOutputDir').then((d) => setOutputDir((d as string) || ''));
   }, []);
@@ -29,10 +31,11 @@ export default function SettingsScreen() {
     setTimeout(() => setSavedKey(false), 1500);
   }
 
-  async function saveGemini() {
-    await window.electronAPI.setGeminiKey(geminiKey.trim());
-    setSavedGemini(true);
-    setTimeout(() => setSavedGemini(false), 1500);
+  async function saveOr() {
+    await window.electronAPI.setOpenRouterKey(orKey.trim());
+    await window.electronAPI.setSetting('funnel_model', orModel.trim() || 'google/gemini-2.5-flash');
+    setSavedOr(true);
+    setTimeout(() => setSavedOr(false), 1500);
   }
 
   function changeGpu(m: GpuMode) {
@@ -91,25 +94,33 @@ export default function SettingsScreen() {
           </p>
         </div>
 
-        {/* API-ключ Gemini (AI-классификация в модуле «Воронка») */}
+        {/* API-ключ OpenRouter + модель (AI-классификация в модуле «Воронка») */}
         <div style={section}>
-          <label style={label}>Ключ API Gemini</label>
+          <label style={label}>Ключ API OpenRouter</label>
           <input
             type="password"
-            value={geminiKey}
-            onChange={(e) => setGeminiKey(e.target.value)}
-            placeholder="Вставьте ключ для модуля «Воронка»"
+            value={orKey}
+            onChange={(e) => setOrKey(e.target.value)}
+            placeholder="sk-or-… — ключ для модуля «Воронка»"
+            style={input}
+          />
+          <label style={{ ...label, marginTop: 12 }}>Модель классификации</label>
+          <input
+            type="text"
+            value={orModel}
+            onChange={(e) => setOrModel(e.target.value)}
+            placeholder="google/gemini-2.5-flash"
             style={input}
           />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10 }}>
-            <button onClick={saveGemini} className="btn-primary" style={{ padding: '8px 20px', fontSize: 13 }}>
-              Сохранить ключ
+            <button onClick={saveOr} className="btn-primary" style={{ padding: '8px 20px', fontSize: 13 }}>
+              Сохранить
             </button>
-            {savedGemini && <span style={{ fontSize: 13, color: 'var(--accent-green)' }}>Сохранено ✓</span>}
+            {savedOr && <span style={{ fontSize: 13, color: 'var(--accent-green)' }}>Сохранено ✓</span>}
           </div>
           <p style={hint}>
-            Нужен для AI-классификации видео в модуле «Воронка» (Gemini Flash, мультимодальный анализ).
-            Ключ шифруется и хранится только на этом компьютере.
+            Нужен для AI-классификации видео в модуле «Воронка». Модель должна поддерживать изображения и аудио —
+            недорогой вариант: google/gemini-2.5-flash. Ключ шифруется и хранится только на этом компьютере.
           </p>
         </div>
 

@@ -29,6 +29,7 @@ export interface FunnelStartRequest {
   targetLanguages: string[]; // подмножество кодов из FUNNEL_LANGS
   uniqueize: boolean; // применять лёгкую уникализацию к результату
   outputDir: string;
+  model?: string; // slug модели OpenRouter для классификации
 }
 
 // Задача воронки в очереди (одно скачанное видео).

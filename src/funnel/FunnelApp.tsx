@@ -43,7 +43,7 @@ export default function FunnelApp() {
     window.electronAPI.getSetting('funnel_default_target_languages').then((l) => {
       if (Array.isArray(l) && l.length) useFunnelStore.setState({ targetLanguages: l as string[] });
     });
-    window.electronAPI.getGeminiKey().then((k) => setHasKey(!!k));
+    window.electronAPI.getOpenRouterKey().then((k) => setHasKey(!!k));
     const off = window.electronAPI.onFunnelProgress((ev) => applyProgress(ev));
     return off;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -67,8 +67,9 @@ export default function FunnelApp() {
     setRunning(true);
     // Сохраняем выбор языков по умолчанию для будущих запусков.
     window.electronAPI.setSetting('funnel_default_target_languages', targetLanguages);
+    const model = ((await window.electronAPI.getSetting('funnel_model')) as string) || 'google/gemini-2.5-flash';
     try {
-      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, outputDir });
+      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, outputDir, model });
       if ('error' in r) {
         showToast(`Ошибка: ${r.error}`);
       } else {

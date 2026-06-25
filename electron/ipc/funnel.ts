@@ -6,7 +6,7 @@ import ffprobeStatic from 'ffprobe-static';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { getGeminiKey } from './config';
+import { getOpenRouterKey } from './config';
 import { detect } from './cleaner';
 import { runDub } from './dub';
 import { videoEncoderOptions } from './encoder';
@@ -26,6 +26,7 @@ if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
 let cancelled = false;
 const activeFfmpeg = new Set<ffmpeg.FfmpegCommand>();
 const activeProc = new Set<ChildProcess>();
+const activeAborts = new Set<AbortController>();
 
 function pyCmd(): string {
   return process.platform === 'win32' ? 'python' : 'python3';
@@ -147,7 +148,7 @@ function runDownload(
   });
 }
 
-// ── AI-классификация (Gemini) ────────────────────────────────────────────────
+// ── AI-классификация (OpenRouter, мультимодальная модель: кадры + аудио) ───────
 interface Classification {
   branch: number;
   has_voice: boolean;
@@ -157,31 +158,147 @@ interface Classification {
   text_content: string;
   confidence: number;
 }
-function analyze(video: string, apiKey: string): Promise<Classification | { error: string }> {
+
+const CLASSIFY_PROMPT = `Ты — классификатор коротких вертикальных видео для конвейера обработки.
+Тебе дают несколько кадров (раскадровку) и аудиодорожку одного ролика.
+Определи три признака:
+1. has_voice — есть ли в аудио человеческая речь (voice). Музыка/тишина без речи = false.
+2. has_subtitles — есть ли «выжженные» субтитры: динамически меняющийся текст,
+   синхронизированный с речью (обычно внизу кадра, идёт фразами).
+3. has_text_overlay — статические/полустатические текстовые плашки, заголовки, CTA,
+   которые НЕ являются субтитрами.
+Выбери ветку (branch):
+- 1: has_subtitles=false и has_voice=false.
+- 2: has_subtitles=true и has_voice=true.
+- 3: has_subtitles=false, has_voice=true, has_text_overlay=false.
+- 4: has_text_overlay=true и has_voice=false.
+- 5: has_text_overlay=true и has_voice=true.
+Также верни: language (ISO-639-1 основного языка речи/текста, либо "unknown"),
+text_content (распознанный текст плашки, если есть, иначе ""), confidence (0.0..1.0).
+Ответь СТРОГО одним JSON-объектом без markdown по схеме:
+{"branch":<1-5>,"has_voice":<bool>,"has_subtitles":<bool>,"has_text_overlay":<bool>,"language":"<code>","text_content":"<str>","confidence":<float>}`;
+
+// Извлечение N равномерных кадров (для распознавания текста/субтитров/плашек).
+function extractFrames(src: string, count: number, dir: string): Promise<string[]> {
   return new Promise((resolve) => {
-    const child = spawn(pyCmd(), [scriptPath('gemini_analyzer.py'), video, '--api-key', apiKey], {
-      env: { ...process.env, PYTHONUNBUFFERED: '1' },
-    });
-    activeProc.add(child);
-    let out = '';
-    let err = '';
-    child.stdout.on('data', (c) => (out += c.toString()));
-    child.stderr.on('data', (c) => (err += c.toString()));
-    child.on('error', (e) => {
-      activeProc.delete(child);
-      resolve({ error: e.message });
-    });
-    child.on('close', () => {
-      activeProc.delete(child);
-      try {
-        const r = JSON.parse(out.trim());
-        if (r.ok) resolve(r as Classification);
-        else resolve({ error: r.error || 'Ошибка анализа Gemini' });
-      } catch {
-        resolve({ error: err.trim() || 'gemini_analyzer.py недоступен' });
-      }
-    });
+    const names: string[] = [];
+    ffmpeg(src)
+      .on('filenames', (fns: string[]) => fns.forEach((f) => names.push(path.join(dir, f))))
+      .on('end', () => resolve(names))
+      .on('error', () => resolve([]))
+      .screenshots({ count, folder: dir, filename: 'frame_%i.jpg', size: '512x?' });
   });
+}
+
+// Извлечение аудиодорожки (моно, обрезка до maxSec) для детекции голоса.
+function extractAudio(src: string, out: string, maxSec: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    ffmpeg(src)
+      .noVideo()
+      .audioChannels(1)
+      .audioFrequency(16000)
+      .duration(maxSec)
+      .format('mp3')
+      .output(out)
+      .on('end', () => resolve(true))
+      .on('error', () => resolve(false))
+      .run();
+  });
+}
+
+// Вычисление ветки из признаков — подстраховка, если модель не вернула branch.
+function deriveBranch(d: Partial<Classification>): number {
+  const voice = !!d.has_voice;
+  const subs = !!d.has_subtitles;
+  const plate = !!d.has_text_overlay;
+  if (plate && voice) return 5;
+  if (plate && !voice) return 4;
+  if (subs && voice) return 2;
+  if (voice) return 3;
+  return 1;
+}
+
+// Анализ видео через OpenRouter (OpenAI-совместимый API). Шлёт кадры + аудио.
+async function analyze(
+  video: string,
+  apiKey: string,
+  model: string,
+  hasAudio: boolean
+): Promise<Classification | { error: string }> {
+  const work = path.join(os.tmpdir(), `funnel_an_${Math.random().toString(36).slice(2, 10)}`);
+  fs.mkdirSync(work, { recursive: true });
+  const audioPath = path.join(work, 'audio.mp3');
+  const cleanup = () => fs.promises.rm(work, { recursive: true, force: true }).catch(() => {});
+
+  try {
+    const frames = await extractFrames(video, 8, work);
+    if (cancelled) return { error: 'отменено' };
+    if (!frames.length) return { error: 'Не удалось извлечь кадры из видео' };
+    const audioOk = hasAudio ? await extractAudio(video, audioPath, 90) : false;
+    if (cancelled) return { error: 'отменено' };
+
+    // Сборка мультимодального сообщения: текст + кадры + (опц.) аудио.
+    const content: Record<string, unknown>[] = [{ type: 'text', text: CLASSIFY_PROMPT }];
+    for (const f of frames) {
+      const b64 = fs.readFileSync(f).toString('base64');
+      content.push({ type: 'image_url', image_url: { url: `data:image/jpeg;base64,${b64}` } });
+    }
+    if (audioOk) {
+      const ab64 = fs.readFileSync(audioPath).toString('base64');
+      content.push({ type: 'input_audio', input_audio: { data: ab64, format: 'mp3' } });
+    } else {
+      content.push({ type: 'text', text: 'Аудиодорожка отсутствует — считай has_voice=false.' });
+    }
+
+    const controller = new AbortController();
+    activeAborts.add(controller);
+    let resp: Response;
+    try {
+      resp = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': 'https://beatleap.local',
+          'X-Title': 'Beatleap Atom Funnel',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content }],
+          response_format: { type: 'json_object' },
+          temperature: 0.1,
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      activeAborts.delete(controller);
+    }
+
+    if (!resp.ok) {
+      const t = await resp.text().catch(() => '');
+      return { error: `OpenRouter ${resp.status}: ${t.slice(0, 200)}` };
+    }
+    const data = (await resp.json()) as { choices?: { message?: { content?: string } }[] };
+    let raw = (data.choices?.[0]?.message?.content || '').trim();
+    if (raw.startsWith('```')) raw = raw.replace(/^```[a-z]*\n?/i, '').replace(/```$/, '').trim();
+    if (!raw.startsWith('{')) raw = raw.slice(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+    const parsed = JSON.parse(raw) as Partial<Classification>;
+    const branch = [1, 2, 3, 4, 5].includes(parsed.branch as number) ? (parsed.branch as number) : deriveBranch(parsed);
+    return {
+      branch,
+      has_voice: !!parsed.has_voice,
+      has_subtitles: !!parsed.has_subtitles,
+      has_text_overlay: !!parsed.has_text_overlay,
+      language: String(parsed.language || 'unknown'),
+      text_content: String(parsed.text_content || ''),
+      confidence: Number(parsed.confidence || 0),
+    };
+  } catch (e) {
+    if (cancelled) return { error: 'отменено' };
+    return { error: e instanceof Error ? e.message : String(e) };
+  } finally {
+    cleanup();
+  }
 }
 
 // ── Базовые операции веток ───────────────────────────────────────────────────
@@ -442,17 +559,17 @@ async function processVideo(
   const baseName = path.parse(src).name.replace(/[^\w\-]+/g, '_').slice(0, 48) || 'video';
   const emit = (ev: Omit<FunnelProgressEvent, 'id'>) => send(win, { id, ...ev });
 
-  // AI-классификация.
-  emit({ stage: 'analyzing', percent: 12, stageLabel: 'AI-анализ (Gemini)…' });
-  const cls = await analyze(src, apiKey);
+  const { height, hasAudio } = await probe(src);
+
+  // AI-классификация (OpenRouter).
+  emit({ stage: 'analyzing', percent: 12, stageLabel: 'AI-анализ (OpenRouter)…' });
+  const cls = await analyze(src, apiKey, req.model || 'google/gemini-2.5-flash', hasAudio);
   if (cancelled) return;
   if ('error' in cls) {
     emit({ stage: 'error', percent: 0, error: cls.error });
     return;
   }
   emit({ stage: 'processing', percent: 15, branch: cls.branch, stageLabel: `Ветка ${cls.branch}` });
-
-  const { height } = await probe(src);
 
   // Ветка 1: только уникализация (без привязки к языку).
   if (cls.branch === 1) {
@@ -494,8 +611,8 @@ export function registerFunnelHandlers() {
     cancelled = false;
     const win = BrowserWindow.fromWebContents(event.sender);
 
-    const apiKey = getGeminiKey();
-    if (!apiKey) return { error: 'Не задан ключ Gemini API (Настройки). Он нужен для AI-классификации.' };
+    const apiKey = getOpenRouterKey();
+    if (!apiKey) return { error: 'Не задан ключ OpenRouter API (Настройки). Он нужен для AI-классификации.' };
     if (!req.url || !/^https?:\/\//i.test(req.url.trim())) return { error: 'Введите корректную ссылку (http/https)' };
     if (!req.outputDir) return { error: 'Не выбрана папка сохранения' };
 
@@ -562,6 +679,14 @@ export function registerFunnelHandlers() {
       }
     }
     activeProc.clear();
+    for (const ac of activeAborts) {
+      try {
+        ac.abort();
+      } catch {
+        /* noop */
+      }
+    }
+    activeAborts.clear();
     return { ok: true };
   });
 }
