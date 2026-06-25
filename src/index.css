@@ -114,7 +114,8 @@ body {
 .screen-fade {
   height: 100%;
   width: 100%;
-  animation: screenFadeIn 0.25s ease;
+  animation: screenFadeIn 0.25s ease both;
+  will-change: opacity;
 }
 
 /* ===== Интро-анимация логотипа Pulsar ===== */

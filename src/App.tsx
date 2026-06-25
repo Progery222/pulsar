@@ -122,13 +122,12 @@ function App() {
   if (appMode === 'select') {
     return (
       <>
-        {showIntro ? (
-          <IntroOverlay onDone={() => setShowIntro(false)} />
-        ) : (
-          <div className="screen-fade">
-            <ModeSelector />
-          </div>
-        )}
+        {/* Меню рендерится сразу — интро лежит поверх и плавно открывает уже готовый экран
+            (без чёрного разрыва между концом интро и монтированием меню). */}
+        <div className="screen-fade">
+          <ModeSelector />
+        </div>
+        {showIntro && <IntroOverlay onDone={() => setShowIntro(false)} />}
         <Overlays />
       </>
     );
