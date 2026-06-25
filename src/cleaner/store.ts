@@ -25,6 +25,8 @@ interface CleanerState {
   setDetectTitles: (v: boolean) => void;
   detectWatermarks: boolean;
   setDetectWatermarks: (v: boolean) => void;
+  dynamicTextOnly: boolean; // только меняющийся текст (субтитры)
+  setDynamicTextOnly: (v: boolean) => void;
 
   coverMethod: CoverMethod;
   setCoverMethod: (m: CoverMethod) => void;
@@ -90,6 +92,8 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setDetectTitles: (v) => set({ detectTitles: v }),
   detectWatermarks: true,
   setDetectWatermarks: (v) => set({ detectWatermarks: v }),
+  dynamicTextOnly: false,
+  setDynamicTextOnly: (v) => set({ dynamicTextOnly: v }),
 
   coverMethod: 'blur',
   setCoverMethod: (m) => set({ coverMethod: m }),

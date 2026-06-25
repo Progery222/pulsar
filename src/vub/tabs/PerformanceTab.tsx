@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useVubStore, type FileProgress } from '../store';
 import { Slider } from '../components/ui';
 import { outFileName } from '../naming';
@@ -24,6 +24,20 @@ export default function PerformanceTab() {
     const off = window.electronAPI.onVubWarning((msg) => showToast(msg));
     return off;
   }, []);
+
+  const [gpuMode, setGpuModeState] = useState<'auto' | 'gpu' | 'cpu'>('auto');
+  useEffect(() => {
+    window.electronAPI.getGpuMode().then(setGpuModeState);
+  }, []);
+  function changeGpuMode(m: 'auto' | 'gpu' | 'cpu') {
+    setGpuModeState(m);
+    window.electronAPI.setGpuMode(m);
+  }
+  const GPU_LABELS: Record<'auto' | 'gpu' | 'cpu', string> = {
+    auto: 'Авто',
+    gpu: 'GPU',
+    cpu: 'CPU',
+  };
 
   async function pickFolder() {
     const dir = await window.electronAPI.selectDirectory();
@@ -119,6 +133,34 @@ export default function PerformanceTab() {
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{threads} / {cores}</span>
         </div>
         <Slider min={1} max={cores} value={threads} onChange={setThreads} />
+      </div>
+
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ fontSize: 14, marginBottom: 8 }}>Кодирование (GPU-ускорение)</div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {(['auto', 'gpu', 'cpu'] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => changeGpuMode(m)}
+              style={{
+                flex: 1,
+                background: gpuMode === m ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+                color: gpuMode === m ? '#0D0D0D' : 'var(--text-primary)',
+                border: '1px solid var(--border)',
+                borderRadius: 8,
+                padding: '8px 0',
+                fontSize: 13,
+                fontWeight: gpuMode === m ? 600 : 400,
+                cursor: 'pointer',
+              }}
+            >
+              {GPU_LABELS[m]}
+            </button>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
+          Авто — использовать видеокарту (NVIDIA/Intel/AMD) при наличии, иначе CPU. GPU ускоряет рендер в разы.
+        </p>
       </div>
 
       <div style={{ marginBottom: 20 }}>

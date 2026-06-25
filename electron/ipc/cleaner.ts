@@ -10,6 +10,7 @@ import { transcribe } from './transcribe';
 import { getAssemblyKey } from './config';
 import { buildAss, roundRectPath } from '../../src/vub/assBuilder';
 import type { TitlesStyle, TranscriptWord } from '../../src/vub/types';
+import { videoEncoderOptions } from './encoder';
 
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
@@ -42,6 +43,7 @@ export interface CleanerRequest {
   videos: CleanerVideo[];
   detectTitles: boolean;
   detectWatermarks: boolean;
+  dynamicTextOnly?: boolean; // только меняющийся текст (субтитры), без статичных надписей/лого
   coverMethod: 'delogo' | 'blur' | 'box';
   boxColor: string;
   boxRadius?: number; // скругление сплошной плашки, px
@@ -119,13 +121,14 @@ function runPy(cmd: string, pre: string[], args: string[]): Promise<{ out: strin
 }
 
 // Запуск Python-детектора (перебор интерпретаторов), парсинг JSON.
-async function detect(videoPath: string, req: Pick<CleanerRequest, 'detectTitles' | 'detectWatermarks'>): Promise<DetectResult> {
+async function detect(videoPath: string, req: Pick<CleanerRequest, 'detectTitles' | 'detectWatermarks' | 'dynamicTextOnly'>): Promise<DetectResult> {
   const args = [
     pythonScript(),
     videoPath,
     req.detectTitles ? '1' : '0',
     req.detectWatermarks ? '1' : '0',
     eastModel(),
+    req.dynamicTextOnly ? '1' : '0',
   ];
   let lastErr = '';
   for (const [cmd, pre] of PY_CANDIDATES as [string, string[]][]) {
@@ -381,8 +384,9 @@ async function processOne(
     if (coverAssPath) fs.promises.unlink(coverAssPath).catch(() => {});
   };
 
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 });
   cmd
-    .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20')
+    .outputOptions(venc)
     .outputOptions('-movflags', '+faststart')
     .output(out);
 
@@ -429,7 +433,7 @@ export function registerCleanerHandlers() {
   });
 
   // Детект на одном ролике (для редактора зон — предзаполнить).
-  ipcMain.handle('cleaner:detectOne', async (_e, p: { videoPath: string; detectTitles: boolean; detectWatermarks: boolean }) => {
+  ipcMain.handle('cleaner:detectOne', async (_e, p: { videoPath: string; detectTitles: boolean; detectWatermarks: boolean; dynamicTextOnly?: boolean }) => {
     return detect(p.videoPath, p);
   });
 

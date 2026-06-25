@@ -11,6 +11,7 @@ import { outFileName } from '../../src/vub/naming';
 import type { TranscriptWord, VubProcessRequest, VubVideo } from '../../src/vub/types';
 import { transcribe } from './transcribe';
 import { getAssemblyKey } from './config';
+import { videoEncoderOptions } from './encoder';
 
 // Одна задача очереди = конкретная вариация конкретного видео.
 interface VubTask {
@@ -175,8 +176,9 @@ async function processOne(
     }
   }
 
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 + Math.floor(Math.random() * 6) });
   cmd
-    .outputOptions('-c:v', 'libx264', '-preset', 'veryfast', '-crf', String(20 + Math.floor(Math.random() * 6)))
+    .outputOptions(venc)
     .outputOptions('-movflags', '+faststart')
     .output(out);
 

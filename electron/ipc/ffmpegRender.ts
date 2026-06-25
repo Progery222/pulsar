@@ -10,6 +10,7 @@ import { FILTERS } from '../../src/data/filters';
 import type { EffectName, FilterName } from '../../src/types';
 import type { UniqualizerSettings } from '../../src/types/uniqualizer';
 import { buildUniqualizerFilters, buildVisibleVariation, randomMetadata, uniqualizerEncoding } from '../../src/utils/uniqualizer';
+import { videoEncoderOptions } from './encoder';
 
 // Bundled FFmpeg (§2 ТЗ). В упакованном приложении бинарник распакован из asar.
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
@@ -387,8 +388,9 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
 
     const basePath = path.join(tmpDir, 'base.mp4');
     const baseCmd = ffmpeg().input(videoSource);
+    const baseVenc = await videoEncoderOptions({ preset: 'fast', crf: 23 });
     const baseOut = [
-      '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'fast', '-crf', '23',
+      '-map', '0:v:0', ...baseVenc,
       '-t', String(req.duration), '-pix_fmt', 'yuv420p',
     ];
     if (audioTrack) {
@@ -424,11 +426,12 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       const enc = req.uniqualizer.enabled ? uniqualizerEncoding() : null;
 
       const cmd = ffmpeg(basePath);
-      const oo = [
-        '-map', '0:v:0', '-c:v', 'libx264', '-preset', 'fast',
-        '-crf', String(enc ? enc.crf : 23), '-pix_fmt', 'yuv420p',
-      ];
-      if (enc) oo.push('-g', String(enc.gop));
+      const copyVenc = await videoEncoderOptions({
+        preset: 'fast',
+        crf: enc ? enc.crf : 23,
+        gop: enc ? enc.gop : undefined,
+      });
+      const oo = ['-map', '0:v:0', ...copyVenc, '-pix_fmt', 'yuv420p'];
       if (enc?.faststart) oo.push('-movflags', '+faststart');
       if (baseHasAudio) {
         oo.push('-map', '0:a:0', '-c:a', 'aac', '-b:a', enc ? enc.audioBitrate : '192k');

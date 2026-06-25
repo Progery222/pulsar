@@ -143,7 +143,24 @@ def detect_watermarks(frames, proc_w=480):
     return res, motion
 
 
-def detect(path, do_titles, do_watermarks, model):
+# Временная дисперсия региона по кадрам: высокая = меняющийся текст (субтитр),
+# низкая = статичный текст (надпись на одежде, логотип).
+def region_std(frames, x0, y0, x1, y1):
+    x0, y0, x1, y1 = max(0, int(x0)), max(0, int(y0)), int(x1), int(y1)
+    if x1 - x0 < 6 or y1 - y0 < 6:
+        return 0.0
+    crops = []
+    for f in frames:
+        c = f[y0:y1, x0:x1]
+        if c.size == 0:
+            continue
+        crops.append(cv2.cvtColor(cv2.resize(c, (48, 24)), cv2.COLOR_BGR2GRAY).astype(np.float32))
+    if len(crops) < 3:
+        return 0.0
+    return float(np.stack(crops, 0).std(0).mean())
+
+
+def detect(path, do_titles, do_watermarks, model, dynamic_only=False):
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
         return {"error": "cannot open video"}
@@ -173,8 +190,14 @@ def detect(path, do_titles, do_watermarks, model):
                     for bx in east_boxes(f, net, dw, thr=0.4):
                         all_t.append([bx[0], bx[1], bx[2], bx[3], fi])
             for (x0, y0, x1, y1, frac) in merge_lines(all_t, W, len(frames)):
-                # паддинг (титры крупные — щедрее по вертикали) и нормализация
-                pw, ph = (x1 - x0) * 0.06, (y1 - y0) * 0.25
+                bw, bh = x1 - x0, y1 - y0
+                # Отбрасываем мелочь-шум.
+                if bw < W * 0.05 or bh < H * 0.012:
+                    continue
+                # Только меняющийся текст (субтитры): выкидываем статичные надписи/лого.
+                if dynamic_only and region_std(frames, x0, y0, x1, y1) < 12.0:
+                    continue
+                pw, ph = bw * 0.06, bh * 0.25
                 nx = max(0.0, x0 - pw)
                 ny = max(0.0, y0 - ph)
                 boxes.append({
@@ -205,4 +228,5 @@ if __name__ == "__main__":
     t = sys.argv[2] != "0" if len(sys.argv) > 2 else True
     w = sys.argv[3] != "0" if len(sys.argv) > 3 else True
     m = sys.argv[4] if len(sys.argv) > 4 else ""
-    print(json.dumps(detect(v, t, w, m)))
+    dyn = sys.argv[5] != "0" if len(sys.argv) > 5 else False
+    print(json.dumps(detect(v, t, w, m, dyn)))

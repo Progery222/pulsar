@@ -14,6 +14,7 @@ export default function CleanerApp() {
   const {
     videos, addVideos, removeVideo,
     detectTitles, setDetectTitles, detectWatermarks, setDetectWatermarks,
+    dynamicTextOnly, setDynamicTextOnly,
     coverMethod, setCoverMethod, boxColor, setBoxColor, boxRadius, setBoxRadius, blurStrength, setBlurStrength, minConf, setMinConf,
     addTitles, setAddTitles, titlesAtZone, setTitlesAtZone, titleZoneIndex, setTitleZoneIndex,
     titleZonePick, setTitleZonePick,
@@ -29,7 +30,7 @@ export default function CleanerApp() {
   async function autoZones() {
     if (!videos.length) return;
     setDetecting(true);
-    const r = await window.electronAPI.detectCleanerOne({ videoPath: videos[0].path, detectTitles, detectWatermarks });
+    const r = await window.electronAPI.detectCleanerOne({ videoPath: videos[0].path, detectTitles, detectWatermarks, dynamicTextOnly });
     setDetecting(false);
     if (r.error) { setZones([]); return; }
     setZones((r.boxes || []).filter((b) => (b.conf ?? 1) >= minConf).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })));
@@ -65,6 +66,7 @@ export default function CleanerApp() {
         videos,
         detectTitles,
         detectWatermarks,
+        dynamicTextOnly,
         coverMethod,
         boxColor,
         boxRadius,
@@ -129,6 +131,11 @@ export default function CleanerApp() {
             <Checkbox checked={detectTitles} onChange={setDetectTitles} label="Титры / субтитры (текст)" />
             <Checkbox checked={detectWatermarks} onChange={setDetectWatermarks} label="Водяные знаки / логотипы" />
           </div>
+          {detectTitles && (
+            <div style={{ marginTop: 10 }}>
+              <Checkbox checked={dynamicTextOnly} onChange={setDynamicTextOnly} label="Только меняющийся текст (субтитры) — игнорировать надписи на одежде/лого" />
+            </div>
+          )}
         </Block>
         <Block>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

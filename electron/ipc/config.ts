@@ -1,10 +1,34 @@
 import { app, ipcMain, safeStorage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import { getGpuMode, setGpuMode, type GpuMode } from './encoder';
 
 // Локальное хранение секретов (API-ключ AssemblyAI) в userData. В git/исходники не попадает.
 function configPath(): string {
   return path.join(app.getPath('userData'), 'vub-secrets.json');
+}
+
+// Несекретные настройки приложения (режим GPU и т.п.).
+function settingsPath(): string {
+  return path.join(app.getPath('userData'), 'settings.json');
+}
+
+function readSettings(): Record<string, unknown> {
+  try {
+    return JSON.parse(fs.readFileSync(settingsPath(), 'utf-8'));
+  } catch {
+    return {};
+  }
+}
+
+function writeSettings(data: Record<string, unknown>): void {
+  fs.writeFileSync(settingsPath(), JSON.stringify(data), 'utf-8');
+}
+
+// Загрузка сохранённого режима GPU в энкодер при старте приложения.
+export function loadSettings(): void {
+  const m = readSettings().gpuMode;
+  if (m === 'auto' || m === 'gpu' || m === 'cpu') setGpuMode(m);
 }
 
 function readRaw(): Record<string, string> {
@@ -53,6 +77,14 @@ export function registerConfigHandlers() {
     if (key) data.assemblyai = encode(key);
     else delete data.assemblyai;
     writeRaw(data);
+    return { ok: true };
+  });
+  ipcMain.handle('settings:getGpuMode', () => getGpuMode());
+  ipcMain.handle('settings:setGpuMode', (_e, mode: GpuMode) => {
+    setGpuMode(mode);
+    const data = readSettings();
+    data.gpuMode = mode;
+    writeSettings(data);
     return { ok: true };
   });
 }

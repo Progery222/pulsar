@@ -29,6 +29,11 @@ const electronAPI = {
   openFolder: (folderPath: string): Promise<string> =>
     ipcRenderer.invoke('shell:openPath', folderPath),
 
+  // Режим GPU-кодирования (auto/gpu/cpu).
+  getGpuMode: (): Promise<'auto' | 'gpu' | 'cpu'> => ipcRenderer.invoke('settings:getGpuMode'),
+  setGpuMode: (mode: 'auto' | 'gpu' | 'cpu'): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('settings:setGpuMode', mode),
+
   // --- Модуль VUB (§4–5 ТЗ VUB) ---
   selectWatermark: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectWatermark'),
   getVubApiKey: (): Promise<string> => ipcRenderer.invoke('vub:getKey'),
@@ -56,7 +61,7 @@ const electronAPI = {
   processCleaner: (request: unknown): Promise<{ ok: true }> =>
     ipcRenderer.invoke('cleaner:process', request),
   detectCleanerOne: (
-    payload: { videoPath: string; detectTitles: boolean; detectWatermarks: boolean }
+    payload: { videoPath: string; detectTitles: boolean; detectWatermarks: boolean; dynamicTextOnly?: boolean }
   ): Promise<{ width: number; height: number; boxes: { x: number; y: number; w: number; h: number; conf?: number }[]; error?: string }> =>
     ipcRenderer.invoke('cleaner:detectOne', payload),
   cancelCleaner: (): Promise<{ ok: true }> => ipcRenderer.invoke('cleaner:cancel'),
