@@ -5,85 +5,127 @@ import { useQueueStore } from '../store/queueStore';
 const LANGS = [
   { value: 'ru', label: 'Русский' },
   { value: 'en', label: 'English' },
+  { value: 'uk', label: 'Українська' },
   { value: 'es', label: 'Español' },
   { value: 'de', label: 'Deutsch' },
   { value: 'fr', label: 'Français' },
-];
-
-const ENGINES = [
-  { value: 'edge', label: 'Edge TTS (живые нейроголоса, бесплатно, без ключа)' },
-  { value: 'xtts', label: 'XTTS-v2 (многоязычный, клонирование)' },
-  { value: 'silero', label: 'Silero (рус/англ, лёгкий)' },
-  { value: 'gptsovits', label: 'GPT-SoVITS (топ рус-клонирование, через сервер)' },
+  { value: 'it', label: 'Italiano' },
+  { value: 'pt', label: 'Português' },
+  { value: 'pl', label: 'Polski' },
+  { value: 'tr', label: 'Türkçe' },
+  { value: 'ar', label: 'العربية' },
+  { value: 'hi', label: 'हिन्दी' },
+  { value: 'ja', label: '日本語' },
+  { value: 'ko', label: '한국어' },
+  { value: 'zh', label: '中文' },
 ];
 
 // Естественные нейроголоса Edge по языкам.
-const EDGE_VOICES: Record<string, { value: string; label: string }[]> = {
+export const EDGE_VOICES: Record<string, { value: string; label: string }[]> = {
   ru: [
     { value: 'ru-RU-SvetlanaNeural', label: 'Светлана (ж)' },
     { value: 'ru-RU-DariyaNeural', label: 'Дария (ж)' },
     { value: 'ru-RU-DmitryNeural', label: 'Дмитрий (м)' },
   ],
   en: [
-    { value: 'en-US-AriaNeural', label: 'Aria (ж)' },
-    { value: 'en-US-JennyNeural', label: 'Jenny (ж)' },
-    { value: 'en-US-GuyNeural', label: 'Guy (м)' },
-    { value: 'en-GB-RyanNeural', label: 'Ryan UK (м)' },
+    { value: 'en-US-AriaNeural', label: 'Aria — US (ж)' },
+    { value: 'en-US-JennyNeural', label: 'Jenny — US (ж)' },
+    { value: 'en-US-MichelleNeural', label: 'Michelle — US (ж)' },
+    { value: 'en-US-AnaNeural', label: 'Ana — US, детский (ж)' },
+    { value: 'en-US-GuyNeural', label: 'Guy — US (м)' },
+    { value: 'en-US-ChristopherNeural', label: 'Christopher — US (м)' },
+    { value: 'en-US-EricNeural', label: 'Eric — US (м)' },
+    { value: 'en-US-RogerNeural', label: 'Roger — US (м)' },
+    { value: 'en-GB-SoniaNeural', label: 'Sonia — UK (ж)' },
+    { value: 'en-GB-LibbyNeural', label: 'Libby — UK (ж)' },
+    { value: 'en-GB-RyanNeural', label: 'Ryan — UK (м)' },
+    { value: 'en-GB-ThomasNeural', label: 'Thomas — UK (м)' },
+    { value: 'en-AU-NatashaNeural', label: 'Natasha — AU (ж)' },
+    { value: 'en-AU-WilliamNeural', label: 'William — AU (м)' },
   ],
-  es: [{ value: 'es-ES-ElviraNeural', label: 'Elvira (ж)' }, { value: 'es-ES-AlvaroNeural', label: 'Álvaro (м)' }],
-  de: [{ value: 'de-DE-KatjaNeural', label: 'Katja (ж)' }, { value: 'de-DE-ConradNeural', label: 'Conrad (м)' }],
-  fr: [{ value: 'fr-FR-DeniseNeural', label: 'Denise (ж)' }, { value: 'fr-FR-HenriNeural', label: 'Henri (м)' }],
+  uk: [
+    { value: 'uk-UA-PolinaNeural', label: 'Поліна (ж)' },
+    { value: 'uk-UA-OstapNeural', label: 'Остап (м)' },
+  ],
+  es: [
+    { value: 'es-ES-ElviraNeural', label: 'Elvira — ES (ж)' },
+    { value: 'es-ES-AlvaroNeural', label: 'Álvaro — ES (м)' },
+    { value: 'es-MX-DaliaNeural', label: 'Dalia — MX (ж)' },
+    { value: 'es-MX-JorgeNeural', label: 'Jorge — MX (м)' },
+  ],
+  de: [
+    { value: 'de-DE-KatjaNeural', label: 'Katja (ж)' },
+    { value: 'de-DE-AmalaNeural', label: 'Amala (ж)' },
+    { value: 'de-DE-ConradNeural', label: 'Conrad (м)' },
+    { value: 'de-DE-KillianNeural', label: 'Killian (м)' },
+  ],
+  fr: [
+    { value: 'fr-FR-DeniseNeural', label: 'Denise (ж)' },
+    { value: 'fr-FR-EloiseNeural', label: 'Eloise (ж)' },
+    { value: 'fr-FR-HenriNeural', label: 'Henri (м)' },
+  ],
+  it: [
+    { value: 'it-IT-ElsaNeural', label: 'Elsa (ж)' },
+    { value: 'it-IT-IsabellaNeural', label: 'Isabella (ж)' },
+    { value: 'it-IT-DiegoNeural', label: 'Diego (м)' },
+  ],
+  pt: [
+    { value: 'pt-BR-FranciscaNeural', label: 'Francisca — BR (ж)' },
+    { value: 'pt-BR-AntonioNeural', label: 'Antônio — BR (м)' },
+    { value: 'pt-PT-RaquelNeural', label: 'Raquel — PT (ж)' },
+  ],
+  pl: [
+    { value: 'pl-PL-ZofiaNeural', label: 'Zofia (ж)' },
+    { value: 'pl-PL-MarekNeural', label: 'Marek (м)' },
+  ],
+  tr: [
+    { value: 'tr-TR-EmelNeural', label: 'Emel (ж)' },
+    { value: 'tr-TR-AhmetNeural', label: 'Ahmet (м)' },
+  ],
+  ar: [
+    { value: 'ar-SA-ZariyahNeural', label: 'Zariyah (ж)' },
+    { value: 'ar-SA-HamedNeural', label: 'Hamed (м)' },
+  ],
+  hi: [
+    { value: 'hi-IN-SwaraNeural', label: 'Swara (ж)' },
+    { value: 'hi-IN-MadhurNeural', label: 'Madhur (м)' },
+  ],
+  ja: [
+    { value: 'ja-JP-NanamiNeural', label: 'Nanami (ж)' },
+    { value: 'ja-JP-KeitaNeural', label: 'Keita (м)' },
+  ],
+  ko: [
+    { value: 'ko-KR-SunHiNeural', label: 'SunHi (ж)' },
+    { value: 'ko-KR-InJoonNeural', label: 'InJoon (м)' },
+  ],
+  zh: [
+    { value: 'zh-CN-XiaoxiaoNeural', label: 'Xiaoxiao (ж)' },
+    { value: 'zh-CN-XiaoyiNeural', label: 'Xiaoyi (ж)' },
+    { value: 'zh-CN-YunxiNeural', label: 'Yunxi (м)' },
+    { value: 'zh-CN-YunyangNeural', label: 'Yunyang (м)' },
+  ],
 };
 
-// Раздел «Озвучка»: текст → речь, опционально наложить на видео.
+const SAMPLE_TEXT: Record<string, string> = {
+  ru: 'Привет! Это пример голоса в Pulsar.',
+  en: 'Hi! This is a voice sample in Pulsar.',
+  uk: 'Привіт! Це приклад голосу в Pulsar.',
+  es: '¡Hola! Esta es una muestra de voz en Pulsar.',
+  de: 'Hallo! Das ist eine Sprachprobe in Pulsar.',
+  fr: 'Salut ! Ceci est un exemple de voix dans Pulsar.',
+};
+
+// Раздел «Озвучка» на Edge TTS: текст → речь, опционально наложить на видео.
 export default function TtsApp() {
   const [text, setText] = useState('');
   const [lang, setLang] = useState('ru');
-  const [engine, setEngine] = useState('edge');
   const [voice, setVoice] = useState('');
   const [speed, setSpeed] = useState(1);
-  const [speakerWav, setSpeakerWav] = useState('');
-  const [promptText, setPromptText] = useState('');
-  const [apiUrl, setApiUrl] = useState('http://127.0.0.1:9880');
   const [outputDir, setOutputDir] = useState('');
   const [attachVideo, setAttachVideo] = useState('');
   const [keepOriginal, setKeepOriginal] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sampling, setSampling] = useState(false);
-
-  // Короткая фраза-пример по языку.
-  const SAMPLE_TEXT: Record<string, string> = {
-    ru: 'Привет! Это пример голоса в Pulsar.',
-    en: 'Hi! This is a voice sample in Pulsar.',
-    es: '¡Hola! Esta es una muestra de voz en Pulsar.',
-    de: 'Hallo! Das ist eine Sprachprobe in Pulsar.',
-    fr: 'Salut ! Ceci est un exemple de voix dans Pulsar.',
-  };
-
-  async function playSample() {
-    if (sampling) return;
-    setSampling(true);
-    try {
-      const r = await window.electronAPI.ttsSample({
-        text: SAMPLE_TEXT[lang] ?? SAMPLE_TEXT.en,
-        lang,
-        engine,
-        speed,
-        voice: engine === 'edge' ? voice || undefined : undefined,
-        speakerWav: speakerWav || undefined,
-        promptText: engine === 'gptsovits' ? promptText || undefined : undefined,
-        apiUrl: engine === 'gptsovits' ? apiUrl || undefined : undefined,
-      });
-      if ('error' in r) {
-        showToast(`Не удалось создать пример: ${r.error}`);
-      } else {
-        const audio = new Audio(`media:///${encodeURIComponent(r.out)}`);
-        audio.play().catch(() => showToast('Не удалось воспроизвести пример'));
-      }
-    } finally {
-      setSampling(false);
-    }
-  }
 
   useEffect(() => {
     window.electronAPI.getSetting('defaultOutputDir').then((d) => {
@@ -99,9 +141,23 @@ export default function TtsApp() {
     const v = await window.electronAPI.selectVideos();
     if (v.length) setAttachVideo(v[0]);
   }
-  async function pickSpeaker() {
-    const a = await window.electronAPI.selectAudio();
-    if (a) setSpeakerWav(a);
+
+  async function playSample() {
+    if (sampling) return;
+    setSampling(true);
+    try {
+      const r = await window.electronAPI.ttsSample({
+        text: SAMPLE_TEXT[lang] ?? SAMPLE_TEXT.en,
+        lang,
+        engine: 'edge',
+        speed,
+        voice: voice || undefined,
+      });
+      if ('error' in r) showToast(`Не удалось создать пример: ${r.error}`);
+      else new Audio(`media:///${encodeURIComponent(r.out)}`).play().catch(() => showToast('Не удалось воспроизвести'));
+    } finally {
+      setSampling(false);
+    }
   }
 
   async function generate() {
@@ -115,12 +171,9 @@ export default function TtsApp() {
       const r = await window.electronAPI.ttsSynth({
         text,
         lang,
-        engine,
+        engine: 'edge',
         speed,
-        voice: engine === 'edge' ? voice || undefined : undefined,
-        speakerWav: speakerWav || undefined,
-        promptText: engine === 'gptsovits' ? promptText || undefined : undefined,
-        apiUrl: engine === 'gptsovits' ? apiUrl || undefined : undefined,
+        voice: voice || undefined,
         outputDir,
         outName: name,
         attachVideo: attachVideo || undefined,
@@ -135,7 +188,7 @@ export default function TtsApp() {
         window.electronAPI.historyAdd({
           id,
           mode: 'editor',
-          title: `Озвучка • ${engine} • ${lang}`,
+          title: `Озвучка • ${lang}${voice ? ' • ' + voice : ''}`,
           createdAt: Date.now(),
           outputDir,
           files: [r.out.split(/[\\/]/).pop() || ''],
@@ -153,6 +206,7 @@ export default function TtsApp() {
     color: 'var(--text-primary)', borderRadius: 8, padding: '10px 12px', fontSize: 14,
   };
   const label: React.CSSProperties = { fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' };
+  const voices = EDGE_VOICES[lang] ?? [];
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg-primary)' }}>
@@ -161,7 +215,7 @@ export default function TtsApp() {
           Озвучка
         </h1>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
-          Текст → речь. Можно сразу наложить на видео. Движок выбирается ниже.
+          Текст → речь живыми нейроголосами (Edge TTS, бесплатно). Можно сразу наложить на видео.
         </p>
 
         <textarea
@@ -175,27 +229,18 @@ export default function TtsApp() {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
           <div>
             <label style={label}>Язык</label>
-            <select value={lang} onChange={(e) => setLang(e.target.value)} style={field}>
+            <select value={lang} onChange={(e) => { setLang(e.target.value); setVoice(''); }} style={field}>
               {LANGS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
           <div>
-            <label style={label}>Движок</label>
-            <select value={engine} onChange={(e) => { setEngine(e.target.value); setVoice(''); }} style={field}>
-              {ENGINES.map((en) => <option key={en.value} value={en.value}>{en.label}</option>)}
+            <label style={label}>Голос ({voices.length})</label>
+            <select value={voice} onChange={(e) => setVoice(e.target.value)} style={field}>
+              <option value="">По умолчанию</option>
+              {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
             </select>
           </div>
         </div>
-
-        {engine === 'edge' && (EDGE_VOICES[lang] ?? []).length > 0 && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={label}>Голос</label>
-            <select value={voice} onChange={(e) => setVoice(e.target.value)} style={field}>
-              <option value="">По умолчанию</option>
-              {(EDGE_VOICES[lang] ?? []).map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-            </select>
-          </div>
-        )}
 
         <div style={{ marginBottom: 16 }}>
           <button
@@ -203,13 +248,11 @@ export default function TtsApp() {
             disabled={sampling}
             style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', opacity: sampling ? 0.5 : 1 }}
           >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-              <path d="M8 5v14l11-7z" />
-            </svg>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M8 5v14l11-7z" /></svg>
             {sampling ? 'Генерирую пример…' : 'Прослушать пример'}
           </button>
           <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 10 }}>
-            короткая фраза текущим движком и голосом
+            короткая фраза этим голосом
           </span>
         </div>
 
@@ -217,31 +260,6 @@ export default function TtsApp() {
           <label style={label}>Скорость: {speed.toFixed(2)}×</label>
           <input type="range" min={0.5} max={1.5} step={0.05} value={speed} onChange={(e) => setSpeed(Number(e.target.value))} style={{ width: '100%' }} />
         </div>
-
-        {(engine === 'xtts' || engine === 'gptsovits') && (
-          <div style={{ marginBottom: 16 }}>
-            <label style={label}>
-              Образец голоса для клонирования {engine === 'gptsovits' ? '(обязательно, 3–10 сек)' : '(опц., аудиофайл)'}
-            </label>
-            <button onClick={pickSpeaker} style={{ ...field, textAlign: 'left', cursor: 'pointer', color: speakerWav ? 'var(--text-primary)' : 'var(--text-secondary)' }}>
-              {speakerWav ? speakerWav.split(/[\\/]/).pop() : 'Выбрать аудио-образец…'}
-            </button>
-          </div>
-        )}
-
-        {engine === 'gptsovits' && (
-          <div style={{ marginBottom: 16, padding: 14, border: '1px solid var(--border)', borderRadius: 10 }}>
-            <div style={{ marginBottom: 12 }}>
-              <label style={label}>Расшифровка образца (что говорят в образце)</label>
-              <input value={promptText} onChange={(e) => setPromptText(e.target.value)} placeholder="Текст из аудио-образца" style={field} />
-            </div>
-            <label style={label}>Адрес сервера GPT-SoVITS</label>
-            <input value={apiUrl} onChange={(e) => setApiUrl(e.target.value)} placeholder="http://127.0.0.1:9880" style={field} />
-            <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
-              Требуется запущенный сервер GPT-SoVITS (его <code>api.py</code>). Лучшее клонирование русского голоса.
-            </p>
-          </div>
-        )}
 
         <div style={{ marginBottom: 16, padding: 14, border: '1px solid var(--border)', borderRadius: 10 }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
@@ -276,8 +294,7 @@ export default function TtsApp() {
         </button>
 
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 20, lineHeight: 1.5 }}>
-          Движок ставится в «Настройках → Установка движков». Edge TTS — самые живые голоса бесплатно (<code>pip install edge-tts</code>, онлайн).
-          XTTS — лучшее качество + клонирование (оффлайн). Прогресс виден в окне «Очередь».
+          Движок Edge TTS ставится в «Настройках → Установка движков» (<code>pip install edge-tts</code>, онлайн). Прогресс — в окне «Очередь».
         </p>
       </div>
     </div>

@@ -9,9 +9,7 @@ interface Status {
 }
 
 const ENGINE_INFO: { id: string; name: string; note: string }[] = [
-  { id: 'edge', name: 'Edge TTS', note: 'Живые нейроголоса, бесплатно, без ключа (быстрая установка)' },
-  { id: 'xtts', name: 'XTTS-v2', note: 'Многоязычный + клонирование голоса (~1.8 ГБ)' },
-  { id: 'silero', name: 'Silero', note: 'Русский/английский, лёгкий и быстрый' },
+  { id: 'edge', name: 'Edge TTS', note: 'Живые нейроголоса, бесплатно, без ключа, много языков' },
 ];
 
 // Полоса прогресса: определённая (percent) или «бегущая» (indeterminate).
