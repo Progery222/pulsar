@@ -3,6 +3,7 @@ import { useProjectStore } from '../store/projectStore';
 import { useUIStore } from '../store/uiStore';
 import { buildAndRender } from '../utils/ffmpegBuilder';
 import { showToast } from '../store/toastStore';
+import { PLATFORM_PRESETS } from '../data/platformPresets';
 import UniqualizerPanel from './UniqualizerPanel';
 
 type Quality = '720p' | '1080p' | '4k';
@@ -21,6 +22,17 @@ export default function ExportModal() {
 
   const [quality, setQuality] = useState<Quality>('1080p');
   const [folder, setFolder] = useState<string | null>(null);
+  const [presetKey, setPresetKey] = useState<string>('');
+
+  function applyPreset(key: string) {
+    setPresetKey(key);
+    const p = PLATFORM_PRESETS.find((x) => x.key === key);
+    if (!p) return;
+    setQuality(p.quality);
+    const st = useProjectStore.getState();
+    st.setFormat(p.format);
+    if (p.maxDuration > 0 && st.duration > p.maxDuration) st.setDuration(p.maxDuration);
+  }
 
   async function chooseFolder() {
     const f = await window.electronAPI.selectDirectory();
@@ -77,6 +89,27 @@ export default function ExportModal() {
           <button className="text-text-secondary hover:text-text-primary" onClick={() => setShowExport(false)}>
             ✕
           </button>
+        </div>
+
+        {/* Пресет площадки */}
+        <label className="mb-1 text-text-secondary" style={{ fontSize: 13 }}>
+          Пресет площадки
+        </label>
+        <select
+          value={presetKey}
+          onChange={(e) => applyPreset(e.target.value)}
+          className="mb-1 rounded-el bg-bg-tertiary px-3 py-2 text-text-primary"
+        >
+          <option value="">Свои настройки</option>
+          {PLATFORM_PRESETS.map((p) => (
+            <option key={p.key} value={p.key}>
+              {p.label}
+            </option>
+          ))}
+        </select>
+        <div className="mb-4 text-text-secondary" style={{ fontSize: 11 }}>
+          {PLATFORM_PRESETS.find((p) => p.key === presetKey)?.note ??
+            'Задаёт формат кадра, разрешение и длительность под площадку'}
         </div>
 
         {/* Качество */}
