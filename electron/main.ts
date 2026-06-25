@@ -1,7 +1,18 @@
 import { app, BrowserWindow, protocol } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
+import dns from 'node:dns';
 import { Readable } from 'node:stream';
+
+// Node 18 fetch (undici) без Happy Eyeballs падает «fetch failed», если хост
+// резолвится в IPv6, а IPv6 не работает. Глобально предпочитаем IPv4 для всех
+// сетевых вызовов приложения (OpenRouter, AssemblyAI и т.д.). Должно стоять до
+// любых сетевых запросов.
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* noop */
+}
 import { registerFileHandlers } from './ipc/files';
 import { registerAudioHandlers } from './ipc/audio';
 import { registerFfmpegHandlers } from './ipc/ffmpeg';
