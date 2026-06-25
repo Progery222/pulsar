@@ -16,10 +16,8 @@ import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
 import SettingsScreen from './screens/SettingsScreen';
-import HistoryScreen from './screens/HistoryScreen';
-import QueueScreen from './screens/QueueScreen';
 import TopBar from './components/TopBar';
-import Toast from './components/Toast';
+import Overlays from './components/Overlays';
 
 // Ctrl+O: добавление медиафайлов через диалог.
 async function addMediaViaDialog() {
@@ -116,7 +114,7 @@ function App() {
         <div className="screen-fade">
           <ModeSelector />
         </div>
-        <Toast />
+        <Overlays />
       </>
     );
   }
@@ -129,7 +127,7 @@ function App() {
           <VubApp />
         </div>
         <TopBar />
-        <Toast />
+        <Overlays />
       </>
     );
   }
@@ -142,7 +140,7 @@ function App() {
           <CleanerApp />
         </div>
         <TopBar />
-        <Toast />
+        <Overlays />
       </>
     );
   }
@@ -155,33 +153,7 @@ function App() {
           <SettingsScreen />
         </div>
         <TopBar />
-        <Toast />
-      </>
-    );
-  }
-
-  // История выполненных задач.
-  if (appMode === 'history') {
-    return (
-      <>
-        <div className="screen-fade">
-          <HistoryScreen />
-        </div>
-        <TopBar />
-        <Toast />
-      </>
-    );
-  }
-
-  // Очередь задач (живой прогресс всех режимов).
-  if (appMode === 'queue') {
-    return (
-      <>
-        <div className="screen-fade">
-          <QueueScreen />
-        </div>
-        <TopBar />
-        <Toast />
+        <Overlays />
       </>
     );
   }
@@ -213,7 +185,7 @@ function App() {
         {screen}
       </div>
       <TopBar />
-      <Toast />
+      <Overlays />
     </>
   );
 }

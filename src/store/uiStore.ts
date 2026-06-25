@@ -3,8 +3,8 @@ import { create } from 'zustand';
 export type Tab = 'tools' | 'edit' | 'filters';
 
 // Режим приложения: стартовый экран выбора / редактор (Монтаж) / VUB (Уникализатор) /
-// cleaner (Замена титров) / settings / history / queue (очередь задач).
-export type AppMode = 'select' | 'editor' | 'vub' | 'cleaner' | 'settings' | 'history' | 'queue';
+// cleaner (Замена титров) / settings. История и Очередь — плавающие мини-окна (не режимы).
+export type AppMode = 'select' | 'editor' | 'vub' | 'cleaner' | 'settings';
 
 // UI-состояние редактора (вкладка, модалка экспорта, play/pause-колбэк),
 // отдельно от ProjectState (§15).
@@ -17,6 +17,13 @@ interface UIState {
   setShowExport: (value: boolean) => void;
   playToggle: (() => void) | null;
   setPlayToggle: (fn: (() => void) | null) => void;
+  // Плавающие мини-окна.
+  showQueue: boolean;
+  toggleQueue: () => void;
+  setShowQueue: (value: boolean) => void;
+  showHistory: boolean;
+  toggleHistory: () => void;
+  setShowHistory: (value: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -28,4 +35,10 @@ export const useUIStore = create<UIState>((set) => ({
   setShowExport: (value) => set({ showExport: value }),
   playToggle: null,
   setPlayToggle: (fn) => set({ playToggle: fn }),
+  showQueue: false,
+  toggleQueue: () => set((s) => ({ showQueue: !s.showQueue })),
+  setShowQueue: (value) => set({ showQueue: value }),
+  showHistory: false,
+  toggleHistory: () => set((s) => ({ showHistory: !s.showHistory })),
+  setShowHistory: (value) => set({ showHistory: value }),
 }));
