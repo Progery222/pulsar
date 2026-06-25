@@ -81,6 +81,15 @@ export default function CleanerApp() {
         zones: manualZones ? zones : undefined,
         outputDir,
       });
+      window.electronAPI.historyAdd({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        mode: 'cleaner',
+        title: `Замена титров • ${videos.length} видео`,
+        createdAt: Date.now(),
+        outputDir,
+        files: videos.map((v) => v.name),
+        settings: null,
+      });
     } finally {
       setIsProcessing(false);
     }

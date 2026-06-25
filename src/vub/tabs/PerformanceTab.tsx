@@ -86,6 +86,15 @@ export default function PerformanceTab() {
         namePattern,
         outputDir,
       });
+      window.electronAPI.historyAdd({
+        id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        mode: 'vub',
+        title: `Уникализатор • ${videos.length} видео × ${variations}`,
+        createdAt: Date.now(),
+        outputDir,
+        files: initial.map((p) => p.name),
+        settings: null,
+      });
     } finally {
       setIsProcessing(false);
     }

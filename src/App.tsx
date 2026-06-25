@@ -14,7 +14,9 @@ import EditorScreen from './screens/EditorScreen';
 import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
-import HomeButton from './components/HomeButton';
+import SettingsScreen from './screens/SettingsScreen';
+import HistoryScreen from './screens/HistoryScreen';
+import TopBar from './components/TopBar';
 import Toast from './components/Toast';
 
 // Ctrl+O: добавление медиафайлов через диалог.
@@ -108,7 +110,7 @@ function App() {
         <div className="screen-fade">
           <VubApp />
         </div>
-        <HomeButton />
+        <TopBar />
         <Toast />
       </>
     );
@@ -121,7 +123,33 @@ function App() {
         <div className="screen-fade">
           <CleanerApp />
         </div>
-        <HomeButton />
+        <TopBar />
+        <Toast />
+      </>
+    );
+  }
+
+  // Настройки приложения.
+  if (appMode === 'settings') {
+    return (
+      <>
+        <div className="screen-fade">
+          <SettingsScreen />
+        </div>
+        <TopBar />
+        <Toast />
+      </>
+    );
+  }
+
+  // История выполненных задач.
+  if (appMode === 'history') {
+    return (
+      <>
+        <div className="screen-fade">
+          <HistoryScreen />
+        </div>
+        <TopBar />
         <Toast />
       </>
     );
@@ -153,7 +181,7 @@ function App() {
       <div key={currentScreen} className="screen-fade">
         {screen}
       </div>
-      <HomeButton />
+      <TopBar />
       <Toast />
     </>
   );

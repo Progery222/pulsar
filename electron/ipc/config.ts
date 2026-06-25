@@ -87,4 +87,12 @@ export function registerConfigHandlers() {
     writeSettings(data);
     return { ok: true };
   });
+  // Универсальное хранилище несекретных настроек (папка по умолчанию, язык и т.п.).
+  ipcMain.handle('settings:get', (_e, key: string) => readSettings()[key] ?? null);
+  ipcMain.handle('settings:set', (_e, key: string, value: unknown) => {
+    const data = readSettings();
+    data[key] = value;
+    writeSettings(data);
+    return { ok: true };
+  });
 }

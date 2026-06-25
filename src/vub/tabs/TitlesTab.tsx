@@ -21,20 +21,13 @@ export default function TitlesTab() {
   const titles = useVubStore((s) => s.titles);
   const setTitles = useVubStore((s) => s.setTitles);
   const videos = useVubStore((s) => s.videos);
-  const [apiKey, setApiKey] = useState('');
-  const [saved, setSaved] = useState(false);
+  const [hasKey, setHasKey] = useState(false);
   const [testResult, setTestResult] = useState('');
   const [testing, setTesting] = useState(false);
 
   useEffect(() => {
-    window.electronAPI.getVubApiKey().then((k) => setApiKey(k || ''));
+    window.electronAPI.getVubApiKey().then((k) => setHasKey(!!k));
   }, []);
-
-  async function saveKey() {
-    await window.electronAPI.setVubApiKey(apiKey.trim());
-    setSaved(true);
-    setTimeout(() => setSaved(false), 1500);
-  }
 
   async function testTranscribe() {
     if (!videos.length) {
@@ -42,8 +35,7 @@ export default function TitlesTab() {
       return;
     }
     setTesting(true);
-    setTestResult('Сохраняю ключ и распознаю первый ролик…');
-    await window.electronAPI.setVubApiKey(apiKey.trim());
+    setTestResult('Распознаю первый ролик…');
     const r = await window.electronAPI.testVubTranscribe(videos[0].path, titles.language);
     setTesting(false);
     if ('error' in r) setTestResult(`Ошибка: ${r.error}`);
@@ -63,23 +55,13 @@ export default function TitlesTab() {
         <span style={{ fontSize: 14 }}>Распознавать речь и накладывать титры</span>
       </div>
 
-      {/* API-ключ */}
+      {/* API-ключ задаётся централизованно в Настройках (стартовый экран). */}
       <Block>
-        <div style={{ fontSize: 14, marginBottom: 8 }}>API-ключ AssemblyAI</div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <input
-            type="password"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="вставьте ключ"
-            style={{ flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}
-          />
-          <button onClick={saveKey} className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }}>
-            {saved ? 'Сохранено ✓' : 'Сохранить'}
-          </button>
-        </div>
-        <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 8, marginBottom: 10 }}>
-          Ключ хранится локально (зашифровано), в проект не попадает. Распознавание происходит при экспорте.
+        <div style={{ fontSize: 14, marginBottom: 8 }}>Распознавание речи (AssemblyAI)</div>
+        <p style={{ fontSize: 12, color: hasKey ? 'var(--text-secondary)' : 'var(--danger)', marginTop: 0, marginBottom: 10 }}>
+          {hasKey
+            ? 'API-ключ настроен. Изменить можно в «Настройках» на стартовом экране.'
+            : 'API-ключ не задан. Откройте «Настройки» на стартовом экране и вставьте ключ AssemblyAI.'}
         </p>
         <button
           onClick={testTranscribe}

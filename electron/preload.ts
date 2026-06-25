@@ -34,6 +34,20 @@ const electronAPI = {
   setGpuMode: (mode: 'auto' | 'gpu' | 'cpu'): Promise<{ ok: true }> =>
     ipcRenderer.invoke('settings:setGpuMode', mode),
 
+  // Выход из приложения.
+  quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
+
+  // Универсальные настройки приложения.
+  getSetting: (key: string): Promise<unknown> => ipcRenderer.invoke('settings:get', key),
+  setSetting: (key: string, value: unknown): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('settings:set', key, value),
+
+  // История выполненных задач.
+  historyList: (): Promise<unknown[]> => ipcRenderer.invoke('history:list'),
+  historyAdd: (entry: unknown): Promise<{ ok: true }> => ipcRenderer.invoke('history:add', entry),
+  historyRemove: (id: string): Promise<{ ok: true }> => ipcRenderer.invoke('history:remove', id),
+  historyClear: (): Promise<{ ok: true }> => ipcRenderer.invoke('history:clear'),
+
   // --- Модуль VUB (§4–5 ТЗ VUB) ---
   selectWatermark: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectWatermark'),
   getVubApiKey: (): Promise<string> => ipcRenderer.invoke('vub:getKey'),

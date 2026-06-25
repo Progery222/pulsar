@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useUIStore } from '../store/uiStore';
 import { buildAndRender } from '../utils/ffmpegBuilder';
@@ -23,6 +23,12 @@ export default function ExportModal() {
   const [quality, setQuality] = useState<Quality>('1080p');
   const [folder, setFolder] = useState<string | null>(null);
   const [presetKey, setPresetKey] = useState<string>('');
+
+  useEffect(() => {
+    window.electronAPI.getSetting('defaultOutputDir').then((d) => {
+      if (d) setFolder(d as string);
+    });
+  }, []);
 
   function applyPreset(key: string) {
     setPresetKey(key);
@@ -54,6 +60,15 @@ export default function ExportModal() {
       );
       if (ok) {
         const count = useProjectStore.getState().uniqualizerCount;
+        window.electronAPI.historyAdd({
+          id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          mode: 'editor',
+          title: `Монтаж • ${quality} • ${useProjectStore.getState().format}`,
+          createdAt: Date.now(),
+          outputDir: folder,
+          files: Array.from({ length: Math.max(1, count) }, (_, i) => `pulsar_${i + 1}.mp4`),
+          settings: null,
+        });
         showToast(count > 1 ? `Сохранено ${count} видео!` : 'Видео сохранено!', {
           actionLabel: 'Открыть папку',
           onAction: () => window.electronAPI.openFolder(folder),
