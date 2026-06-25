@@ -146,7 +146,7 @@ export default function CleanerApp() {
           </div>
           {detectTitles && (
             <div style={{ marginTop: 10 }}>
-              <Checkbox checked={dynamicTextOnly} onChange={setDynamicTextOnly} label="Только меняющийся текст (субтитры) — игнорировать надписи на одежде/лого" />
+              <Checkbox checked={dynamicTextOnly} onChange={setDynamicTextOnly} label="Только субтитры (текст на тёмной плашке) — игнорировать надписи на одежде/лого/лицо" />
             </div>
           )}
         </Block>

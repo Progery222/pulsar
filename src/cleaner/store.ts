@@ -92,7 +92,7 @@ export const useCleanerStore = create<CleanerState>((set) => ({
   setDetectTitles: (v) => set({ detectTitles: v }),
   detectWatermarks: true,
   setDetectWatermarks: (v) => set({ detectWatermarks: v }),
-  dynamicTextOnly: false,
+  dynamicTextOnly: true,
   setDynamicTextOnly: (v) => set({ dynamicTextOnly: v }),
 
   coverMethod: 'blur',

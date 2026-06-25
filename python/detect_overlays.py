@@ -171,6 +171,31 @@ def region_std(frames, x0, y0, x1, y1):
     return float(np.stack(crops, 0).std(0).mean())
 
 
+# Доля кадров, где под текстом видна тёмная НЕЙТРАЛЬНАЯ подложка-плашка субтитра
+# (тёмный однотонный фон + светлые буквы). Это главный признак, отличающий субтитр
+# от надписей на одежде (цветной фон), лого и текста на лице.
+def plate_fraction(frames, x0, y0, x1, y1):
+    x0, y0, x1, y1 = max(0, int(x0)), max(0, int(y0)), int(x1), int(y1)
+    if x1 - x0 < 8 or y1 - y0 < 8:
+        return 0.0
+    hits, n = 0, 0
+    for f in frames:
+        c = f[y0:y1, x0:x1]
+        if c.size == 0:
+            continue
+        n += 1
+        hsv = cv2.cvtColor(c, cv2.COLOR_BGR2HSV)
+        v = hsv[:, :, 2].astype(np.float32)
+        s = hsv[:, :, 1].astype(np.float32)
+        dark = v < 80
+        dark_frac = float(dark.mean())            # много тёмного фона (плашка)
+        bright_frac = float((v > 170).mean())     # есть светлый текст
+        sat_dark = float(s[dark].mean()) if dark.any() else 255.0  # плашка нейтральная (низкая насыщенность)
+        if dark_frac > 0.35 and bright_frac > 0.015 and sat_dark < 55:
+            hits += 1
+    return hits / max(1, n)
+
+
 def detect(path, do_titles, do_watermarks, model, dynamic_only=False):
     cap = cv2.VideoCapture(path)
     if not cap.isOpened():
@@ -209,8 +234,10 @@ def detect(path, do_titles, do_watermarks, model, dynamic_only=False):
                 # (вертикальный артефакт/край/сцепка) субтитром быть не может.
                 if bh > H * 0.4:
                     continue
-                # Только меняющийся текст (субтитры): выкидываем статичные надписи/лого.
-                if dynamic_only and region_std(frames, x0, y0, x1, y1) < 12.0:
+                # «Только субтитры»: оставляем лишь текст на тёмной плашке-подложке.
+                # Признак спатиальный (не зависит от движения субъекта), поэтому надписи
+                # на одежде/лого/лицо отсекаются даже когда игрок двигается.
+                if dynamic_only and plate_fraction(frames, x0, y0, x1, y1) < 0.12:
                     continue
                 pw, ph = bw * 0.06, bh * 0.25
                 nx = max(0.0, x0 - pw)
