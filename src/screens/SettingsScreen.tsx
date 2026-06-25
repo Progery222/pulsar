@@ -20,7 +20,7 @@ export default function SettingsScreen() {
   useEffect(() => {
     window.electronAPI.getVubApiKey().then((k) => setApiKey(k || ''));
     window.electronAPI.getOpenRouterKey().then((k) => setOrKey(k || ''));
-    window.electronAPI.getSetting('funnel_model').then((m) => setOrModel((m as string) || 'google/gemini-2.5-flash'));
+    window.electronAPI.getSetting('funnel_model').then((m) => setOrModel((m as string) || 'google/gemini-3.5-flash'));
     window.electronAPI.getGpuMode().then(setGpuMode);
     window.electronAPI.getSetting('defaultOutputDir').then((d) => setOutputDir((d as string) || ''));
   }, []);
@@ -33,7 +33,7 @@ export default function SettingsScreen() {
 
   async function saveOr() {
     await window.electronAPI.setOpenRouterKey(orKey.trim());
-    await window.electronAPI.setSetting('funnel_model', orModel.trim() || 'google/gemini-2.5-flash');
+    await window.electronAPI.setSetting('funnel_model', orModel.trim() || 'google/gemini-3.5-flash');
     setSavedOr(true);
     setTimeout(() => setSavedOr(false), 1500);
   }
@@ -109,7 +109,7 @@ export default function SettingsScreen() {
             type="text"
             value={orModel}
             onChange={(e) => setOrModel(e.target.value)}
-            placeholder="google/gemini-2.5-flash"
+            placeholder="google/gemini-3.5-flash"
             style={input}
           />
           <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 10 }}>
@@ -119,8 +119,8 @@ export default function SettingsScreen() {
             {savedOr && <span style={{ fontSize: 13, color: 'var(--accent-green)' }}>Сохранено ✓</span>}
           </div>
           <p style={hint}>
-            Нужен для AI-классификации видео в модуле «Воронка». Модель должна поддерживать изображения и аудио —
-            недорогой вариант: google/gemini-2.5-flash. Ключ шифруется и хранится только на этом компьютере.
+            Нужен для AI-классификации видео в модуле «Воронка». Модель должна поддерживать изображения и аудио
+            (например, google/gemini-3.5-flash). Ключ шифруется и хранится только на этом компьютере.
           </p>
         </div>
 

@@ -563,7 +563,7 @@ async function processVideo(
 
   // AI-классификация (OpenRouter).
   emit({ stage: 'analyzing', percent: 12, stageLabel: 'AI-анализ (OpenRouter)…' });
-  const cls = await analyze(src, apiKey, req.model || 'google/gemini-2.5-flash', hasAudio);
+  const cls = await analyze(src, apiKey, req.model || 'google/gemini-3.5-flash', hasAudio);
   if (cancelled) return;
   if ('error' in cls) {
     emit({ stage: 'error', percent: 0, error: cls.error });
