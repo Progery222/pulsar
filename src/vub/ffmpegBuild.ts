@@ -65,6 +65,50 @@ function randomMetadata(): Record<string, string> {
   };
 }
 
+// Свежая дата создания (последние 1–5 дней) — «только что экспортировано с телефона».
+function recentCreationTime(): string {
+  const day = 86400000;
+  const now = Date.now();
+  return new Date(now - rand(1, 5) * day).toISOString().replace(/\.\d+Z$/, 'Z');
+}
+
+const IPHONE_MODELS = ['iPhone13,2', 'iPhone14,5', 'iPhone15,2', 'iPhone15,3', 'iPhone16,1'];
+const IOS_VERS = ['16.6.1', '17.4.1', '17.5.1', '18.0.1', '18.1'];
+const ANDROID_MAKES = ['samsung', 'Xiaomi', 'Google', 'OnePlus'];
+const ANDROID_MODELS = ['SM-S918B', 'SM-S921B', 'Pixel 8 Pro', '2211133G', 'CPH2451'];
+
+// Метаданные «нативного экспорта с телефона» (через Pulsar): профиль iOS или Android.
+// Имитирует файл, снятый/смонтированный на телефоне и сохранённый в галерею,
+// а не скачанный сторонним загрузчиком (нет меток savefrom/snaptik и хвоста исходника).
+function deviceMetadata(): Record<string, string> {
+  const creation_time = recentCreationTime();
+  if (Math.random() < 0.5) {
+    // iOS / QuickTime
+    return {
+      major_brand: 'qt',
+      minor_version: '0',
+      compatible_brands: 'qt',
+      'com.apple.quicktime.make': 'Apple',
+      'com.apple.quicktime.model': pick(IPHONE_MODELS) ?? 'iPhone15,2',
+      'com.apple.quicktime.software': pick(IOS_VERS) ?? '17.5.1',
+      'com.apple.quicktime.creationdate': creation_time,
+      creation_time,
+      encoder: 'Pulsar Mobile',
+    };
+  }
+  // Android
+  return {
+    major_brand: 'mp42',
+    minor_version: '0',
+    compatible_brands: 'isommp42',
+    'com.android.version': pick(['13', '14', '15']) ?? '14',
+    'com.android.manufacturer': pick(ANDROID_MAKES) ?? 'samsung',
+    'com.android.model': pick(ANDROID_MODELS) ?? 'SM-S918B',
+    creation_time,
+    encoder: 'Pulsar Mobile',
+  };
+}
+
 // Строит план фильтров для одного видео со случайными значениями в заданных диапазонах.
 export function buildVubPlan(
   params: VubParams,
@@ -72,7 +116,8 @@ export function buildVubPlan(
   text: VubText,
   cleanMetadata: boolean,
   variationIndex = 0,
-  variationTotal = 1
+  variationTotal = 1,
+  nativeExport = false
 ): FfmpegPlan {
   const vf: string[] = [];
   const af: string[] = [];
@@ -151,6 +196,17 @@ export function buildVubPlan(
   return {
     videoFilters: vf,
     audioFilters: af,
-    metadata: cleanMetadata ? randomMetadata() : {},
+    metadata: cleanMetadata ? (nativeExport ? deviceMetadata() : randomMetadata()) : {},
   };
+}
+
+// Целевые размеры апскейла с сохранением пропорций (чётные). null = источник уже ≥ target.
+export function upscaleDims(w: number, h: number, target: number): [number, number] | null {
+  if (!w || !h) return null;
+  const long = Math.max(w, h);
+  if (long >= target) return null;
+  const k = target / long;
+  const nw = Math.round((w * k) / 2) * 2;
+  const nh = Math.round((h * k) / 2) * 2;
+  return [nw, nh];
 }

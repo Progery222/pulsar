@@ -5,7 +5,7 @@ import ffprobeStatic from 'ffprobe-static';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildVubPlan } from '../../src/vub/ffmpegBuild';
+import { buildVubPlan, upscaleDims } from '../../src/vub/ffmpegBuild';
 import { buildAss } from '../../src/vub/assBuilder';
 import { outFileName } from '../../src/vub/naming';
 import type { TranscriptWord, VubProcessRequest, VubVideo } from '../../src/vub/types';
@@ -96,7 +96,14 @@ async function processOne(
   if (cancelled) return;
 
   // Каждая вариация — свой набор значений, распределённый по диапазонам (§ вариации).
-  const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total);
+  const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total, req.nativeExport);
+
+  // Апскейл: повышение разрешения рендером. scale первым фильтром — последующие
+  // eq/unsharp/поворот работают уже по кадру высокого разрешения. lanczos = качественная интерполяция.
+  if (req.upscale?.enabled) {
+    const dims = upscaleDims(width, height, req.upscale.target);
+    if (dims) plan.videoFilters.unshift(`scale=${dims[0]}:${dims[1]}:flags=lanczos`);
+  }
   const finalOut = path.join(req.outputDir, task.outName);
   // ffmpeg на Windows не открывает выходной файл с не-ASCII именем (EINVAL) —
   // рендерим во временный ASCII-файл, затем переименовываем средствами Node.

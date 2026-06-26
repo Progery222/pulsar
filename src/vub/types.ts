@@ -102,6 +102,13 @@ export interface VubTemplate {
   everySeconds: number;
 }
 
+// Апскейл: повышение разрешения рендером (ломает перцептивный хеш сильнее косметики).
+// target — целевая длинная сторона кадра в px (источник меньше — апскейлим, больше — не трогаем).
+export interface VubUpscale {
+  enabled: boolean;
+  target: number; // 1920 (FullHD) | 2560 (2K) | 3840 (4K)
+}
+
 export type ProgressStatus = 'queued' | 'processing' | 'done' | 'error';
 
 export interface FileProgress {
@@ -121,6 +128,8 @@ export interface VubProcessRequest {
   text: VubText;
   template: VubTemplate;
   cleanMetadata: boolean;
+  nativeExport: boolean; // метаданные «нативного экспорта с телефона (Pulsar)» вместо случайных
+  upscale: VubUpscale;
   titles: TitlesStyle;
   threads: number;
   variations: number; // количество уникальных вариаций на каждое видео

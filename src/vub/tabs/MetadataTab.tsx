@@ -5,6 +5,8 @@ import { Switch } from '../components/ui';
 export default function MetadataTab() {
   const cleanMetadata = useVubStore((s) => s.cleanMetadata);
   const setCleanMetadata = useVubStore((s) => s.setCleanMetadata);
+  const nativeExport = useVubStore((s) => s.nativeExport);
+  const setNativeExport = useVubStore((s) => s.setNativeExport);
 
   return (
     <div>
@@ -34,6 +36,19 @@ export default function MetadataTab() {
         <Switch checked={cleanMetadata} onChange={setCleanMetadata} />
         <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>Очистка метаданных</span>
       </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 16, opacity: cleanMetadata ? 1 : 0.4 }}>
+        <Switch checked={nativeExport} onChange={setNativeExport} />
+        <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>
+          Имитация экспорта с телефона (Pulsar)
+        </span>
+      </div>
+      <p style={{ fontSize: 13, color: 'var(--text-secondary)', lineHeight: 1.6, margin: '8px 0 0' }}>
+        Вместо случайных значений подставляются метаданные «нативного» ролика, снятого и
+        сохранённого на телефоне (профиль iPhone/Android, свежая дата, бренд Pulsar Mobile).
+        Файл выглядит экспортированным из приложения, а не скачанным сторонним загрузчиком.
+        Требует включённой очистки метаданных.
+      </p>
     </div>
   );
 }

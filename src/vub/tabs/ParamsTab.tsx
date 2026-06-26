@@ -1,5 +1,11 @@
 import { useVubStore, type VubParams } from '../store';
-import { Block, Checkbox, RangeSlider } from '../components/ui';
+import { Block, Checkbox, RangeSlider, Select } from '../components/ui';
+
+const UPSCALE_TARGETS: { value: string; label: string }[] = [
+  { value: '1920', label: 'Full HD (длинная сторона 1920)' },
+  { value: '2560', label: '2K (2560)' },
+  { value: '3840', label: '4K (3840)' },
+];
 
 const PARAMS: { key: keyof VubParams; label: string; min: number; max: number }[] = [
   { key: 'brightness', label: 'Яркость', min: -50, max: 50 },
@@ -14,12 +20,34 @@ const PARAMS: { key: keyof VubParams; label: string; min: number; max: number }[
 export default function ParamsTab() {
   const params = useVubStore((s) => s.params);
   const setParam = useVubStore((s) => s.setParam);
+  const upscale = useVubStore((s) => s.upscale);
+  const setUpscale = useVubStore((s) => s.setUpscale);
 
   return (
     <div>
       <h2 className="font-semibold" style={{ fontSize: 20, marginBottom: 16 }}>
         Параметры видео
       </h2>
+
+      <Block>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
+          <Checkbox
+            checked={upscale.enabled}
+            onChange={(v) => setUpscale({ enabled: v })}
+            label="Апскейл (повышение разрешения)"
+          />
+          <Select
+            value={String(upscale.target)}
+            options={UPSCALE_TARGETS}
+            onChange={(v) => setUpscale({ target: Number(v) })}
+          />
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
+          Источник пересобирается рендером в более высокое разрешение (lanczos). Сильно меняет
+          перцептивный хеш кадра. Если исходник уже больше цели — не трогаем.
+        </p>
+      </Block>
+
       {PARAMS.map(({ key, label, min, max }) => {
         const p = params[key];
         return (

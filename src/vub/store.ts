@@ -9,6 +9,7 @@ import type {
   VubTabKey,
   VubTemplate,
   VubText,
+  VubUpscale,
   VubVideo,
   VubWatermark,
 } from './types';
@@ -23,6 +24,7 @@ export type {
   VubTabKey,
   VubTemplate,
   VubText,
+  VubUpscale,
   VubVideo,
   VubWatermark,
   WatermarkZone,
@@ -55,6 +57,12 @@ interface VubState {
 
   cleanMetadata: boolean;
   setCleanMetadata: (value: boolean) => void;
+
+  nativeExport: boolean;
+  setNativeExport: (value: boolean) => void;
+
+  upscale: VubUpscale;
+  setUpscale: (value: Partial<VubUpscale>) => void;
 
   titles: TitlesStyle;
   setTitles: (value: Partial<TitlesStyle>) => void;
@@ -127,6 +135,12 @@ export const useVubStore = create<VubState>((set) => ({
 
   cleanMetadata: true,
   setCleanMetadata: (value) => set({ cleanMetadata: value }),
+
+  nativeExport: false,
+  setNativeExport: (value) => set({ nativeExport: value }),
+
+  upscale: { enabled: false, target: 1920 },
+  setUpscale: (value) => set((s) => ({ upscale: { ...s.upscale, ...value } })),
 
   titles: {
     enabled: false,
