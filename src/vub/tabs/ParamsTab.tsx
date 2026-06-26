@@ -76,7 +76,7 @@ export default function ParamsTab() {
           <Checkbox
             checked={pitch.enabled}
             onChange={(v) => setParam('pitch', { enabled: v })}
-            label="Сдвиг тона аудио (анти-Shazam)"
+            label="Аудио анти-fingerprint (тон + EQ + задержка)"
           />
           <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
             {pitch.min > 0 ? `+${pitch.min}` : pitch.min} … {pitch.max > 0 ? `+${pitch.max}` : pitch.max} полут.
@@ -91,9 +91,9 @@ export default function ParamsTab() {
           onChange={(lo, hi) => setParam('pitch', { min: lo, max: hi })}
         />
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
-          Сдвигает высоту звука без изменения длительности — двигает спектральные пики, по
-          которым TikTok матчит музыку. ±1…2 полутона почти незаметно на слух, но ломает
-          акустический отпечаток. Больше — заметнее, но надёжнее.
+          Сдвиг высоты звука (без изменения длительности) + 3-полосный EQ + микро-задержка.
+          Двигает спектральные пики и баланс частот, по которым TikTok матчит музыку. ±1…2
+          полутона почти незаметно на слух, но ломает акустический отпечаток. Больше — надёжнее.
         </p>
       </Block>
     </div>

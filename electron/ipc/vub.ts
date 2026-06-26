@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain } from 'electron';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -187,9 +188,11 @@ async function processOne(
   }
 
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 + Math.floor(Math.random() * 6) });
+  // +use_metadata_tags обязателен, чтобы кастомные теги (com.apple.quicktime.*,
+  // com.android.*) из «нативного экспорта» реально записались в контейнер.
   cmd
     .outputOptions(venc)
-    .outputOptions('-movflags', '+faststart')
+    .outputOptions('-movflags', '+faststart+use_metadata_tags')
     .output(out);
 
   const cleanup = () => {
@@ -208,6 +211,14 @@ async function processOne(
     }
   }
 
+  // Дозапись 512–2048 случайных байт в конец файла (из движка v2): меняет хэш файла,
+  // не влияя на воспроизведение. Только при включённой уникализации метаданных.
+  async function appendRandomTail() {
+    if (!req.cleanMetadata) return;
+    const size = 512 + Math.floor(Math.random() * 1537);
+    await fs.promises.appendFile(finalOut, crypto.randomBytes(size)).catch(() => {});
+  }
+
   await new Promise<void>((resolve) => {
     cmd
       .on('start', () => send('processing', 1))
@@ -223,6 +234,7 @@ async function processOne(
         active.delete(cmd);
         cleanup();
         finalizeOutput()
+          .then(() => appendRandomTail())
           .then(() => send('done', 100))
           .catch((e) => send('error', 0, `Не удалось сохранить файл: ${e instanceof Error ? e.message : String(e)}`))
           .finally(() => resolve());

@@ -88,6 +88,8 @@ function fileName(p: string): string {
 }
 
 const range = (min: number, max: number): RangeParam => ({ enabled: false, min, max });
+// Включённый по умолчанию параметр (самые мощные рычаги стоят сразу).
+const on = (min: number, max: number): RangeParam => ({ enabled: true, min, max });
 
 export const useVubStore = create<VubState>((set) => ({
   activeTab: 'videos',
@@ -105,21 +107,23 @@ export const useVubStore = create<VubState>((set) => ({
   removeVideo: (id) => set((s) => ({ videos: s.videos.filter((v) => v.id !== id) })),
 
   params: {
-    brightness: range(-10, 10),
-    contrast: range(-10, 10),
+    // ON по умолчанию — самые мощные против fingerprint:
+    brightness: on(-10, 10), // + hue/colorbalance (цветовой отпечаток)
+    contrast: on(-10, 10),
+    rotation: on(-3, 3),
+    pitch: on(-2, 2), // + 3-полосный аудио-EQ + задержка (аудио-отпечаток)
+    zoom: on(3, 8), // + случайный pan (перцептивный хеш видео)
+    // OFF — по вкусу:
     sharpness: range(-10, 10),
     volume: range(-20, 20),
     duration: range(-5, 5),
-    rotation: range(-3, 3),
-    pitch: range(-2, 2),
-    zoom: range(3, 8),
   },
   setParam: (key, value) =>
     set((s) => ({ params: { ...s.params, [key]: { ...s.params[key], ...value } } })),
 
   effects: {
     darken: { enabled: false, duration: 3, audioFadeIn: false },
-    mirror: { enabled: false, mode: 'random' },
+    mirror: { enabled: true, mode: 'always' }, // ON — самый сильный слом content fingerprint
     grid: { enabled: false, opacityMin: 5, opacityMax: 15 },
     gridColor: { enabled: false, colors: [] },
     gridSize: { enabled: false, size: 32 },
@@ -138,7 +142,7 @@ export const useVubStore = create<VubState>((set) => ({
   cleanMetadata: true,
   setCleanMetadata: (value) => set({ cleanMetadata: value }),
 
-  nativeExport: false,
+  nativeExport: true, // ON — метаданные «нативного экспорта с телефона»
   setNativeExport: (value) => set({ nativeExport: value }),
 
   upscale: { enabled: false, target: 1920 },

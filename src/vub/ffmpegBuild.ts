@@ -131,7 +131,14 @@ export function buildVubPlan(
   const eqParts: string[] = [];
   if (brightness !== null) eqParts.push(`brightness=${(brightness / 100).toFixed(4)}`);
   if (contrast !== null) eqParts.push(`contrast=${(1 + contrast / 100).toFixed(4)}`);
-  if (eqParts.length) vf.push(`eq=${eqParts.join(':')}`);
+  if (eqParts.length) {
+    vf.push(`eq=${eqParts.join(':')}`);
+    // Усиление цветового отпечатка (из движка v2): hue ±10° + сдвиг цветобаланса.
+    vf.push(`hue=h=${rand(-10, 10).toFixed(2)}`);
+    vf.push(
+      `colorbalance=rs=${rand(-0.05, 0.05).toFixed(3)}:gs=${rand(-0.05, 0.05).toFixed(3)}:bs=${rand(-0.05, 0.05).toFixed(3)}`
+    );
+  }
 
   const sharpness = value(params.sharpness, idx, total); // % -> luma amount
   if (sharpness !== null) vf.push(`unsharp=5:5:${(sharpness / 50).toFixed(3)}:5:5:0`);
@@ -156,6 +163,13 @@ export function buildVubPlan(
     af.push(`asetrate=${Math.round(sampleRate * ratio)}`);
     af.push(`aresample=${sampleRate}`);
     af.push(`atempo=${Math.min(2, Math.max(0.5, 1 / ratio)).toFixed(6)}`);
+    // Усиление аудио-отпечатка (из движка v2): 3-полосный EQ + задержка.
+    // Меняет спектральный баланс на низах/середине/верхах -> сильнее ломает матчинг музыки.
+    af.push(`equalizer=f=200:t=q:w=1:g=${rand(-4, 4).toFixed(2)}`);
+    af.push(`equalizer=f=1500:t=q:w=1:g=${rand(-4, 4).toFixed(2)}`);
+    af.push(`equalizer=f=6000:t=q:w=1:g=${rand(-4, 4).toFixed(2)}`);
+    const delayMs = 20 + Math.floor(Math.random() * 61);
+    af.push(`adelay=${delayMs}|${delayMs}`);
   }
 
   // Лёгкий поворот: зум -> поворот -> центр-кроп, чтобы не было чёрных углов.
@@ -174,9 +188,13 @@ export function buildVubPlan(
   // композицию и режет края -> меняет перцептивный хеш видео (главный детектор TikTok).
   const zoomPct = value(params.zoom, idx, total); // %
   if (zoomPct !== null && zoomPct > 0.5) {
-    const z = 1 + zoomPct / 100;
-    vf.push(`scale=iw*${z.toFixed(4)}:ih*${z.toFixed(4)}`);
-    vf.push(`crop=iw/${z.toFixed(4)}:ih/${z.toFixed(4)}`);
+    const z = (1 + zoomPct / 100).toFixed(4);
+    // Случайный pan (из движка v2): кроп не по центру, а со смещением -> композиция
+    // съезжает асимметрично, перцептивный хеш меняется сильнее центрального зума.
+    const rx = Math.random().toFixed(3);
+    const ry = Math.random().toFixed(3);
+    vf.push(`scale=iw*${z}:ih*${z}`);
+    vf.push(`crop=iw/${z}:ih/${z}:(iw-iw/${z})*${rx}:(ih-ih/${z})*${ry}`);
   }
 
   // --- Эффекты ---
