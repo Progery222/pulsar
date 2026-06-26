@@ -133,7 +133,7 @@ export interface VubProcessRequest {
   titles: TitlesStyle;
   threads: number;
   variations: number; // количество уникальных вариаций на каждое видео
-  namePattern: string; // свой шаблон имени файлов (пусто = имя оригинала + _unique)
+  namePattern: string; // свой шаблон имени файлов (пусто = имя оригинала + _pulsar)
   outputDir: string;
 }
 

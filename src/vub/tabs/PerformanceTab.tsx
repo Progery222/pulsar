@@ -184,7 +184,7 @@ export default function PerformanceTab() {
           type="text"
           value={namePattern}
           onChange={(e) => setNamePattern(e.target.value)}
-          placeholder="пусто = имя оригинала + _unique"
+          placeholder="пусто = имя оригинала + _pulsar"
           style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}
         />
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
@@ -192,7 +192,9 @@ export default function PerformanceTab() {
             ? videos.length * variations > 1
               ? `Файлы: ${namePattern.trim()}_1.mp4, ${namePattern.trim()}_2.mp4 …`
               : `Файл: ${namePattern.trim()}.mp4`
-            : 'По умолчанию используется имя исходного видео.'}
+            : variations > 1
+              ? 'По умолчанию: имя оригинала + _pulsar_1, _pulsar_2 …'
+              : 'По умолчанию: имя оригинала + _pulsar (например, yalla1_pulsar.mp4).'}
         </p>
       </div>
 

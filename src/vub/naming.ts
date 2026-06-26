@@ -15,7 +15,7 @@ export function outFileName(a: NameArgs): string {
   if (p) {
     name = a.totalFiles === 1 ? p : `${p}_${a.globalIndex + 1}`;
   } else {
-    name = a.variationTotal > 1 ? `${a.baseName}_unique_${a.variationIndex + 1}` : `${a.baseName}_unique`;
+    name = a.variationTotal > 1 ? `${a.baseName}_pulsar_${a.variationIndex + 1}` : `${a.baseName}_pulsar`;
   }
   return `${name}.mp4`;
 }
