@@ -170,6 +170,15 @@ export function buildVubPlan(
     vf.push(`crop=iw/${z.toFixed(4)}:ih/${z.toFixed(4)}`);
   }
 
+  // Зум/кадрирование: scale вверх -> центр-кроп до исходного размера. Сдвигает
+  // композицию и режет края -> меняет перцептивный хеш видео (главный детектор TikTok).
+  const zoomPct = value(params.zoom, idx, total); // %
+  if (zoomPct !== null && zoomPct > 0.5) {
+    const z = 1 + zoomPct / 100;
+    vf.push(`scale=iw*${z.toFixed(4)}:ih*${z.toFixed(4)}`);
+    vf.push(`crop=iw/${z.toFixed(4)}:ih/${z.toFixed(4)}`);
+  }
+
   // --- Эффекты ---
   if (effects.mirror.enabled) {
     // В режиме "Случайно" чередуем по чётности вариации: половина роликов зеркалится.

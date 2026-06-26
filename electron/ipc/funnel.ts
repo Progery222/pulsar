@@ -431,6 +431,7 @@ async function uniqueize(src: string, out: string): Promise<{ ok: true } | { err
     duration: off,
     rotation: { enabled: true, min: -2, max: 2 },
     pitch: off,
+    zoom: { enabled: true, min: 3, max: 6 },
   };
   const effects: VubEffects = {
     darken: { enabled: false, duration: 0, audioFadeIn: false },

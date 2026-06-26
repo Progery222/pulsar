@@ -14,6 +14,7 @@ const PARAMS: { key: keyof VubParams; label: string; min: number; max: number }[
   { key: 'volume', label: 'Громкость', min: -100, max: 100 },
   { key: 'duration', label: 'Длительность', min: -50, max: 50 },
   { key: 'rotation', label: 'Поворот (°)', min: -5, max: 5 },
+  { key: 'zoom', label: 'Зум / кадрирование', min: 0, max: 20 },
 ];
 
 // Вкладка 2: Параметры видео (§4.3 ТЗ).

@@ -66,6 +66,7 @@ export interface VubParams {
   duration: RangeParam;
   rotation: RangeParam; // лёгкий поворот видео, градусы
   pitch: RangeParam; // сдвиг тона аудио в полутонах (анти-Shazam), длительность сохраняется
+  zoom: RangeParam; // зум/кадрирование, % (сдвигает композицию -> ломает перцептивный хеш видео)
 }
 
 export type MirrorMode = 'random' | 'always' | 'never';
