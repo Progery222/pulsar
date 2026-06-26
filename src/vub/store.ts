@@ -111,6 +111,7 @@ export const useVubStore = create<VubState>((set) => ({
     volume: range(-20, 20),
     duration: range(-5, 5),
     rotation: range(-3, 3),
+    pitch: range(-2, 2),
   },
   setParam: (key, value) =>
     set((s) => ({ params: { ...s.params, [key]: { ...s.params[key], ...value } } })),

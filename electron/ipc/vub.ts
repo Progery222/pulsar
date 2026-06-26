@@ -64,22 +64,25 @@ interface ProbeResult {
   hasAudio: boolean;
   width: number;
   height: number;
+  sampleRate: number;
 }
 
 function probe(file: string): Promise<ProbeResult> {
   return new Promise((resolve) => {
     ffmpeg.ffprobe(file, (err, data) => {
       if (err || !data) {
-        resolve({ duration: 0, hasAudio: false, width: 0, height: 0 });
+        resolve({ duration: 0, hasAudio: false, width: 0, height: 0, sampleRate: 44100 });
         return;
       }
       const streams = data.streams ?? [];
       const v = streams.find((s) => s.codec_type === 'video');
+      const a = streams.find((s) => s.codec_type === 'audio');
       resolve({
         duration: data.format?.duration ?? 0,
         hasAudio: streams.some((s) => s.codec_type === 'audio'),
         width: v?.width ?? 0,
         height: v?.height ?? 0,
+        sampleRate: Number(a?.sample_rate) || 44100,
       });
     });
   });
@@ -92,11 +95,11 @@ async function processOne(
   warn: (msg: string) => void
 ): Promise<void> {
   const video = task.video;
-  const { duration, hasAudio, width, height } = await probe(video.path);
+  const { duration, hasAudio, width, height, sampleRate } = await probe(video.path);
   if (cancelled) return;
 
   // Каждая вариация — свой набор значений, распределённый по диапазонам (§ вариации).
-  const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total, req.nativeExport);
+  const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total, req.nativeExport, sampleRate);
 
   // Апскейл: повышение разрешения рендером. scale первым фильтром — последующие
   // eq/unsharp/поворот работают уже по кадру высокого разрешения. lanczos = качественная интерполяция.

@@ -117,7 +117,8 @@ export function buildVubPlan(
   cleanMetadata: boolean,
   variationIndex = 0,
   variationTotal = 1,
-  nativeExport = false
+  nativeExport = false,
+  sampleRate = 44100
 ): FfmpegPlan {
   const vf: string[] = [];
   const af: string[] = [];
@@ -144,6 +145,17 @@ export function buildVubPlan(
     vf.push(`setpts=${factor.toFixed(4)}*PTS`);
     const atempo = Math.min(2, Math.max(0.5, 1 / factor));
     af.push(`atempo=${atempo.toFixed(4)}`);
+  }
+
+  // Сдвиг тона (анти-Shazam): asetrate двигает спектр (и темп), atempo возвращает
+  // исходную длительность. Net = чистый pitch shift без изменения длины ролика.
+  // Двигает все спектральные пики -> ломает акустический отпечаток музыки.
+  const pitch = value(params.pitch, idx, total); // полутона
+  if (pitch !== null && Math.abs(pitch) > 0.01) {
+    const ratio = Math.pow(2, pitch / 12);
+    af.push(`asetrate=${Math.round(sampleRate * ratio)}`);
+    af.push(`aresample=${sampleRate}`);
+    af.push(`atempo=${Math.min(2, Math.max(0.5, 1 / ratio)).toFixed(6)}`);
   }
 
   // Лёгкий поворот: зум -> поворот -> центр-кроп, чтобы не было чёрных углов.

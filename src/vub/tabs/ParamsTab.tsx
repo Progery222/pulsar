@@ -22,6 +22,7 @@ export default function ParamsTab() {
   const setParam = useVubStore((s) => s.setParam);
   const upscale = useVubStore((s) => s.upscale);
   const setUpscale = useVubStore((s) => s.setUpscale);
+  const pitch = params.pitch;
 
   return (
     <div>
@@ -68,6 +69,32 @@ export default function ParamsTab() {
           </Block>
         );
       })}
+
+      <Block>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <Checkbox
+            checked={pitch.enabled}
+            onChange={(v) => setParam('pitch', { enabled: v })}
+            label="Сдвиг тона аудио (анти-Shazam)"
+          />
+          <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
+            {pitch.min > 0 ? `+${pitch.min}` : pitch.min} … {pitch.max > 0 ? `+${pitch.max}` : pitch.max} полут.
+          </span>
+        </div>
+        <RangeSlider
+          min={-6}
+          max={6}
+          step={0.5}
+          valueMin={pitch.min}
+          valueMax={pitch.max}
+          onChange={(lo, hi) => setParam('pitch', { min: lo, max: hi })}
+        />
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0' }}>
+          Сдвигает высоту звука без изменения длительности — двигает спектральные пики, по
+          которым TikTok матчит музыку. ±1…2 полутона почти незаметно на слух, но ломает
+          акустический отпечаток. Больше — заметнее, но надёжнее.
+        </p>
+      </Block>
     </div>
   );
 }
