@@ -69,7 +69,13 @@ export default function ProcessingScreen() {
       if (!cancelled) s.setCurrentScreen('editor');
     }
 
-    run();
+    // Никакой сбой на этапе обработки не должен оставлять пользователя на экране
+    // «Синхронизируем...» навсегда. При ошибке логируем и всё равно уходим в редактор.
+    run().catch((err) => {
+      console.error('processing failed:', err);
+      s.setIsProcessing(false);
+      if (!cancelled) s.setCurrentScreen('editor');
+    });
     return () => {
       cancelled = true;
     };

@@ -2,12 +2,27 @@ import type { BeatData } from '../types';
 import { mediaUrl } from './media';
 
 // Длительность аудио через HTMLAudioElement (для fallback, если Python недоступен).
+// С жёстким таймаутом: если метаданные не загрузились и onerror не сработал
+// (например, кастомный протокол не отдаёт файл), возвращаем 0, а не виснем навсегда.
 function getAudioDuration(audioPath: string): Promise<number> {
   return new Promise((resolve) => {
     const audio = new Audio();
+    let done = false;
+    const finish = (v: number) => {
+      if (done) return;
+      done = true;
+      resolve(v);
+    };
+    const timer = setTimeout(() => finish(0), 5000);
     audio.preload = 'metadata';
-    audio.onloadedmetadata = () => resolve(audio.duration || 0);
-    audio.onerror = () => resolve(0);
+    audio.onloadedmetadata = () => {
+      clearTimeout(timer);
+      finish(audio.duration || 0);
+    };
+    audio.onerror = () => {
+      clearTimeout(timer);
+      finish(0);
+    };
     audio.src = mediaUrl(audioPath);
   });
 }
