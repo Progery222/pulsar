@@ -29,6 +29,54 @@ function r3(n: number): number {
   return Number(n.toFixed(3));
 }
 
+// Темп клипа по слоту speed (1 = без изменения). Применяется ко всему фрагменту,
+// потому что менять скорость импульсом внутри бит-сетки невозможно без рассинхрона:
+// фрагмент по-прежнему выдаёт ровно clip.duration на выходе (через setpts + atempo),
+// а ускорение/замедление выражается в том, сколько исходника он проигрывает.
+export function clipSpeedRate(slots: RenderEffectSlot[]): number {
+  const s = slots.find((x) => x.effect === 'speed');
+  if (!s) return 1;
+  const k = Math.max(0, Math.min(1, s.intensity / 100));
+  if (s.variant === 'down') return r3(1 - 0.4 * k); // 0.6..1.0
+  if (s.variant === 'constant') return r3(1 + 0.4 * k); // 1.0..1.4
+  return r3(1 + 0.6 * k); // up: 1.0..1.6
+}
+
+// Граф split (2×2 / зеркало / 2 полосы) от метки [base] к [v]. Целый фрагмент.
+function splitGraph(variant: string, w: number, h: number): string {
+  const hw = Math.floor(w / 2);
+  const hh = Math.floor(h / 2);
+  if (variant === '2x2') {
+    return `[base]scale=${hw}:${hh},split=4[a][b][c][d];[a][b]hstack=inputs=2[t];[c][d]hstack=inputs=2[bt];[t][bt]vstack=inputs=2[v]`;
+  }
+  if (variant === 'vertical') {
+    return `[base]scale=${w}:${hh},split=2[t][b];[t][b]vstack=inputs=2[v]`;
+  }
+  // mirror: левая половина + её зеркало справа.
+  return `[base]crop=${hw}:${h}:0:0,split=2[l][r];[r]hflip[rf];[l][rf]hstack=inputs=2[v]`;
+}
+
+// Полный видео-граф фрагмента: от [0:v] к [v]. Включает scaleChain, импульсные
+// эффекты, опциональный setpts (speed) и опциональный split (geometry).
+// Возвращает rate, чтобы вызывающий код согласовал аудио (atempo) и тайминг.
+export function buildClipVideoGraph(
+  slots: RenderEffectSlot[],
+  scaleChain: string,
+  w: number,
+  h: number,
+  fps: number
+): { graph: string; rate: number } {
+  const rate = clipSpeedRate(slots);
+  const linear: string[] = [scaleChain];
+  for (const slot of slots) linear.push(...effectSlotFilters(slot, w, h, fps));
+  if (rate !== 1) linear.push(`setpts=(PTS-STARTPTS)/${rate}`);
+  const vchain = linear.join(',');
+
+  const split = slots.find((s) => s.effect === 'split');
+  if (!split) return { graph: `[0:v]${vchain}[v]`, rate };
+  return { graph: `[0:v]${vchain}[base];${splitGraph(split.variant, w, h)}`, rate };
+}
+
 // Возвращает части filterchain для одного эффект-слота. Пустой массив — эффект пока
 // рендерится отдельной веткой (geometry/timing) либо не имеет видеофильтра.
 export function effectSlotFilters(
@@ -96,7 +144,37 @@ export function effectSlotFilters(
       ];
     }
 
-    // boomerang/split/fastCut/speed — A3 (geometry/timing).
+    case 'fastCut': {
+      // Стробоскопический акцент по биту. 'strobe' — мигание яркостью; 'cuts' —
+      // более жёсткий стук с подскоком контраста. Оба — линейная цепочка с
+      // покадровым eval и гейтом по окну бита (тайминг-нейтрально, без рассинхрона).
+      const n = Math.max(2, Math.round(4 + k * 10)); // число вспышек в окне
+      const period = r3(win / (2 * n));
+      const phase = `mod(floor((t-${a})/${period}),2)`;
+      if (slot.variant === 'cuts') {
+        const br = r3(0.18 * k);
+        const ct = r3(0.6 * k);
+        return [
+          `eq=brightness='${br}*${phase}':contrast='1+${ct}*${phase}':eval=frame:enable='${gate}'`,
+        ];
+      }
+      const br = r3(0.45 * k);
+      return [`eq=brightness='${br}*${phase}':eval=frame:enable='${gate}'`];
+    }
+
+    case 'boomerang': {
+      // Аппроксимация «реверса»: настоящий разворот сегмента возможен только на
+      // уровне фрагмента (структурно), что ломает тайминг бит-сетки. Здесь даём
+      // узнаваемый «глитч-толчок» — ротация оттенка + RGB-сдвиг в окне бита.
+      const sh = Math.round(5 + 5 * k);
+      return [
+        `hue=h='((t-${a})/${win})*180':enable='${gate}'`,
+        `rgbashift=rh=${sh}:bh=${-sh}:enable='${gate}'`,
+      ];
+    }
+
+    // split — geometry (целый фрагмент, отдельный граф). speed — изменение темпа
+    // (обрабатывается на уровне фрагмента в ffmpegRender, не как импульс).
     default:
       return [];
   }

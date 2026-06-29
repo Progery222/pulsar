@@ -7,7 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { EFFECTS } from '../../src/data/effects';
 import { FILTERS } from '../../src/data/filters';
-import { effectSlotFilters, type RenderEffectSlot } from '../../src/data/effectRender';
+import { buildClipVideoGraph, type RenderEffectSlot } from '../../src/data/effectRender';
 import type { FilterName } from '../../src/types';
 import type { UniqualizerSettings } from '../../src/types/uniqualizer';
 import { buildUniqualizerFilters, buildVisibleVariation, randomMetadata, uniqualizerEncoding } from '../../src/utils/uniqualizer';
@@ -76,19 +76,10 @@ function dimensions(format: Format, quality: Quality): [number, number] {
   return [s, s];
 }
 
-// Видеофильтры эффектов, привязанные к моменту бита (импульс в окне EFFECT_WIN).
-// Семантика (вариант/сила/тайминг) повторяет live-превью — см. src/data/effectRender.ts.
-// Эффекты split/boomerang/fastCut/speed (geometry/timing) обрабатываются отдельно.
-// Фрагменты кодируются в 30 fps (-r 30) — этот же fps передаём в построитель фильтров.
+// Фрагменты кодируются в 30 fps (-r 30) — этот же fps передаём в построитель графа.
+// Полный видео-граф фрагмента (тайминг/вариант/интенсивность как в превью, плюс
+// speed/split) собирается в src/data/effectRender.ts → buildClipVideoGraph.
 const RENDER_FPS = 30;
-
-function effectFilters(effects: RenderEffectSlot[], w: number, h: number): string[] {
-  const out: string[] = [];
-  for (const slot of effects) {
-    out.push(...effectSlotFilters(slot, w, h, RENDER_FPS));
-  }
-  return out;
-}
 
 // EFFECTS импортируется для согласованности набора (используется в превью).
 void EFFECTS;
@@ -232,19 +223,24 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       if (cancelled()) throw new Error('Экспорт отменён');
       const clip = req.clips[i];
       const fragPath = path.join(tmpDir, `fragment_${i}.mp4`);
-      const vchain = [scaleChain, ...effectFilters(clip.effects, w, h)].join(',');
+      // Единый видео-граф фрагмента (scaleChain + импульсы эффектов + опц. speed/split).
+      // rate !== 1 означает изменение темпа: видео уже сжато/растянуто к clip.duration
+      // через setpts, поэтому исходный звук синхронизируем atempo с тем же rate.
+      const { graph, rate } = buildClipVideoGraph(clip.effects, scaleChain, w, h, RENDER_FPS);
 
       let fragCmd: ffmpeg.FfmpegCommand;
       if (useOriginal) {
         const srcHasAudio = audioMap.get(clip.sourceFile) ?? false;
         if (srcHasAudio) {
-          // Реальный звук источника.
+          // Реальный звук источника (+ atempo при изменении темпа).
+          const aGraph = rate !== 1 ? `;[0:a]atempo=${rate}[a]` : '';
+          const aMap = rate !== 1 ? '[a]' : '0:a:0';
           fragCmd = ffmpeg(clip.sourceFile)
             .seekInput(clip.startTime)
             .duration(clip.duration)
-            .complexFilter([`[0:v]${vchain}[v]`])
+            .complexFilter([`${graph}${aGraph}`])
             .outputOptions([
-              '-map', '[v]', '-map', '0:a:0', '-pix_fmt', 'yuv420p', '-r', '30',
+              '-map', '[v]', '-map', aMap, '-pix_fmt', 'yuv420p', '-r', '30',
               '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
             ]);
         } else {
@@ -254,7 +250,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
             .duration(clip.duration)
             .input('anullsrc=channel_layout=stereo:sample_rate=44100')
             .inputOptions(['-f', 'lavfi', '-t', String(clip.duration)])
-            .complexFilter([`[0:v]${vchain}[v]`])
+            .complexFilter([graph])
             .outputOptions([
               '-map', '[v]', '-map', '1:a:0', '-pix_fmt', 'yuv420p', '-r', '30',
               '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-shortest',
@@ -264,9 +260,9 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
         fragCmd = ffmpeg(clip.sourceFile)
           .seekInput(clip.startTime)
           .duration(clip.duration)
-          .videoFilters([scaleChain, ...effectFilters(clip.effects, w, h)])
+          .complexFilter([graph])
           .noAudio()
-          .outputOptions(['-pix_fmt', 'yuv420p', '-r', '30']);
+          .outputOptions(['-map', '[v]', '-pix_fmt', 'yuv420p', '-r', '30']);
       }
       await runCommand(fragCmd.output(fragPath), hooks);
       fragments.push(fragPath);

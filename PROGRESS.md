@@ -29,7 +29,7 @@
 бита, с учётом варианта и силы. Реализованы ранее «превью-only» эффекты + новые приёмы.
 - [x] 5.A1 Провести тайминг/вариант/интенсивность эффектов в рендер; импульс по биту (flash/hue/prism/rgb) — `src/data/effectRender.ts` — тест: `tsc --noEmit` + ffmpeg filterchain
 - [x] 5.A2 Анимированный zoom-punch (zoompan, варианты in/out/punch) — тест: ffmpeg `-filter_script` exit 0
-- [ ] 5.A3 Реализовать в рендере Split / Boomerang / FastCut / Speed — тест: ffmpeg прогон каждого
+- [x] 5.A3 Реализовать в рендере Split / Boomerang(approx) / FastCut / Speed (темп с сохранением длительности и синхрона) — тест: ffmpeg прогон каждого графа exit 0
 - [ ] 5.B1 Переходы на бит между клипами (whip-pan / zoom / dip-to-black / RGB-split) — тест: рендер 2 клипов
 - [ ] 5.B2 Умный выбор кадров по энергии/онсетам — тест: распределение клипов
 - [ ] 5.B3 Новые эффекты (camera-shake / glitch-burst / light-leak) — тест: ffmpeg прогон
