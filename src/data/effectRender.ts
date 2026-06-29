@@ -33,9 +33,9 @@ function r3(n: number): number {
 // рендерится отдельной веткой (geometry/timing) либо не имеет видеофильтра.
 export function effectSlotFilters(
   slot: RenderEffectSlot,
-  _w: number,
-  _h: number,
-  _fps: number
+  w: number,
+  h: number,
+  fps: number
 ): string[] {
   const a = r3(Math.max(0, slot.at));
   const b = r3(a + EFFECT_WIN);
@@ -76,7 +76,27 @@ export function effectSlotFilters(
       return [`rgbashift=rh=${sh}:bh=${-sh}:enable='${gate}'`];
     }
 
-    // zoom — анимированный zoompan (A2). boomerang/split/fastCut/speed — A3.
+    case 'zoom': {
+      // Анимированный наезд по биту через zoompan (d=1 → каждый входной кадр = один
+      // выходной, тайминг сохраняется). amount как в превью: 0.08+0.5*k.
+      // Вне окна бита z=1 (без зума). Центрирование — стандартными x/y zoompan.
+      const amount = r3(0.08 + 0.5 * k);
+      const prog = `((it-${a})/${win})`;
+      let zExpr: string;
+      if (slot.variant === 'out') {
+        zExpr = `1+${amount}*(1-${prog})`;
+      } else if (slot.variant === 'punch') {
+        zExpr = `1+${amount}*sin(${prog}*PI)`;
+      } else {
+        zExpr = `1+${amount}*${prog}`; // in (наезд)
+      }
+      const z = `if(between(it,${a},${b}),${zExpr},1)`;
+      return [
+        `zoompan=z='${z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=${w}x${h}:fps=${fps}`,
+      ];
+    }
+
+    // boomerang/split/fastCut/speed — A3 (geometry/timing).
     default:
       return [];
   }
