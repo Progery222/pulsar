@@ -173,6 +173,40 @@ export function effectSlotFilters(
       ];
     }
 
+    case 'shake': {
+      // Тряска камеры по биту: лёгкий зум (даёт запас) + покадровый джиттер позиции.
+      // Вне окна бита zoom=1 и сдвиг=0 → кадр не трогается.
+      const amp = Math.round(20 + 40 * k); // амплитуда дрожания, px
+      const jx = `if(between(it,${a},${b}),(random(1)-0.5)*${amp},0)`;
+      const jy = `if(between(it,${a},${b}),(random(2)-0.5)*${amp},0)`;
+      const z = `if(between(it,${a},${b}),1.06,1)`;
+      return [
+        `zoompan=z='${z}':x='iw/2-(iw/zoom/2)+${jx}':y='ih/2-(ih/zoom/2)+${jy}':d=1:s=${w}x${h}:fps=${fps}`,
+      ];
+    }
+
+    case 'glitch': {
+      // Цифровой глитч-удар: сильный RGB-сдвиг + блочный шум + всплеск контраста.
+      const sh = Math.round(12 + 16 * k);
+      const ns = Math.round(20 + 40 * k);
+      const ct = r3(1 + 0.4 * k);
+      return [
+        `rgbashift=rh=${sh}:bh=${-sh}:enable='${gate}'`,
+        `noise=alls=${ns}:allf=t:enable='${gate}'`,
+        `eq=contrast='${ct}':eval=frame:enable='${gate}'`,
+      ];
+    }
+
+    case 'leak': {
+      // Тёплая засветка (light leak): сдвиг баланса в тёплый + лёгкий подъём яркости.
+      const rm = r3(0.2 + 0.3 * k);
+      const br = r3(0.12 + 0.15 * k);
+      return [
+        `colorbalance=rm=${rm}:gm=${r3(rm * 0.2)}:bm=${-r3(rm * 0.6)}:enable='${gate}'`,
+        `eq=brightness=${br}:saturation=1.2:eval=frame:enable='${gate}'`,
+      ];
+    }
+
     // split — geometry (целый фрагмент, отдельный граф). speed — изменение темпа
     // (обрабатывается на уровне фрагмента в ffmpegRender, не как импульс).
     default:

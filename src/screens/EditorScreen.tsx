@@ -286,6 +286,27 @@ export default function EditorScreen() {
           rate = Math.max(0.25, Math.min(4, rate));
           break;
         }
+        case 'shake': {
+          // Дрожание камеры: случайный сдвиг + лёгкий зум, затухает к концу окна.
+          const amp = (6 + 10 * k) * e;
+          const sx = (Math.random() - 0.5) * amp;
+          const sy = (Math.random() - 0.5) * amp;
+          transform = `scale(${(1 + 0.06 * e).toFixed(3)}) translate(${sx.toFixed(1)}px, ${sy.toFixed(1)}px)`;
+          break;
+        }
+        case 'glitch': {
+          // Глитч: подскок насыщенности/контраста + горизонтальный сдвиг.
+          const j = (Math.random() - 0.5) * 14 * e * (0.5 + k);
+          filter += ` saturate(${(1 + 1.5 * k * e).toFixed(2)}) contrast(${(1 + 0.6 * k * e).toFixed(2)})`;
+          transform = `translateX(${j.toFixed(1)}px)`;
+          flash = (Math.random() < 0.4 ? 0.15 : 0) * e;
+          break;
+        }
+        case 'leak': {
+          // Тёплая засветка: подъём яркости + тёплый сепия-оттенок.
+          filter += ` brightness(${(1 + 0.25 * k * e).toFixed(2)}) sepia(${(0.35 * k * e).toFixed(2)}) saturate(${(1 + 0.3 * k * e).toFixed(2)})`;
+          break;
+        }
       }
     }
 

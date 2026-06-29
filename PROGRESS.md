@@ -32,7 +32,7 @@
 - [x] 5.A3 Реализовать в рендере Split / Boomerang(approx) / FastCut / Speed (темп с сохранением длительности и синхрона) — тест: ffmpeg прогон каждого графа exit 0
 - [ ] 5.B1 Переходы на бит между клипами (whip-pan / zoom / dip-to-black / RGB-split) — тест: рендер 2 клипов
 - [ ] 5.B2 Умный выбор кадров по энергии/онсетам — тест: распределение клипов
-- [ ] 5.B3 Новые эффекты (camera-shake / glitch-burst / light-leak) — тест: ffmpeg прогон
+- [x] 5.B3 Новые эффекты Shake / Glitch / Light Leak (рендер + превью + каталог + типы) — тест: ffmpeg прогон каждого + комбинированный exit 0
 - [x] 5.B4 Стиль-пресеты монтажа (Hype / Cinematic / Smooth / Clean) — `src/data/montageStyles.ts` + UI в EditPanel — тест: `tsc --noEmit`
 
 ## Доп. (запрос пользователя): навигация + настройки на старте

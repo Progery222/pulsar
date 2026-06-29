@@ -12,7 +12,10 @@ export type EffectName =
   | 'boomerang'
   | 'split'
   | 'hue'
-  | 'speed';
+  | 'speed'
+  | 'shake'
+  | 'glitch'
+  | 'leak';
 
 export const EFFECT_NAMES: EffectName[] = [
   'fastCut',
@@ -24,6 +27,9 @@ export const EFFECT_NAMES: EffectName[] = [
   'split',
   'hue',
   'speed',
+  'shake',
+  'glitch',
+  'leak',
 ];
 
 // 10 фильтров вкладки FILTERS (§8 ТЗ). «Нет» = activeFilter === null.

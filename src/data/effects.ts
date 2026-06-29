@@ -59,6 +59,9 @@ export const EFFECTS: EffectMeta[] = [
       { key: 'constant', label: 'Постоянная' },
     ],
   },
+  { key: 'shake', label: 'Shake', icon: '📳', ffmpeg: '', variants: [] },
+  { key: 'glitch', label: 'Glitch', icon: '📺', ffmpeg: '', variants: [] },
+  { key: 'leak', label: 'Light Leak', icon: '🔆', ffmpeg: '', variants: [] },
 ];
 
 // Вариант по умолчанию для эффекта (первый из списка или 'default').
