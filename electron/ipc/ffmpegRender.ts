@@ -7,7 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { EFFECTS } from '../../src/data/effects';
 import { FILTERS } from '../../src/data/filters';
-import type { EffectName, FilterName } from '../../src/types';
+import { effectSlotFilters, type RenderEffectSlot } from '../../src/data/effectRender';
+import type { FilterName } from '../../src/types';
 import type { UniqualizerSettings } from '../../src/types/uniqualizer';
 import { buildUniqualizerFilters, buildVisibleVariation, randomMetadata, uniqualizerEncoding } from '../../src/utils/uniqualizer';
 import { videoEncoderOptions } from './encoder';
@@ -38,7 +39,7 @@ export interface RenderClip {
   sourceFile: string;
   startTime: number;
   duration: number;
-  effects: EffectName[];
+  effects: RenderEffectSlot[];
 }
 
 export interface RenderRequest {
@@ -75,32 +76,16 @@ function dimensions(format: Format, quality: Quality): [number, number] {
   return [s, s];
 }
 
-// Render-безопасные видеофильтры эффектов: только timing-нейтральные и валидные
-// как простой -vf. Эффекты speed/boomerang/split/fastCut меняют тайминг/раскладку
-// и ломают синхронизацию с аудио — они отображаются только в превью (оверлей/маркеры).
-function effectFilters(effects: EffectName[], w: number, h: number): string[] {
+// Видеофильтры эффектов, привязанные к моменту бита (импульс в окне EFFECT_WIN).
+// Семантика (вариант/сила/тайминг) повторяет live-превью — см. src/data/effectRender.ts.
+// Эффекты split/boomerang/fastCut/speed (geometry/timing) обрабатываются отдельно.
+// Фрагменты кодируются в 30 fps (-r 30) — этот же fps передаём в построитель фильтров.
+const RENDER_FPS = 30;
+
+function effectFilters(effects: RenderEffectSlot[], w: number, h: number): string[] {
   const out: string[] = [];
-  for (const name of effects) {
-    switch (name) {
-      case 'prism':
-        out.push('rgbashift=rh=5:bh=-5');
-        break;
-      case 'rgb':
-        out.push('rgbashift=rh=8:bh=-8');
-        break;
-      case 'hue':
-        out.push('hue=h=360*t');
-        break;
-      case 'zoom':
-        out.push(`crop=iw/1.2:ih/1.2,scale=${w}:${h}`);
-        break;
-      case 'flash':
-        out.push('eq=brightness=0.18:saturation=1.2');
-        break;
-      // speed, boomerang, split, fastCut — превью-only (тайминг/раскладка).
-      default:
-        break;
-    }
+  for (const slot of effects) {
+    out.push(...effectSlotFilters(slot, w, h, RENDER_FPS));
   }
   return out;
 }

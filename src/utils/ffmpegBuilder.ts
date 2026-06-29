@@ -13,12 +13,29 @@ export async function buildAndRender(
 ): Promise<boolean> {
   const unsubscribe = window.electronAPI.onExportProgress(onProgress);
   try {
+    // Абсолютные старты клипов на таймлайне вывода — чтобы перевести
+    // effectSlots.time (абсолютное время) в clip-local `at` для импульса по биту.
+    const clipStarts: number[] = [];
+    {
+      let acc = 0;
+      for (const c of project.generatedClips) {
+        clipStarts.push(acc);
+        acc += c.duration;
+      }
+    }
     const request = {
-      clips: project.generatedClips.map((c) => ({
+      clips: project.generatedClips.map((c, i) => ({
         sourceFile: c.sourceFile,
         startTime: c.startTime,
         duration: c.duration,
-        effects: c.effectSlots.map((s) => s.effect),
+        // Полные данные эффекта: момент относительно начала клипа, вариант и сила.
+        // Рендер использует их, чтобы повторить тайминг/вариант/интенсивность превью.
+        effects: c.effectSlots.map((s) => ({
+          effect: s.effect,
+          at: Math.max(0, Number((s.time - clipStarts[i]).toFixed(3))),
+          variant: project.effectSettings[s.effect]?.variant ?? 'default',
+          intensity: project.effectSettings[s.effect]?.intensity ?? 50,
+        })),
       })),
       audioFile: project.selectedTrack?.file ?? null,
       segmentStart: project.segmentStart,
