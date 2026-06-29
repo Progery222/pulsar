@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { EFFECTS } from '../data/effects';
+import { MONTAGE_STYLES, applyMontageStyle } from '../data/montageStyles';
 import { reapplyEffects } from '../utils/regenerate';
 import type { EffectName } from '../types';
 
@@ -28,6 +29,25 @@ export default function EditPanel() {
 
   return (
     <div className="relative p-3">
+      {/* B4: стиль-пресеты монтажа — один клик задаёт mood/эффекты/фильтр */}
+      <div className="mb-3">
+        <div className="mb-1 text-text-secondary" style={{ fontSize: 12 }}>Стиль монтажа</div>
+        <div className="grid grid-cols-4 gap-2">
+          {MONTAGE_STYLES.map((style) => (
+            <button
+              key={style.key}
+              onClick={() => applyMontageStyle(style)}
+              className="flex flex-col items-center gap-0.5 rounded-el py-2"
+              style={{ fontSize: 11, backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+              title={`Применить стиль «${style.label}»`}
+            >
+              <span style={{ fontSize: 18 }}>{style.icon}</span>
+              <span>{style.label}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="mb-3 flex justify-end">
         <button
           className="btn-secondary flex items-center gap-2 px-3 py-1.5"
