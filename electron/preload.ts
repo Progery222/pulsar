@@ -124,6 +124,10 @@ const electronAPI = {
   processVub: (request: VubProcessRequest): Promise<{ ok: true }> =>
     ipcRenderer.invoke('vub:process', request),
   cancelVub: (): Promise<{ ok: true }> => ipcRenderer.invoke('vub:cancel'),
+  // Watch-папка: авто-обработка новых видео текущими настройками.
+  startWatch: (request: VubProcessRequest, folder: string): Promise<{ ok: true } | { error: string }> =>
+    ipcRenderer.invoke('vub:watchStart', request, folder),
+  stopWatch: (): Promise<{ ok: true }> => ipcRenderer.invoke('vub:watchStop'),
   onVubProgress: (cb: (event: VubProgressEvent) => void): (() => void) => {
     const listener = (_e: unknown, event: VubProgressEvent) => cb(event);
     ipcRenderer.on('vub-progress', listener);

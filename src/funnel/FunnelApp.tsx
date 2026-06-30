@@ -134,12 +134,13 @@ export default function FunnelApp() {
         )}
 
         <div style={{ marginBottom: 16 }}>
-          <label style={label}>Ссылка на аккаунт или видео (TikTok / Instagram / YouTube …)</label>
-          <input
+          <label style={label}>Ссылки (TikTok / Instagram / YouTube …) — можно несколько, каждая с новой строки</label>
+          <textarea
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://…"
-            style={field}
+            placeholder={'https://…\nhttps://…\nhttps://…'}
+            rows={4}
+            style={{ ...field, resize: 'vertical', fontFamily: 'inherit' }}
           />
         </div>
 

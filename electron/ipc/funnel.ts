@@ -822,7 +822,9 @@ export function registerFunnelHandlers() {
 
     const apiKey = getOpenRouterKey();
     if (!apiKey) return { error: 'Не задан ключ OpenRouter API (Настройки). Он нужен для AI-классификации.' };
-    if (!req.url || !/^https?:\/\//i.test(req.url.trim())) return { error: 'Введите корректную ссылку (http/https)' };
+    // Пакетный режим: несколько ссылок (по строкам/пробелам).
+    const urls = (req.url || '').split(/\s+/).map((s) => s.trim()).filter((s) => /^https?:\/\//i.test(s));
+    if (!urls.length) return { error: 'Введите хотя бы одну корректную ссылку (http/https)' };
     if (!req.outputDir) return { error: 'Не выбрана папка сохранения' };
 
     // Хуки: сканируем папку один раз на запуск (случайный порядок).
@@ -835,27 +837,34 @@ export function registerFunnelHandlers() {
       if (!(await ytdlpInstalled())) return { error: 'yt-dlp не установился. Проверьте Python.' };
     }
 
-    // Скачивание (общий прогресс показываем на временной строке id=download).
-    const dlDir = path.join(app.getPath('downloads'), 'Beatleap', 'funnel', String(Date.now()));
-    fs.mkdirSync(dlDir, { recursive: true });
-    send(win, { id: 'download', name: 'Скачивание', stage: 'downloading', percent: 0, stageLabel: 'Скачивание видео…' });
-    const dl = await runDownload(req.url.trim(), dlDir, (r) =>
-      send(win, {
-        id: 'download',
-        stage: 'downloading',
-        percent: r.percent != null ? Math.max(2, Math.round(r.percent * 0.1)) : undefined,
-        stageLabel: r.label,
-      })
-    );
-    if (cancelled) return { ok: true };
-    if ('error' in dl) {
-      logF('download ERROR:', dl.error);
-      send(win, { id: 'download', stage: 'error', percent: 0, error: dl.error });
-      return dl;
+    // Скачивание всех ссылок (каждая — в свою подпапку), общий прогресс на строке id=download.
+    const items: { id: string; path: string }[] = [];
+    for (let u = 0; u < urls.length; u++) {
+      if (cancelled) break;
+      send(win, { id: 'download', name: 'Скачивание', stage: 'downloading', percent: 0, stageLabel: `Скачивание ${u + 1}/${urls.length}…` });
+      const dlDir = path.join(app.getPath('downloads'), 'Pulsar', 'funnel', `${Date.now()}_${u}`);
+      fs.mkdirSync(dlDir, { recursive: true });
+      const dl = await runDownload(urls[u], dlDir, (r) =>
+        send(win, {
+          id: 'download',
+          stage: 'downloading',
+          percent: r.percent != null ? Math.max(2, Math.round(r.percent * 0.1)) : undefined,
+          stageLabel: `${u + 1}/${urls.length}: ${r.label}`,
+        })
+      );
+      if (cancelled) break;
+      if ('error' in dl) {
+        logF('download ERROR:', urls[u], dl.error);
+        continue; // пропускаем битую ссылку, продолжаем остальные
+      }
+      dl.files.forEach((f, i) => items.push({ id: `funnel_${Date.now()}_${u}_${i}`, path: f }));
     }
-    logF('downloaded', dl.files.length, 'file(s)');
-    // Заводим задачи в очереди по числу скачанных видео.
-    const items = dl.files.map((f, i) => ({ id: `funnel_${Date.now()}_${i}`, path: f }));
+    if (cancelled) return { ok: true };
+    if (!items.length) {
+      send(win, { id: 'download', stage: 'error', percent: 0, error: 'Ничего не скачалось — проверьте ссылки.' });
+      return { error: 'Ничего не скачалось — проверьте ссылки.' };
+    }
+    logF('downloaded total', items.length, 'file(s) from', urls.length, 'url(s)');
     send(win, {
       id: 'download',
       stage: 'done',

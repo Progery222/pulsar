@@ -33,6 +33,12 @@ if (ffprobePath) ffmpeg.setFfprobePath(ffprobePath);
 let cancelled = false;
 const active = new Set<ffmpeg.FfmpegCommand>();
 
+// Состояние watch-папки (авто-обработка новых видео).
+let watcher: fs.FSWatcher | null = null;
+const watchSeen = new Set<string>();
+const watchQueue: string[] = [];
+let watchProcessing = false;
+
 // Кэш транскрибаций: один исходник распознаётся один раз, все вариации переиспользуют.
 const transcriptCache = new Map<string, Promise<TranscriptWord[]>>();
 
@@ -629,6 +635,96 @@ export function registerVubHandlers() {
       }
     }
     active.clear();
+    return { ok: true };
+  });
+
+  // ── Watch-папка: авто-обработка новых видео текущими настройками ───────────────
+  ipcMain.handle('vub:watchStart', async (event, req: VubProcessRequest, watchFolder: string) => {
+    if (watcher) {
+      watcher.close();
+      watcher = null;
+    }
+    watchSeen.clear();
+    try {
+      fs.readdirSync(watchFolder).forEach((n) => watchSeen.add(n)); // существующие — не трогаем, только новые
+    } catch {
+      return { error: 'Не удалось открыть папку наблюдения.' };
+    }
+    const sender = BrowserWindow.fromWebContents(event.sender);
+    const hookFiles = req.hooks?.enabled && req.hooks.folder ? scanVideos(req.hooks.folder) : [];
+    const templateFiles = req.template?.enabled && req.template.folder ? scanVideos(req.template.folder) : [];
+    const notify = (msg: string) => sender?.webContents.send('vub-warning', msg);
+
+    const processFile = async (full: string) => {
+      const name = path.basename(full);
+      const base = path.parse(name).name;
+      const task: VubTask = {
+        id: full,
+        video: { id: full, path: full, name },
+        outName: outFileName({ baseName: base, variationIndex: 0, variationTotal: 1, globalIndex: 0, totalFiles: 1, pattern: req.namePattern || '' }),
+        index: 0,
+        total: 1,
+        globalIndex: 0,
+      };
+      cancelled = false;
+      const emit = (status: string, percent: number, error?: string) =>
+        sender?.webContents.send('vub-progress', { id: full, status, percent, error });
+      sender?.webContents.send('vub-progress', { id: full, status: 'processing', percent: 1 });
+      await processOne(task, req, hookFiles, templateFiles, (s, p, e) => emit(s, p, e), notify);
+      notify(`Watch: обработано «${name}»`);
+    };
+
+    const pump = async () => {
+      if (watchProcessing) return;
+      watchProcessing = true;
+      while (watchQueue.length) {
+        const f = watchQueue.shift() as string;
+        try {
+          await processFile(f);
+        } catch (e) {
+          console.warn('watch process failed:', e instanceof Error ? e.message : e);
+        }
+      }
+      watchProcessing = false;
+    };
+
+    const onNew = (name: string) => {
+      if (!name || !VIDEO_EXT.test(name) || watchSeen.has(name)) return;
+      watchSeen.add(name);
+      const full = path.join(watchFolder, name);
+      // Ждём, пока размер файла перестанет расти (копирование/докачка завершены).
+      let last = -1;
+      const check = () => {
+        let size = 0;
+        try {
+          size = fs.statSync(full).size;
+        } catch {
+          return;
+        }
+        if (size > 0 && size === last) {
+          watchQueue.push(full);
+          pump();
+        } else {
+          last = size;
+          setTimeout(check, 1000);
+        }
+      };
+      setTimeout(check, 1000);
+    };
+
+    watcher = fs.watch(watchFolder, (_e, name) => {
+      if (name) onNew(name.toString());
+    });
+    notify(`Watch включён: ${watchFolder}. Новые видео будут обработаны автоматически.`);
+    return { ok: true };
+  });
+
+  ipcMain.handle('vub:watchStop', () => {
+    if (watcher) {
+      watcher.close();
+      watcher = null;
+    }
+    watchQueue.length = 0;
     return { ok: true };
   });
 }

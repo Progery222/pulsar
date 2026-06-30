@@ -153,6 +153,36 @@ export default function PerformanceTab() {
     setIsProcessing(false);
   }
 
+  // Watch-папка: авто-обработка новых видео текущими настройками.
+  const [watchFolder, setWatchFolder] = useState<string | null>(null);
+  const [watching, setWatching] = useState(false);
+  async function pickWatch() {
+    const d = await window.electronAPI.selectDirectory();
+    if (d) setWatchFolder(d);
+  }
+  async function toggleWatch() {
+    if (watching) {
+      await window.electronAPI.stopWatch();
+      setWatching(false);
+      showToast('Watch выключен');
+      return;
+    }
+    if (!watchFolder || !outputDir) {
+      showToast('Выбери папку наблюдения и папку сохранения.');
+      return;
+    }
+    const req = {
+      videos: [], params, effects, watermark, text, template, hooks, hard, randomSubset,
+      cleanMetadata, nativeExport, upscale, titles, threads, variations, namePattern, outputDir,
+    };
+    const r = await window.electronAPI.startWatch(req, watchFolder);
+    if (r && 'error' in r) showToast(r.error);
+    else {
+      setWatching(true);
+      showToast('Watch включён — кидай видео в папку, обработаются сами.');
+    }
+  }
+
   const statusLabel: Record<FileProgress['status'], string> = {
     queued: 'В очереди',
     processing: 'Обработка',
@@ -308,6 +338,32 @@ export default function PerformanceTab() {
         )}
       </div>
       {outputDir && <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{outputDir}</p>}
+
+      {/* Watch-папка: авто-обработка новых видео */}
+      <div style={{ marginTop: 20, background: 'var(--bg-secondary)', border: `1px solid ${watching ? 'var(--accent-green)' : 'var(--border)'}`, borderRadius: 8, padding: 16 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Watch-папка (авто-обработка)</div>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px' }}>
+          Кидаешь новые видео в выбранную папку — они <b>сами</b> уникализируются текущими настройками и
+          падают в папку сохранения. Удобно для конвейера.
+        </p>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button
+            onClick={pickWatch}
+            disabled={watching}
+            style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer', opacity: watching ? 0.5 : 1 }}
+          >
+            Папка наблюдения
+          </button>
+          <button
+            onClick={toggleWatch}
+            style={{ background: watching ? 'var(--danger)' : 'var(--accent-green)', border: 'none', color: watching ? '#fff' : '#0D0D0D', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+          >
+            {watching ? 'Остановить' : 'Включить'}
+          </button>
+          {watching && <span style={{ fontSize: 12, color: 'var(--accent-green)' }}>● следит за папкой</span>}
+        </div>
+        {watchFolder && <p style={{ marginTop: 8, fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{watchFolder}</p>}
+      </div>
 
       <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
         <button
