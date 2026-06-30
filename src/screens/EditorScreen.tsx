@@ -6,6 +6,7 @@ import { mediaUrl } from '../utils/media';
 import { FILTERS } from '../data/filters';
 import VideoPreview from '../components/VideoPreview';
 import Timeline from '../components/Timeline';
+import ClipTimeline from '../components/ClipTimeline';
 import ToolsPanel from '../components/ToolsPanel';
 import EditPanel from '../components/EditPanel';
 import FiltersPanel from '../components/FiltersPanel';
@@ -534,6 +535,10 @@ export default function EditorScreen() {
 
           <div className="shrink-0 px-4 pb-4">
             <Timeline value={scrub} markers={markers} onChange={onScrub} />
+          </div>
+
+          <div className="shrink-0">
+            <ClipTimeline />
           </div>
 
           {isExporting && (

@@ -1,7 +1,12 @@
-import { dialog, ipcMain, shell } from 'electron';
+import { app, dialog, ipcMain, shell } from 'electron';
+import ffmpegStatic from 'ffmpeg-static';
+import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+
+const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 
 interface DirEntry {
   name: string;
@@ -99,5 +104,21 @@ export function registerFileHandlers() {
   ipcMain.handle('shell:showItem', async (_event, filePath: string) => {
     shell.showItemInFolder(filePath);
     return { ok: true };
+  });
+
+  // Миниатюра кадра видео (для таймлайна/очереди). Кэшируется по src+time.
+  ipcMain.handle('media:thumb', async (_event, src: string, time: number) => {
+    if (!ffmpegBin || !src) return null;
+    const dir = path.join(app.getPath('userData'), 'thumbs');
+    fs.mkdirSync(dir, { recursive: true });
+    const key = crypto.createHash('md5').update(`${src}|${time}`).digest('hex');
+    const out = path.join(dir, `${key}.jpg`);
+    if (fs.existsSync(out)) return out;
+    await new Promise<void>((resolve) => {
+      const ch = spawn(ffmpegBin, ['-y', '-ss', String(Math.max(0, time || 0)), '-i', src, '-frames:v', '1', '-vf', 'scale=200:-1', out], { windowsHide: true });
+      ch.on('close', () => resolve());
+      ch.on('error', () => resolve());
+    });
+    return fs.existsSync(out) ? out : null;
   });
 }

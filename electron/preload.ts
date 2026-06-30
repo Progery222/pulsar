@@ -36,6 +36,10 @@ const electronAPI = {
   openFolder: (folderPath: string): Promise<string> =>
     ipcRenderer.invoke('shell:openPath', folderPath),
 
+  // Миниатюра кадра видео (путь к закэшированному jpg или null).
+  thumb: (src: string, time: number): Promise<string | null> =>
+    ipcRenderer.invoke('media:thumb', src, time),
+
   // Показать файл в проводнике с выделением.
   showItemInFolder: (filePath: string): Promise<{ ok: true }> =>
     ipcRenderer.invoke('shell:showItem', filePath),

@@ -77,6 +77,8 @@ export interface ProjectActions {
   setFilterIntensity: (intensity: number) => void;
   setBeatData: (data: BeatData | null) => void;
   setGeneratedClips: (clips: GeneratedClip[]) => void;
+  reorderClips: (from: number, to: number) => void; // ручная перестановка клипов (таймлайн)
+  removeClip: (index: number) => void; // удалить клип
   setIsProcessing: (value: boolean) => void;
   setIsExporting: (value: boolean) => void;
   setExportProgress: (progress: number) => void;
@@ -103,6 +105,38 @@ const initialEffectSettings = EFFECT_NAMES.reduce(
   },
   {} as Record<EffectName, EffectSettings>
 );
+
+// Перестановка/удаление клипов с сохранением эффектов: фиксируем смещение каждого
+// эффекта внутри клипа, меняем порядок, затем пересчитываем абсолютные времена.
+function remapClipOrder(
+  clips: GeneratedClip[],
+  transform: (arr: GeneratedClip[]) => GeneratedClip[]
+): GeneratedClip[] {
+  const starts: number[] = [];
+  let acc = 0;
+  for (const c of clips) {
+    starts.push(acc);
+    acc += c.duration;
+  }
+  const offMap = new Map<GeneratedClip, { effect: EffectName; off: number }[]>();
+  clips.forEach((c, i) => {
+    offMap.set(
+      c,
+      c.effectSlots.map((e) => ({ effect: e.effect, off: Math.max(0, e.time - starts[i]) }))
+    );
+  });
+  const arranged = transform([...clips]);
+  let nacc = 0;
+  return arranged.map((c) => {
+    const start = nacc;
+    nacc += c.duration;
+    const offs = offMap.get(c) ?? [];
+    return {
+      ...c,
+      effectSlots: offs.map((o) => ({ effect: o.effect, time: Number((start + o.off).toFixed(3)) })),
+    };
+  });
+}
 
 export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   // --- Начальное состояние ---
@@ -175,6 +209,26 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   setFilterIntensity: (intensity) => set({ filterIntensity: intensity }),
   setBeatData: (data) => set({ beatData: data }),
   setGeneratedClips: (clips) => set({ generatedClips: clips }),
+  reorderClips: (from, to) =>
+    set((s) => {
+      const clips = s.generatedClips;
+      if (from < 0 || to < 0 || from >= clips.length || to >= clips.length || from === to) return {};
+      const result = remapClipOrder(clips, (arr) => {
+        const a = [...arr];
+        const [m] = a.splice(from, 1);
+        a.splice(to, 0, m);
+        return a;
+      });
+      return { generatedClips: result };
+    }),
+  removeClip: (index) =>
+    set((s) => {
+      const clips = s.generatedClips;
+      if (index < 0 || index >= clips.length || clips.length <= 1) return {};
+      const result = remapClipOrder(clips, (arr) => arr.filter((_, i) => i !== index));
+      const newDuration = result.reduce((acc, c) => acc + c.duration, 0);
+      return { generatedClips: result, duration: Number(newDuration.toFixed(3)) };
+    }),
   setIsProcessing: (value) => set({ isProcessing: value }),
   setIsExporting: (value) => set({ isExporting: value }),
   setExportProgress: (progress) => set({ exportProgress: progress }),
