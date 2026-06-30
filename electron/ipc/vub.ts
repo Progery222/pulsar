@@ -60,6 +60,14 @@ function fontsDir(): string {
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'assets', 'fonts');
 }
 
+// Резолв относительного пути ассета (assets/emoji/...) от корня приложения/ресурсов.
+// Нужен для эмодзи-заготовок водяного знака, которые задаются относительным путём.
+function resolveAsset(p: string): string {
+  if (path.isAbsolute(p)) return p;
+  const base = app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd());
+  return path.join(base, p);
+}
+
 interface ProbeResult {
   duration: number;
   hasAudio: boolean;
@@ -361,7 +369,7 @@ async function processOne(
   const wm = req.watermark;
   const useWatermark = !!wm.file && wm.zones.length > 0;
   if (useWatermark && wm.file) {
-    cmd.input(wm.file);
+    cmd.input(resolveAsset(wm.file));
     const z = wm.zones[Math.floor(Math.random() * wm.zones.length)];
     const vfChain = plan.videoFilters.length ? plan.videoFilters.join(',') : 'null';
     let complex =

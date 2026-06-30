@@ -1,6 +1,11 @@
 import { useVubStore } from '../store';
 import { Block, Checkbox } from '../components/ui';
+import { mediaUrl } from '../../utils/media';
 import type { VubHard } from '../types';
+
+// Превью «до/после» для видеофильтров (PNG в assets/previews/hard, путь относительный).
+const previewPath = (key: string) => `assets/previews/hard/${key}.png`;
+const HAS_PREVIEW: Record<string, boolean> = { drift: true, warp: true, frameBlend: true, fpsInterp: true };
 
 // Вкладка «Жёсткие фильтры (анти-детект)». Каждый фильтр нелинейно меняет кадр/спектр —
 // детектить заметно труднее косметики. У каждого показан реальный пример ffmpeg.
@@ -65,6 +70,18 @@ export default function HardTab() {
             <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{level}</span>
           </div>
           <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 8px', lineHeight: 1.5 }}>{desc}</p>
+          {HAS_PREVIEW[key] && (
+            <div style={{ margin: '0 0 8px' }}>
+              <img
+                src={mediaUrl(previewPath(key))}
+                alt={`${label} превью`}
+                style={{ width: '100%', maxWidth: 420, borderRadius: 6, border: '1px solid var(--border)', display: 'block' }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
+                Слева — оригинал, справа — с фильтром (на тестовом ролике).
+              </div>
+            </div>
+          )}
           <code
             style={{
               display: 'block',
