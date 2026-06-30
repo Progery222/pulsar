@@ -86,11 +86,33 @@ interface VubState {
   outputDir: string | null;
   setOutputDir: (value: string | null) => void;
 
+  // Профили: снять текущие настройки и применить сохранённый снимок.
+  snapshot: () => VubSnapshot;
+  loadSnapshot: (s: VubSnapshot) => void;
+
   isProcessing: boolean;
   setIsProcessing: (value: boolean) => void;
   progress: FileProgress[];
   setProgress: (progress: FileProgress[]) => void;
   updateProgress: (id: string, value: Partial<FileProgress>) => void;
+}
+
+// Снимок всех настроек уникализатора (для сохранения/загрузки профилей).
+// Без videos/outputDir/threads/progress — только «рецепт» обработки.
+export interface VubSnapshot {
+  params: VubParams;
+  effects: VubEffects;
+  watermark: VubWatermark;
+  text: VubText;
+  template: VubTemplate;
+  hooks: VubHooks;
+  hard: VubHard;
+  cleanMetadata: boolean;
+  nativeExport: boolean;
+  upscale: VubUpscale;
+  titles: TitlesStyle;
+  variations: number;
+  namePattern: string;
 }
 
 function fileName(p: string): string {
@@ -101,7 +123,7 @@ const range = (min: number, max: number): RangeParam => ({ enabled: false, min, 
 // Включённый по умолчанию параметр (самые мощные рычаги стоят сразу).
 const on = (min: number, max: number): RangeParam => ({ enabled: true, min, max });
 
-export const useVubStore = create<VubState>((set) => ({
+export const useVubStore = create<VubState>((set, get) => ({
   activeTab: 'videos',
   setActiveTab: (tab) => set({ activeTab: tab }),
 
@@ -190,6 +212,17 @@ export const useVubStore = create<VubState>((set) => ({
   setNamePattern: (value) => set({ namePattern: value }),
   outputDir: null,
   setOutputDir: (value) => set({ outputDir: value }),
+
+  snapshot: () => {
+    const s = get();
+    return {
+      params: s.params, effects: s.effects, watermark: s.watermark, text: s.text,
+      template: s.template, hooks: s.hooks, hard: s.hard, cleanMetadata: s.cleanMetadata,
+      nativeExport: s.nativeExport, upscale: s.upscale, titles: s.titles,
+      variations: s.variations, namePattern: s.namePattern,
+    };
+  },
+  loadSnapshot: (snap) => set({ ...snap }),
 
   isProcessing: false,
   setIsProcessing: (value) => set({ isProcessing: value }),

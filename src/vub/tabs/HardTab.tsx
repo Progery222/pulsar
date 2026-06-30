@@ -5,7 +5,7 @@ import type { VubHard } from '../types';
 
 // Превью «до/после» в assets/previews/hard. Эффекты во времени — анимированные GIF,
 // пространственный warp — статичный PNG. Путь относительный (резолвится в main).
-const PREVIEW_EXT: Record<string, string> = { drift: 'gif', warp: 'png', frameBlend: 'gif', fpsInterp: 'gif' };
+const PREVIEW_EXT: Record<string, string> = { drift: 'gif', warp: 'gif', frameBlend: 'gif', fpsInterp: 'gif' };
 const previewPath = (key: string) => `assets/previews/hard/${key}.${PREVIEW_EXT[key]}`;
 
 // Вкладка «Жёсткие фильтры (анти-детект)». Каждый фильтр нелинейно меняет кадр/спектр —
@@ -27,7 +27,7 @@ const HARD: { key: keyof VubHard; label: string; level: string; desc: string; ex
   },
   {
     key: 'frameBlend',
-    label: 'Смешение кадров (motion blur)',
+    label: 'Смешение кадров',
     level: 'заметно на резком движении',
     desc: 'Каждый кадр = смешение с соседним → лёгкий смаз. Покадровый хеш становится другим, плюс рушит сравнение по ключевым кадрам.',
     example: 'tmix=frames=2',

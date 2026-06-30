@@ -4,6 +4,7 @@ import { useQueueStore } from '../../store/queueStore';
 import { Slider } from '../components/ui';
 import { outFileName } from '../naming';
 import { showToast } from '../../store/toastStore';
+import { listPresets, savePreset, getPreset, deletePreset } from '../presets';
 
 const cores = navigator.hardwareConcurrency || 4;
 
@@ -14,7 +15,40 @@ export default function PerformanceTab() {
     outputDir, setOutputDir,
     videos, params, effects, watermark, text, template, hooks, hard, cleanMetadata, nativeExport, upscale, titles,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
+    snapshot, loadSnapshot,
   } = useVubStore();
+
+  // Профили (наборы настроек).
+  const [presets, setPresets] = useState<string[]>([]);
+  const [presetName, setPresetName] = useState('');
+  const [selectedPreset, setSelectedPreset] = useState('');
+  useEffect(() => setPresets(listPresets()), []);
+
+  function doSavePreset() {
+    const name = presetName.trim();
+    if (!name) return;
+    savePreset(name, snapshot());
+    setPresets(listPresets());
+    setSelectedPreset(name);
+    setPresetName('');
+    showToast(`Профиль «${name}» сохранён`);
+  }
+  function doLoadPreset() {
+    if (!selectedPreset) return;
+    const snap = getPreset(selectedPreset);
+    if (snap) {
+      loadSnapshot(snap);
+      showToast(`Профиль «${selectedPreset}» загружен`);
+    }
+  }
+  function doDeletePreset() {
+    if (!selectedPreset) return;
+    deletePreset(selectedPreset);
+    const list = listPresets();
+    setPresets(list);
+    setSelectedPreset('');
+    showToast('Профиль удалён');
+  }
 
   useEffect(() => {
     const off = window.electronAPI.onVubProgress((p) => updateProgress(p.id, p));
@@ -125,6 +159,57 @@ export default function PerformanceTab() {
       <h2 className="font-semibold" style={{ fontSize: 20, marginBottom: 16 }}>
         Производительность и Сохранение
       </h2>
+
+      {/* Профили: сохранить/загрузить весь набор настроек уникализатора */}
+      <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 16, marginBottom: 20 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 4 }}>Профили настроек</div>
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px' }}>
+          Сохраняет все настройки уникализатора (параметры, эффекты, жёсткие фильтры, хуки,
+          склейка, водяной знак, метаданные, титры) одним набором.
+        </p>
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+          <input
+            type="text"
+            value={presetName}
+            onChange={(e) => setPresetName(e.target.value)}
+            placeholder="Название профиля"
+            style={{ flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}
+          />
+          <button
+            onClick={doSavePreset}
+            disabled={!presetName.trim()}
+            style={{ background: 'var(--accent-green)', color: '#0D0D0D', border: 'none', borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: presetName.trim() ? 1 : 0.4 }}
+          >
+            Сохранить
+          </button>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <select
+            value={selectedPreset}
+            onChange={(e) => setSelectedPreset(e.target.value)}
+            style={{ flex: 1, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 12px', fontSize: 13 }}
+          >
+            <option value="">{presets.length ? '— выбрать профиль —' : 'нет сохранённых профилей'}</option>
+            {presets.map((n) => (
+              <option key={n} value={n}>{n}</option>
+            ))}
+          </select>
+          <button
+            onClick={doLoadPreset}
+            disabled={!selectedPreset}
+            style={{ background: 'var(--bg-tertiary)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer', opacity: selectedPreset ? 1 : 0.4 }}
+          >
+            Загрузить
+          </button>
+          <button
+            onClick={doDeletePreset}
+            disabled={!selectedPreset}
+            style={{ background: 'none', color: 'var(--danger)', border: '1px solid var(--border)', borderRadius: 8, padding: '8px 12px', fontSize: 13, cursor: 'pointer', opacity: selectedPreset ? 1 : 0.4 }}
+          >
+            Удалить
+          </button>
+        </div>
+      </div>
 
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
