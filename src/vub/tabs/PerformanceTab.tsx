@@ -12,7 +12,7 @@ export default function PerformanceTab() {
   const {
     threads, setThreads, variations, setVariations, namePattern, setNamePattern,
     outputDir, setOutputDir,
-    videos, params, effects, watermark, text, template, cleanMetadata, nativeExport, upscale, titles,
+    videos, params, effects, watermark, text, template, hooks, cleanMetadata, nativeExport, upscale, titles,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
   } = useVubStore();
 
@@ -83,6 +83,7 @@ export default function PerformanceTab() {
         watermark,
         text,
         template,
+        hooks,
         cleanMetadata,
         nativeExport,
         upscale,

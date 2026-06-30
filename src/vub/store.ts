@@ -10,6 +10,7 @@ import type {
   VubTemplate,
   VubText,
   VubUpscale,
+  VubHooks,
   VubVideo,
   VubWatermark,
 } from './types';
@@ -25,6 +26,7 @@ export type {
   VubTemplate,
   VubText,
   VubUpscale,
+  VubHooks,
   VubVideo,
   VubWatermark,
   WatermarkZone,
@@ -54,6 +56,9 @@ interface VubState {
 
   template: VubTemplate;
   setTemplate: (value: Partial<VubTemplate>) => void;
+
+  hooks: VubHooks;
+  setHooks: (value: Partial<VubHooks>) => void;
 
   cleanMetadata: boolean;
   setCleanMetadata: (value: boolean) => void;
@@ -138,6 +143,9 @@ export const useVubStore = create<VubState>((set) => ({
 
   template: { folder: null, everySeconds: 10 },
   setTemplate: (value) => set((s) => ({ template: { ...s.template, ...value } })),
+
+  hooks: { enabled: false, folder: null },
+  setHooks: (value) => set((s) => ({ hooks: { ...s.hooks, ...value } })),
 
   cleanMetadata: true,
   setCleanMetadata: (value) => set({ cleanMetadata: value }),

@@ -4,6 +4,7 @@ export type VubTabKey =
   | 'videos'
   | 'params'
   | 'effects'
+  | 'hooks'
   | 'watermark'
   | 'text'
   | 'titles'
@@ -104,6 +105,13 @@ export interface VubTemplate {
   everySeconds: number;
 }
 
+// Хуки: папка с короткими роликами-«зацепками». Случайный хук добавляется в начало
+// видео. Если копий несколько — каждая копия получает свой (разный) хук.
+export interface VubHooks {
+  enabled: boolean;
+  folder: string | null;
+}
+
 // Апскейл: повышение разрешения рендером (ломает перцептивный хеш сильнее косметики).
 // target — целевая длинная сторона кадра в px (источник меньше — апскейлим, больше — не трогаем).
 export interface VubUpscale {
@@ -129,6 +137,7 @@ export interface VubProcessRequest {
   watermark: VubWatermark;
   text: VubText;
   template: VubTemplate;
+  hooks: VubHooks;
   cleanMetadata: boolean;
   nativeExport: boolean; // метаданные «нативного экспорта с телефона (Pulsar)» вместо случайных
   upscale: VubUpscale;

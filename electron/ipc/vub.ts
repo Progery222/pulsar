@@ -89,9 +89,83 @@ function probe(file: string): Promise<ProbeResult> {
   });
 }
 
+const VIDEO_EXT = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
+
+// Список видеофайлов в папке (для хуков), в случайном порядке.
+function scanVideos(folder: string): string[] {
+  try {
+    const files = fs.readdirSync(folder).filter((n) => VIDEO_EXT.test(n)).map((n) => path.join(folder, n));
+    // Перемешиваем (Фишер–Йейтс), чтобы порядок хуков был случайным.
+    for (let i = files.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [files[i], files[j]] = [files[j], files[i]];
+    }
+    return files;
+  } catch {
+    return [];
+  }
+}
+
+// Нормализация аудио под concat (одинаковые SR/формат/каналы у всех сегментов).
+const A_NORM = 'aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo';
+
+// Склейка: хук в начало, затем основное видео (body). Оба приводятся к WxH/fps/sar
+// основного ролика; отсутствующая аудиодорожка заменяется тишиной нужной длины.
+async function prependHook(hookFile: string, body: string, dest: string): Promise<void> {
+  const b = await probe(body);
+  const h = await probe(hookFile);
+  const W = b.width || 1080;
+  const H = b.height || 1920;
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
+
+  await new Promise<void>((resolve, reject) => {
+    const cmd = ffmpeg(hookFile).addInputOption('-nostdin').input(body);
+    const fc: string[] = [];
+    const vnorm = (idx: number, label: string) =>
+      `[${idx}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[${label}]`;
+    fc.push(vnorm(0, 'hv'));
+    fc.push(vnorm(1, 'bv'));
+    fc.push('[hv][bv]concat=n=2:v=1:a=0[v]');
+
+    // Аудио: для входов без дорожки добавляем lavfi-тишину нужной длительности.
+    let next = 2;
+    const aLabels: string[] = [];
+    for (const [idx, info] of [[0, h], [1, b]] as [number, ProbeResult][]) {
+      const l = `a${idx}`;
+      if (info.hasAudio) {
+        fc.push(`[${idx}:a]${A_NORM}[${l}]`);
+      } else {
+        cmd
+          .input('anullsrc=channel_layout=stereo:sample_rate=44100')
+          .inputOptions(['-f', 'lavfi', '-t', String(Math.max(0.1, info.duration || 1))]);
+        fc.push(`[${next}:a]${A_NORM}[${l}]`);
+        next++;
+      }
+      aLabels.push(`[${l}]`);
+    }
+    fc.push(`${aLabels.join('')}concat=n=2:v=0:a=1[a]`);
+
+    cmd
+      .complexFilter(fc, ['v', 'a'])
+      .outputOptions([...venc, '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart'])
+      .output(dest)
+      .on('end', () => {
+        active.delete(cmd);
+        resolve();
+      })
+      .on('error', (e) => {
+        active.delete(cmd);
+        reject(e);
+      });
+    active.add(cmd);
+    cmd.run();
+  });
+}
+
 async function processOne(
   task: VubTask,
   req: VubProcessRequest,
+  hookFiles: string[],
   send: (status: 'processing' | 'done' | 'error', percent: number, error?: string) => void,
   warn: (msg: string) => void
 ): Promise<void> {
@@ -117,6 +191,13 @@ async function processOne(
     ? finalOut
     : path.join(stageDir, `vub_out_${Math.random().toString(36).slice(2, 10)}.mp4`);
   const staged = out !== finalOut;
+
+  // Хук: каждая вариация берёт свой файл (по индексу) -> разные хуки у копий.
+  const hookFile = hookFiles.length ? hookFiles[task.index % hookFiles.length] : null;
+  // С хуком сначала рендерим тело в temp, затем склеиваем хук+тело -> out.
+  const bodyOut = hookFile
+    ? path.join(stageDir, `vub_body_${Math.random().toString(36).slice(2, 10)}.mp4`)
+    : out;
 
   // --- Авто-титры (транскрибация речи -> .ass) ---
   let assPath: string | null = null;
@@ -193,7 +274,7 @@ async function processOne(
   cmd
     .outputOptions(venc)
     .outputOptions('-movflags', '+faststart+use_metadata_tags')
-    .output(out);
+    .output(bodyOut);
 
   const cleanup = () => {
     if (assPath) fs.promises.unlink(assPath).catch(() => {});
@@ -233,7 +314,18 @@ async function processOne(
       .on('end', () => {
         active.delete(cmd);
         cleanup();
-        finalizeOutput()
+        // С хуком: склеиваем хук+тело в out. Если хук битый — сохраняем без хука.
+        const hookStep = hookFile
+          ? prependHook(hookFile, bodyOut, out)
+              .catch(async (e: unknown) => {
+                console.warn('VUB hook concat failed:', e instanceof Error ? e.message : e);
+                if (task.index === 0) warn(`Хук не применился (${path.basename(hookFile)}) — сохранено без хука.`);
+                await fs.promises.copyFile(bodyOut, out).catch(() => {});
+              })
+              .finally(() => fs.promises.unlink(bodyOut).catch(() => {}))
+          : Promise.resolve();
+        hookStep
+          .then(() => finalizeOutput())
           .then(() => appendRandomTail())
           .then(() => send('done', 100))
           .catch((e) => send('error', 0, `Не удалось сохранить файл: ${e instanceof Error ? e.message : String(e)}`))
@@ -242,6 +334,7 @@ async function processOne(
       .on('error', (err) => {
         active.delete(cmd);
         cleanup();
+        fs.promises.unlink(bodyOut).catch(() => {});
         if (staged) fs.promises.unlink(out).catch(() => {});
         if (!cancelled) {
           console.error('VUB ffmpeg error для', task.outName, '|ass:', assFilter, '|', err.message);
@@ -281,6 +374,12 @@ export function registerVubHandlers() {
       sender?.webContents.send('vub-warning', msg);
     };
 
+    // Хуки: сканируем папку один раз (случайный порядок). Пусто/выкл -> без хуков.
+    const hookFiles = req.hooks?.enabled && req.hooks.folder ? scanVideos(req.hooks.folder) : [];
+    if (req.hooks?.enabled && req.hooks.folder && !hookFiles.length) {
+      warn('Хуки: в выбранной папке нет видеофайлов — хук не будет добавлен.');
+    }
+
     // Разворачиваем очередь: каждое видео -> N уникальных вариаций.
     const variations = Math.max(1, req.variations || 1);
     const totalFiles = req.videos.length * variations;
@@ -308,7 +407,7 @@ export function registerVubHandlers() {
     }
 
     await runPool(tasks, req.threads, (task) =>
-      processOne(task, req, (status, percent, error) => emit(task.id, status, percent, error), warn)
+      processOne(task, req, hookFiles, (status, percent, error) => emit(task.id, status, percent, error), warn)
     );
     return { ok: true };
   });
