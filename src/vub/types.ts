@@ -101,6 +101,7 @@ export interface WatermarkZone {
 export interface VubWatermark {
   file: string | null;
   zones: WatermarkZone[];
+  scale: number; // размер водяного знака как доля ширины кадра (0.02..0.4)
 }
 
 export interface VubText {

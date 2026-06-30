@@ -162,7 +162,7 @@ export const useVubStore = create<VubState>((set, get) => ({
   },
   setEffects: (value) => set((s) => ({ effects: { ...s.effects, ...value } })),
 
-  watermark: { file: null, zones: [] },
+  watermark: { file: null, zones: [], scale: 0.14 },
   setWatermark: (value) => set((s) => ({ watermark: { ...s.watermark, ...value } })),
 
   text: { spintax: '', font: 'Inter', size: 32, color: '#FFFFFF', position: 'bottom' },

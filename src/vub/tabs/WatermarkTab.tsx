@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { useVubStore, type WatermarkZone } from '../store';
 import { mediaUrl } from '../../utils/media';
+import { Slider } from '../components/ui';
 
 // Готовые эмодзи-водяные знаки (PNG в assets/emoji, путь относительный — резолвится в main).
 const EMOJI_PRESETS = [
@@ -106,8 +107,16 @@ export default function WatermarkTab() {
         <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{watermark.file}</p>
       )}
 
+      <div style={{ marginTop: 18, maxWidth: 360 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 14, marginBottom: 6 }}>
+          <span>Размер водяного знака</span>
+          <span style={{ color: 'var(--text-secondary)' }}>{Math.round(watermark.scale * 100)}% ширины кадра</span>
+        </div>
+        <Slider min={2} max={40} value={Math.round(watermark.scale * 100)} onChange={(v) => setWatermark({ scale: v / 100 })} />
+      </div>
+
       <p style={{ marginTop: 20, marginBottom: 8, fontSize: 14, color: 'var(--text-secondary)' }}>
-        Нарисуйте зоны допустимого размещения:
+        Нарисуйте зоны размещения — водяной знак показан в реальном размере:
       </p>
       <div
         ref={areaRef}
@@ -126,6 +135,22 @@ export default function WatermarkTab() {
       >
         {watermark.zones.map((z, i) => zoneBox(z, false, i))}
         {draft && zoneBox(draft, true, 'draft')}
+        {/* Эмодзи в реальном размере: в каждой зоне (или по центру как образец) */}
+        {watermark.file &&
+          (watermark.zones.length ? watermark.zones : [{ x: 0.5 - watermark.scale / 2, y: 0.42, w: 0, h: 0 }]).map((z, i) => (
+            <img
+              key={`wm${i}`}
+              src={mediaUrl(watermark.file as string)}
+              alt="wm"
+              style={{
+                position: 'absolute',
+                left: `${z.x * 100}%`,
+                top: `${z.y * 100}%`,
+                width: `${watermark.scale * 100}%`,
+                pointerEvents: 'none',
+              }}
+            />
+          ))}
       </div>
 
       {watermark.zones.length > 0 && (

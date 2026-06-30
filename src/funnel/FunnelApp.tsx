@@ -39,6 +39,13 @@ export default function FunnelApp() {
   } = useFunnelStore();
   const [hasKey, setHasKey] = useState<boolean | null>(null);
   const [cancelling, setCancelling] = useState(false);
+  const [hookEnabled, setHookEnabled] = useState(false);
+  const [hookFolder, setHookFolder] = useState<string | null>(null);
+
+  async function pickHookFolder() {
+    const d = await window.electronAPI.selectDirectory();
+    if (d) setHookFolder(d);
+  }
 
   useEffect(() => {
     window.electronAPI.getSetting('defaultOutputDir').then((d) => d && !outputDir && setOutputDir(d as string));
@@ -72,7 +79,7 @@ export default function FunnelApp() {
     const model = ((await window.electronAPI.getSetting('funnel_model')) as string) || 'google/gemini-3.5-flash';
     const asr = (((await window.electronAPI.getSetting('asr_provider')) as 'assemblyai' | 'whisper') || 'whisper');
     try {
-      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, varyVoices, outputDir, model, asr });
+      const r = await window.electronAPI.funnelStart({ url: url.trim(), targetLanguages, uniqueize, varyVoices, outputDir, model, asr, hooks: { enabled: hookEnabled, folder: hookFolder } });
       if ('error' in r) {
         showToast(`Ошибка: ${r.error}`);
       } else {
@@ -163,10 +170,27 @@ export default function FunnelApp() {
           <input type="checkbox" checked={uniqueize} onChange={(e) => setUniqueize(e.target.checked)} />
           Уникализировать результат (лёгкие вариации + очистка метаданных)
         </label>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 16 }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
           <input type="checkbox" checked={varyVoices} onChange={(e) => setVaryVoices(e.target.checked)} />
           Разнообразить голоса дубляжа (случайный нейроголос для каждого видео)
         </label>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: hookEnabled ? 8 : 16 }}>
+          <input type="checkbox" checked={hookEnabled} onChange={(e) => setHookEnabled(e.target.checked)} />
+          Добавлять хук (интро-ролик) в начало каждого результата
+        </label>
+        {hookEnabled && (
+          <div style={{ marginBottom: 16, paddingLeft: 26 }}>
+            <button
+              onClick={pickHookFolder}
+              style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 14px', fontSize: 13, cursor: 'pointer' }}
+            >
+              Папка с хуками
+            </button>
+            <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
+              {hookFolder || 'не выбрана — хук не добавится'}
+            </span>
+          </div>
+        )}
 
         <div style={{ marginBottom: 20 }}>
           <label style={label}>Папка сохранения</label>

@@ -37,14 +37,15 @@ function ModeCard({
     >
       <div
         style={{
-          width: 52,
-          height: 52,
-          borderRadius: 12,
+          width: 68,
+          height: 68,
+          borderRadius: 16,
           background: 'var(--bg-tertiary)',
           color: 'var(--accent-green)',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          alignSelf: 'center',
           marginBottom: 'auto',
         }}
       >
@@ -90,7 +91,7 @@ export default function ModeSelector() {
           description="Автоматический монтаж видео в ритм музыки"
           onClick={() => setAppMode('editor')}
           icon={
-            <svg {...I(30)}>
+            <svg {...I(38)}>
               <circle cx="6" cy="6" r="3" />
               <circle cx="6" cy="18" r="3" />
               <line x1="20" y1="4" x2="8.12" y2="15.88" />
@@ -105,7 +106,7 @@ export default function ModeSelector() {
           description="Массовая уникализация видео для обхода алгоритмов"
           onClick={() => setAppMode('vub')}
           icon={
-            <svg {...I(30)}>
+            <svg {...I(38)}>
               <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
               <path d="M9 12l2 2 4-4" />
             </svg>
@@ -117,7 +118,7 @@ export default function ModeSelector() {
           description="Поиск чужих титров/водяных знаков и автоперекрытие своими"
           onClick={() => setAppMode('cleaner')}
           icon={
-            <svg {...I(30)}>
+            <svg {...I(38)}>
               <path d="M3 3h18v18H3z" />
               <path d="M7 8h6" />
               <path d="M7 12h4" />
@@ -131,7 +132,7 @@ export default function ModeSelector() {
           description="Генерация речи из текста и наложение на видео"
           onClick={() => setAppMode('tts')}
           icon={
-            <svg {...I(30)}>
+            <svg {...I(38)}>
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
               <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
               <line x1="12" y1="19" x2="12" y2="23" />
@@ -145,7 +146,7 @@ export default function ModeSelector() {
           description="Перевод и озвучка видео на другой язык по таймингам"
           onClick={() => setAppMode('dub')}
           icon={
-            <svg {...I(30)}>
+            <svg {...I(38)}>
               <path d="M5 8l6 6" />
               <path d="M4 14l6-6 2-3" />
               <path d="M2 5h12" />
@@ -161,7 +162,7 @@ export default function ModeSelector() {
           description="Скачивание по ссылке, AI-классификация и авто-обработка по веткам"
           onClick={() => setAppMode('funnel')}
           icon={
-            <svg {...I(30)}>
+            <svg {...I(38)}>
               <circle cx="6" cy="6" r="2.5" />
               <circle cx="18" cy="6" r="2.5" />
               <circle cx="12" cy="18" r="2.5" />
@@ -176,7 +177,7 @@ export default function ModeSelector() {
           description="Загрузка по ссылкам с TikTok, YouTube, Instagram и др. (пачкой)"
           onClick={() => setAppMode('download')}
           icon={
-            <svg {...I(30)}>
+            <svg {...I(38)}>
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
               <polyline points="7 10 12 15 17 10" />
               <line x1="12" y1="15" x2="12" y2="3" />

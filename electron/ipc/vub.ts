@@ -297,9 +297,14 @@ async function processOne(
 
   // Апскейл: повышение разрешения рендером. scale первым фильтром — последующие
   // eq/unsharp/поворот работают уже по кадру высокого разрешения. lanczos = качественная интерполяция.
+  // baseW — эффективная ширина кадра (для размера водяного знака).
+  let baseW = width || 1080;
   if (req.upscale?.enabled) {
     const dims = upscaleDims(width, height, req.upscale.target);
-    if (dims) plan.videoFilters.unshift(`scale=${dims[0]}:${dims[1]}:flags=lanczos`);
+    if (dims) {
+      plan.videoFilters.unshift(`scale=${dims[0]}:${dims[1]}:flags=lanczos`);
+      baseW = dims[0];
+    }
   }
   const finalOut = path.join(req.outputDir, task.outName);
   // ffmpeg на Windows не открывает выходной файл с не-ASCII именем (EINVAL) —
@@ -375,7 +380,7 @@ async function processOne(
     const vfChain = plan.videoFilters.length ? plan.videoFilters.join(',') : 'null';
     let complex =
       `[0:v]${vfChain}[base];` +
-      `[1:v]scale=iw*${z.w.toFixed(3)}:-1[wm];` +
+      `[1:v]scale=${Math.round(baseW * (wm.scale || 0.14))}:-1[wm];` +
       `[base][wm]overlay=W*${z.x.toFixed(3)}:H*${z.y.toFixed(3)}`;
     complex += assFilter ? `[ov];[ov]${assFilter}[v]` : `[v]`;
     cmd.complexFilter(complex, ['v']);

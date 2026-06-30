@@ -424,6 +424,66 @@ function runCmd(cmd: ffmpeg.FfmpegCommand, out: string): Promise<{ ok: true } | 
   });
 }
 
+// ── Хуки: интро-ролик в начало результата ────────────────────────────────────
+let funnelHooks: string[] = []; // список файлов-хуков (перемешан) на текущий запуск
+
+function scanHooks(folder: string): string[] {
+  try {
+    const f = fs.readdirSync(folder).filter((n) => /\.(mp4|mov|mkv|webm|avi|m4v)$/i.test(n)).map((n) => path.join(folder, n));
+    for (let i = f.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [f[i], f[j]] = [f[j], f[i]];
+    }
+    return f;
+  } catch {
+    return [];
+  }
+}
+
+const A_NORM = 'aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo';
+
+// Склейка: случайный хук в начало body (на месте). Молча пропускает при ошибке.
+async function applyHook(body: string): Promise<void> {
+  if (!funnelHooks.length) return;
+  const hookFile = funnelHooks[Math.floor(Math.random() * funnelHooks.length)];
+  const b = await probe(body);
+  const h = await probe(hookFile);
+  const W = b.width || 1080;
+  const H = b.height || 1920;
+  const dest = `${body}.hooked.mp4`;
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
+  const cmd = ffmpeg(hookFile).addInputOption('-nostdin').input(body);
+  const vnorm = (idx: number, label: string) =>
+    `[${idx}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[${label}]`;
+  const fc: string[] = [vnorm(0, 'hv'), vnorm(1, 'bv'), '[hv][bv]concat=n=2:v=1:a=0[v]'];
+  let next = 2;
+  const aLabels: string[] = [];
+  for (const [idx, info] of [[0, h], [1, b]] as [number, Probe][]) {
+    const l = `a${idx}`;
+    if (info.hasAudio) {
+      fc.push(`[${idx}:a]${A_NORM}[${l}]`);
+    } else {
+      cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f', 'lavfi', '-t', String(Math.max(0.1, info.duration || 1))]);
+      fc.push(`[${next}:a]${A_NORM}[${l}]`);
+      next++;
+    }
+    aLabels.push(`[${l}]`);
+  }
+  fc.push(`${aLabels.join('')}concat=n=2:v=0:a=1[a]`);
+  cmd.complexFilter(fc, ['v', 'a']).outputOptions([...venc, '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']);
+  const r = await runCmd(cmd, dest);
+  if ('ok' in r) {
+    await fs.promises.rm(body, { force: true }).catch(() => {});
+    await fs.promises.rename(dest, body).catch(async () => {
+      await fs.promises.copyFile(dest, body);
+      await fs.promises.unlink(dest).catch(() => {});
+    });
+  } else {
+    await fs.promises.unlink(dest).catch(() => {});
+    logF('hook failed:', r.error);
+  }
+}
+
 // Уникализация результата — обновлённый движок VUB: цвет (+hue/colorbalance),
 // геометрия (зум+pan, поворот), аудио анти-fingerprint (pitch+EQ+задержка),
 // жёсткий «дрейф кадра», метаданные «нативного экспорта с телефона» + дозапись байт.
@@ -662,6 +722,11 @@ async function processBranchLang(
     } else {
       await fs.promises.copyFile(cur, finalOut);
     }
+    // Хук в начало результата (если задана папка хуков).
+    if (funnelHooks.length) {
+      stage(`${langCode}: хук`);
+      await applyHook(finalOut);
+    }
     return { ok: true, out: finalOut };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
@@ -708,6 +773,10 @@ async function processVideo(
       logF('branch1 ERROR:', r.error);
       emit({ stage: 'error', percent: 0, error: r.error });
     } else {
+      if (funnelHooks.length) {
+        emit({ stage: 'processing', percent: 90, stageLabel: 'Добавляю хук' });
+        await applyHook(out);
+      }
       logF('branch1 done ->', out);
       emit({ stage: 'done', percent: 100, output: out, stageLabel: 'Готово' });
     }
@@ -755,6 +824,9 @@ export function registerFunnelHandlers() {
     if (!apiKey) return { error: 'Не задан ключ OpenRouter API (Настройки). Он нужен для AI-классификации.' };
     if (!req.url || !/^https?:\/\//i.test(req.url.trim())) return { error: 'Введите корректную ссылку (http/https)' };
     if (!req.outputDir) return { error: 'Не выбрана папка сохранения' };
+
+    // Хуки: сканируем папку один раз на запуск (случайный порядок).
+    funnelHooks = req.hooks?.enabled && req.hooks.folder ? scanHooks(req.hooks.folder) : [];
 
     // Загрузчик yt-dlp.
     if (!(await ytdlpInstalled())) {
