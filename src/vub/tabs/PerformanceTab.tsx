@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useVubStore, type FileProgress } from '../store';
 import { useQueueStore } from '../../store/queueStore';
 import { Slider } from '../components/ui';
@@ -22,6 +22,7 @@ export default function PerformanceTab() {
   const [presets, setPresets] = useState<string[]>([]);
   const [presetName, setPresetName] = useState('');
   const [selectedPreset, setSelectedPreset] = useState('');
+  const startRef = useRef<number>(0);
   useEffect(() => setPresets(listPresets()), []);
 
   function doSavePreset() {
@@ -108,6 +109,7 @@ export default function PerformanceTab() {
     const dn = dedupeNames(initial.map((p) => p.name));
     initial.forEach((p, i) => (p.name = dn[i]));
     setProgress(initial);
+    startRef.current = Date.now();
     useQueueStore.getState().addJobs(
       initial.map((p) => ({ id: p.id, mode: 'vub' as const, name: p.name, status: 'queued' as const, percent: 0 }))
     );
@@ -326,8 +328,25 @@ export default function PerformanceTab() {
         )}
       </div>
 
+      {progress.length > 0 && (() => {
+        const doneCnt = progress.filter((p) => p.status === 'done' || p.status === 'error').length;
+        const totalCnt = progress.length;
+        let eta = '';
+        if (isProcessing && doneCnt > 0 && doneCnt < totalCnt && startRef.current) {
+          const elapsed = (Date.now() - startRef.current) / 1000;
+          const rem = Math.round((elapsed / doneCnt) * (totalCnt - doneCnt));
+          eta = rem >= 60 ? `~${Math.floor(rem / 60)} мин ${rem % 60} с` : `~${rem} с`;
+        }
+        return (
+          <div style={{ marginTop: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 13, color: 'var(--text-secondary)' }}>
+            <span>Готово {doneCnt} / {totalCnt}</span>
+            {eta && <span>Осталось {eta}</span>}
+            {!isProcessing && doneCnt === totalCnt && <span style={{ color: 'var(--accent-green)' }}>Завершено ✓</span>}
+          </div>
+        );
+      })()}
       {progress.length > 0 && (
-        <table style={{ marginTop: 24, width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+        <table style={{ marginTop: 12, width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead>
             <tr style={{ color: 'var(--text-secondary)', textAlign: 'left' }}>
               <th style={{ padding: '8px 0', fontWeight: 600 }}>Имя файла</th>

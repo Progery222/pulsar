@@ -16,6 +16,8 @@ export default function SettingsScreen() {
   const [orModel, setOrModel] = useState('');
   const [gpuMode, setGpuMode] = useState<GpuMode>('auto');
   const [outputDir, setOutputDir] = useState<string>('');
+  const [version, setVersion] = useState('');
+  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
     window.electronAPI.getVubApiKey().then((k) => setApiKey(k || ''));
@@ -23,7 +25,21 @@ export default function SettingsScreen() {
     window.electronAPI.getSetting('funnel_model').then((m) => setOrModel((m as string) || 'google/gemini-3.5-flash'));
     window.electronAPI.getGpuMode().then(setGpuMode);
     window.electronAPI.getSetting('defaultOutputDir').then((d) => setOutputDir((d as string) || ''));
+    window.electronAPI.appVersion().then(setVersion);
   }, []);
+
+  async function checkUpdates() {
+    setChecking(true);
+    const r = await window.electronAPI.checkUpdate();
+    setChecking(false);
+    if ('error' in r) {
+      showToast('Не удалось проверить обновления (нет сети или dev-режим).');
+    } else if (r.version && r.version !== version) {
+      showToast(`Доступно обновление v${r.version} — баннер «Обновить» вверху справа.`);
+    } else {
+      showToast('У вас последняя версия ✓');
+    }
+  }
 
   async function saveKey() {
     await window.electronAPI.setVubApiKey(apiKey.trim());
@@ -164,6 +180,26 @@ export default function SettingsScreen() {
             Установка / проверка компонентов
           </button>
           <p style={hint}>Проверить Python и установить компоненты: озвучка (Edge TTS), перевод, загрузка по ссылке.</p>
+        </div>
+
+        {/* Обновления */}
+        <div style={section}>
+          <label style={label}>Обновления</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            <button
+              onClick={checkUpdates}
+              disabled={checking}
+              className="btn-primary"
+              style={{ padding: '8px 20px', fontSize: 13, opacity: checking ? 0.5 : 1 }}
+            >
+              {checking ? 'Проверяю…' : 'Проверить обновления'}
+            </button>
+            <span style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Текущая версия: {version || '…'}</span>
+          </div>
+          <p style={hint}>
+            Приложение и так проверяет обновления при запуске и раз в час. Здесь — проверка вручную.
+            Когда выйдет новая версия, вверху справа появится «🔄 Обновить».
+          </p>
         </div>
 
         {/* Папка сохранения по умолчанию */}
