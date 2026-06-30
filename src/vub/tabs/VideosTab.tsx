@@ -58,10 +58,18 @@ export default function VideosTab() {
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
+    const ext = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
+    // Из системы (ОС-файлы)
     const paths = Array.from(e.dataTransfer.files)
       .map((f) => (f as File & { path?: string }).path)
-      .filter((p): p is string => !!p && /\.(mp4|mov|avi)$/i.test(p));
-    if (paths.length) addVideos(paths);
+      .filter((p): p is string => !!p && ext.test(p));
+    if (paths.length) {
+      addVideos(paths);
+      return;
+    }
+    // Из бокового проводника (внутренний drag)
+    const internal = e.dataTransfer.getData('application/x-pulsar-path');
+    if (internal && ext.test(internal)) addVideos([internal]);
   }
 
   return (

@@ -12,6 +12,12 @@ export default function HooksTab() {
     const folder = await window.electronAPI.selectDirectory();
     if (folder) setHooks({ folder });
   }
+  function onFolderDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const p = e.dataTransfer.getData('application/x-pulsar-path');
+    const isDir = e.dataTransfer.getData('application/x-pulsar-isdir');
+    if (p && isDir === '1') setHooks({ folder: p });
+  }
 
   return (
     <div>
@@ -41,15 +47,18 @@ export default function HooksTab() {
         <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>Добавлять хук в начало видео</span>
       </div>
 
-      <button
-        onClick={pickFolder}
-        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
-      >
-        Выбрать папку с хуками
-      </button>
-      {hooks.folder && (
-        <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{hooks.folder}</p>
-      )}
+      <div onDragOver={(e) => e.preventDefault()} onDrop={onFolderDrop}>
+        <button
+          onClick={pickFolder}
+          style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
+        >
+          Выбрать папку с хуками
+        </button>
+        <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-secondary)' }}>или перетащи папку из проводника слева</span>
+        {hooks.folder && (
+          <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{hooks.folder}</p>
+        )}
+      </div>
 
       <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '16px 0 0', lineHeight: 1.6 }}>
         Поддерживаются .mp4, .mov, .mkv, .webm, .avi, .m4v. Хук масштабируется под формат

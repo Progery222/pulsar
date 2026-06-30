@@ -11,6 +11,12 @@ export default function TemplateTab() {
     const folder = await window.electronAPI.selectDirectory();
     if (folder) setTemplate({ folder });
   }
+  function onFolderDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const p = e.dataTransfer.getData('application/x-pulsar-path');
+    const isDir = e.dataTransfer.getData('application/x-pulsar-isdir');
+    if (p && isDir === '1') setTemplate({ folder: p });
+  }
 
   return (
     <div>
@@ -41,15 +47,18 @@ export default function TemplateTab() {
         <span style={{ fontSize: 14, color: 'var(--text-primary)' }}>Вставлять клипы из папки</span>
       </div>
 
-      <button
-        onClick={pickFolder}
-        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
-      >
-        Выбрать папку с клипами
-      </button>
-      {template.folder && (
-        <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{template.folder}</p>
-      )}
+      <div onDragOver={(e) => e.preventDefault()} onDrop={onFolderDrop}>
+        <button
+          onClick={pickFolder}
+          style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
+        >
+          Выбрать папку с клипами
+        </button>
+        <span style={{ marginLeft: 10, fontSize: 12, color: 'var(--text-secondary)' }}>или перетащи папку из проводника слева</span>
+        {template.folder && (
+          <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{template.folder}</p>
+        )}
+      </div>
 
       <label style={{ display: 'block', marginTop: 20, fontSize: 14, color: 'var(--text-secondary)' }}>
         Сколько клипов вставить:

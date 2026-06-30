@@ -1,7 +1,62 @@
 import { dialog, ipcMain, shell } from 'electron';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+interface DirEntry {
+  name: string;
+  path: string;
+  isDir: boolean;
+}
+
+// Список доступных дисков Windows (C:\, D:\ …).
+function listDrives(): DirEntry[] {
+  const out: DirEntry[] = [];
+  for (const l of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') {
+    const p = `${l}:\\`;
+    try {
+      fs.accessSync(p);
+      out.push({ name: `${l}:`, path: p, isDir: true });
+    } catch {
+      /* диска нет */
+    }
+  }
+  return out;
+}
 
 // IPC-обработчики для файловой системы: системные диалоги выбора файлов.
 export function registerFileHandlers() {
+  // Листинг директории для бокового проводника. dir пустой -> диски (Windows) / home.
+  ipcMain.handle('fs:listDir', async (_e, dir: string | null) => {
+    try {
+      if (!dir) {
+        const drives = process.platform === 'win32' ? listDrives() : [];
+        if (drives.length) return { entries: drives, parent: null, home: os.homedir() };
+        return { entries: [{ name: os.homedir(), path: os.homedir(), isDir: true }], parent: null, home: os.homedir() };
+      }
+      const items = await fs.promises.readdir(dir, { withFileTypes: true });
+      const entries: DirEntry[] = items
+        .filter((d) => !d.name.startsWith('$') && !d.name.startsWith('.'))
+        .map((d) => {
+          let isDir = d.isDirectory();
+          // Симлинки/junctions: пробуем определить тип реальной цели.
+          if (d.isSymbolicLink()) {
+            try {
+              isDir = fs.statSync(path.join(dir, d.name)).isDirectory();
+            } catch {
+              isDir = false;
+            }
+          }
+          return { name: d.name, path: path.join(dir, d.name), isDir };
+        })
+        .sort((a, b) => (a.isDir === b.isDir ? a.name.localeCompare(b.name) : a.isDir ? -1 : 1));
+      const parent = path.dirname(dir);
+      return { entries, parent: parent === dir ? null : parent, home: os.homedir() };
+    } catch (err) {
+      return { entries: [], parent: null, home: os.homedir(), error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // Выбор видеофайлов (§5.2): фильтр .mp4, .mov, .avi
   ipcMain.handle('dialog:selectVideos', async () => {
     const result = await dialog.showOpenDialog({

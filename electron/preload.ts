@@ -10,6 +10,12 @@ const electronAPI = {
   selectAudio: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectAudio'),
   selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectDirectory'),
 
+  // Листинг директории для бокового файлового проводника (dir null = диски/home).
+  listDir: (
+    dir: string | null
+  ): Promise<{ entries: { name: string; path: string; isDir: boolean }[]; parent: string | null; home: string; error?: string }> =>
+    ipcRenderer.invoke('fs:listDir', dir),
+
   // Анализ аудио (beat detection через Python) — §9.1.
   analyzeAudio: (audioPath: string): Promise<BeatData | { error: string }> =>
     ipcRenderer.invoke('analyze-audio', audioPath),
