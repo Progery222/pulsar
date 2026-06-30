@@ -121,12 +121,17 @@ export function buildVubPlan(
   variationTotal = 1,
   nativeExport = false,
   sampleRate = 44100,
-  hard: VubHard = NO_HARD
+  hard: VubHard = NO_HARD,
+  randomSubset = false
 ): FfmpegPlan {
   const vf: string[] = [];
   const af: string[] = [];
   const idx = variationIndex;
   const total = variationTotal;
+
+  // Случайный набор: каждое видео применяет лишь часть включённых фильтров (~60%),
+  // поэтому ролики в партии получаются разными. Метаданные/текст/хуки — всегда.
+  const keep = () => !randomSubset || Math.random() < 0.6;
 
   // --- Параметры видео (eq / unsharp / volume / speed) ---
   const brightness = value(params.brightness, idx, total); // % -> -0.5..0.5
@@ -134,7 +139,7 @@ export function buildVubPlan(
   const eqParts: string[] = [];
   if (brightness !== null) eqParts.push(`brightness=${(brightness / 100).toFixed(4)}`);
   if (contrast !== null) eqParts.push(`contrast=${(1 + contrast / 100).toFixed(4)}`);
-  if (eqParts.length) {
+  if (eqParts.length && keep()) {
     vf.push(`eq=${eqParts.join(':')}`);
     // Усиление цветового отпечатка (из движка v2): hue ±10° + сдвиг цветобаланса.
     vf.push(`hue=h=${rand(-10, 10).toFixed(2)}`);
@@ -144,13 +149,13 @@ export function buildVubPlan(
   }
 
   const sharpness = value(params.sharpness, idx, total); // % -> luma amount
-  if (sharpness !== null) vf.push(`unsharp=5:5:${(sharpness / 50).toFixed(3)}:5:5:0`);
+  if (sharpness !== null && keep()) vf.push(`unsharp=5:5:${(sharpness / 50).toFixed(3)}:5:5:0`);
 
   const volume = value(params.volume, idx, total); // % -> 1 + v/100
-  if (volume !== null) af.push(`volume=${Math.max(0, 1 + volume / 100).toFixed(3)}`);
+  if (volume !== null && keep()) af.push(`volume=${Math.max(0, 1 + volume / 100).toFixed(3)}`);
 
   const duration = value(params.duration, idx, total); // % длительности
-  if (duration !== null) {
+  if (duration !== null && keep()) {
     const factor = 1 + duration / 100; // >1 = длиннее (медленнее)
     vf.push(`setpts=${factor.toFixed(4)}*PTS`);
     const atempo = Math.min(2, Math.max(0.5, 1 / factor));
@@ -161,7 +166,7 @@ export function buildVubPlan(
   // исходную длительность. Net = чистый pitch shift без изменения длины ролика.
   // Двигает все спектральные пики -> ломает акустический отпечаток музыки.
   const pitch = value(params.pitch, idx, total); // полутона
-  if (pitch !== null && Math.abs(pitch) > 0.01) {
+  if (pitch !== null && Math.abs(pitch) > 0.01 && keep()) {
     const ratio = Math.pow(2, pitch / 12);
     af.push(`asetrate=${Math.round(sampleRate * ratio)}`);
     af.push(`aresample=${sampleRate}`);
@@ -178,7 +183,7 @@ export function buildVubPlan(
   // Лёгкий поворот: зум -> поворот -> центр-кроп, чтобы не было чёрных углов.
   // z = (cos|θ| + AR·sin|θ|)·запас; AR=1.78 (худший для 9:16/16:9).
   const rotDeg = value(params.rotation, idx, total);
-  if (rotDeg !== null && Math.abs(rotDeg) > 0.05) {
+  if (rotDeg !== null && Math.abs(rotDeg) > 0.05 && keep()) {
     const rad = (rotDeg * Math.PI) / 180;
     const a = Math.abs(rad);
     const z = Math.min(1.6, (Math.cos(a) + 1.78 * Math.sin(a)) * 1.05);
@@ -190,7 +195,7 @@ export function buildVubPlan(
   // Зум/кадрирование: scale вверх -> центр-кроп до исходного размера. Сдвигает
   // композицию и режет края -> меняет перцептивный хеш видео (главный детектор TikTok).
   const zoomPct = value(params.zoom, idx, total); // %
-  if (zoomPct !== null && zoomPct > 0.5) {
+  if (zoomPct !== null && zoomPct > 0.5 && keep()) {
     const z = (1 + zoomPct / 100).toFixed(4);
     // Случайный pan (из движка v2): кроп не по центру, а со смещением -> композиция
     // съезжает асимметрично, перцептивный хеш меняется сильнее центрального зума.
@@ -203,7 +208,7 @@ export function buildVubPlan(
   // --- Жёсткие анти-детект фильтры ---
   // Непрерывный дрейф кадра: зум даёт запас, кроп едет по синусу/косинусу во времени.
   // Композиция «плывёт» -> перцептивный хеш не закрепляется ни на одном кадре.
-  if (hard.drift) {
+  if (hard.drift && keep()) {
     const z = 1.08;
     const ax = rand(2, 5).toFixed(2);
     const ay = rand(2, 5).toFixed(2);
@@ -215,27 +220,27 @@ export function buildVubPlan(
     );
   }
   // Дисторсия линзы: нелинейное смещение каждого пикселя (зум по краям даёт запас под артефакты).
-  if (hard.warp) {
+  if (hard.warp && keep()) {
     const k1 = rand(-0.07, 0.07).toFixed(3);
     const k2 = rand(-0.03, 0.03).toFixed(3);
     vf.push('scale=iw*1.06:ih*1.06', `lenscorrection=k1=${k1}:k2=${k2}`, 'crop=iw/1.06:ih/1.06');
   }
   // Смешение соседних кадров -> лёгкий motion blur, каждый кадр становится новым.
-  if (hard.frameBlend) {
+  if (hard.frameBlend && keep()) {
     vf.push('tmix=frames=2');
   }
   // Интерполяция в другой fps -> другой временной отпечаток (тяжёлая операция).
-  if (hard.fpsInterp) {
+  if (hard.fpsInterp && keep()) {
     vf.push('minterpolate=fps=48:mi_mode=blend');
   }
   // Аудио: vibrato (модуляция высоты) + короткое эхо -> ломает тембр/акустический отпечаток.
-  if (hard.audioFx) {
+  if (hard.audioFx && keep()) {
     af.push(`vibrato=f=${rand(4, 7).toFixed(2)}:d=${rand(0.2, 0.4).toFixed(2)}`);
     af.push(`aecho=0.8:0.85:${20 + Math.floor(Math.random() * 40)}:0.18`);
   }
 
   // --- Эффекты ---
-  if (effects.mirror.enabled) {
+  if (effects.mirror.enabled && keep()) {
     // В режиме "Случайно" чередуем по чётности вариации: половина роликов зеркалится.
     const doMirror =
       effects.mirror.mode === 'always' ||
@@ -243,7 +248,7 @@ export function buildVubPlan(
     if (doMirror) vf.push('hflip');
   }
 
-  if (effects.grid.enabled) {
+  if (effects.grid.enabled && keep()) {
     const opacityPct = value({ enabled: true, min: effects.grid.opacityMin, max: effects.grid.opacityMax }, idx, total);
     const opacity = (opacityPct ?? effects.grid.opacityMin) / 100;
     const size = effects.gridSize.enabled ? effects.gridSize.size : 32;

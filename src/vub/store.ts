@@ -65,6 +65,9 @@ interface VubState {
   hard: VubHard;
   setHard: (value: Partial<VubHard>) => void;
 
+  randomSubset: boolean;
+  setRandomSubset: (value: boolean) => void;
+
   cleanMetadata: boolean;
   setCleanMetadata: (value: boolean) => void;
 
@@ -176,6 +179,9 @@ export const useVubStore = create<VubState>((set, get) => ({
 
   hard: { drift: false, warp: false, frameBlend: false, fpsInterp: false, audioFx: false },
   setHard: (value) => set((s) => ({ hard: { ...s.hard, ...value } })),
+
+  randomSubset: false,
+  setRandomSubset: (value) => set({ randomSubset: value }),
 
   cleanMetadata: true,
   setCleanMetadata: (value) => set({ cleanMetadata: value }),

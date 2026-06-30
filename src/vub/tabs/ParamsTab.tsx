@@ -23,6 +23,8 @@ export default function ParamsTab() {
   const setParam = useVubStore((s) => s.setParam);
   const upscale = useVubStore((s) => s.upscale);
   const setUpscale = useVubStore((s) => s.setUpscale);
+  const randomSubset = useVubStore((s) => s.randomSubset);
+  const setRandomSubset = useVubStore((s) => s.setRandomSubset);
   const pitch = params.pitch;
 
   return (
@@ -30,6 +32,18 @@ export default function ParamsTab() {
       <h2 className="font-semibold" style={{ fontSize: 20, marginBottom: 16 }}>
         Параметры видео
       </h2>
+
+      <Block>
+        <Checkbox
+          checked={randomSubset}
+          onChange={setRandomSubset}
+          label="Случайный набор на каждое видео"
+        />
+        <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0', lineHeight: 1.5 }}>
+          Каждое видео применяет лишь <b>часть</b> включённых фильтров (~60%) — ролики в партии
+          получаются по-настоящему разными. Метаданные, текст и хуки применяются <b>всегда</b>.
+        </p>
+      </Block>
 
       <Block>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>

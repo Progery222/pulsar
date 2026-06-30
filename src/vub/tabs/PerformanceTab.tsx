@@ -13,7 +13,7 @@ export default function PerformanceTab() {
   const {
     threads, setThreads, variations, setVariations, namePattern, setNamePattern,
     outputDir, setOutputDir,
-    videos, params, effects, watermark, text, template, hooks, hard, cleanMetadata, nativeExport, upscale, titles,
+    videos, params, effects, watermark, text, template, hooks, hard, randomSubset, cleanMetadata, nativeExport, upscale, titles,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
     snapshot, loadSnapshot,
   } = useVubStore();
@@ -122,6 +122,7 @@ export default function PerformanceTab() {
         template,
         hooks,
         hard,
+        randomSubset,
         cleanMetadata,
         nativeExport,
         upscale,
@@ -288,13 +289,23 @@ export default function PerformanceTab() {
         </p>
       </div>
 
-      <button
-        onClick={pickFolder}
-        style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
-      >
-        Папка сохранения
-      </button>
-      {outputDir && <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)' }}>{outputDir}</p>}
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <button
+          onClick={pickFolder}
+          style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
+        >
+          Папка сохранения
+        </button>
+        {outputDir && (
+          <button
+            onClick={() => window.electronAPI.openFolder(outputDir)}
+            style={{ background: 'var(--accent-green)', border: 'none', color: '#0D0D0D', borderRadius: 8, padding: '10px 16px', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}
+          >
+            📂 Открыть папку
+          </button>
+        )}
+      </div>
+      {outputDir && <p style={{ marginTop: 8, fontSize: 13, color: 'var(--text-secondary)', wordBreak: 'break-all' }}>{outputDir}</p>}
 
       <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
         <button

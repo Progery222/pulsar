@@ -154,6 +154,7 @@ export interface VubProcessRequest {
   template: VubTemplate;
   hooks: VubHooks;
   hard: VubHard;
+  randomSubset: boolean; // каждое видео применяет случайное подмножество включённых фильтров
   cleanMetadata: boolean;
   nativeExport: boolean; // метаданные «нативного экспорта с телефона (Pulsar)» вместо случайных
   upscale: VubUpscale;
