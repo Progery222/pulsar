@@ -11,3 +11,5 @@ __pycache__/
 assets/models/*.pb
 assets/models/*.onnx
 python/models/
+
+config/
