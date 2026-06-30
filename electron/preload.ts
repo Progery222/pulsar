@@ -48,6 +48,20 @@ const electronAPI = {
   // Выход из приложения.
   quitApp: (): Promise<void> => ipcRenderer.invoke('app:quit'),
 
+  // Авто-обновление по интернету.
+  appVersion: (): Promise<string> => ipcRenderer.invoke('update:version'),
+  checkUpdate: (): Promise<{ ok: true; version: string | null } | { error: string }> =>
+    ipcRenderer.invoke('update:check'),
+  downloadUpdate: (): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('update:download'),
+  installUpdate: (): Promise<{ ok: true }> => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (
+    cb: (s: { state: string; version?: string; percent?: number; error?: string }) => void
+  ): (() => void) => {
+    const listener = (_e: unknown, s: { state: string; version?: string; percent?: number; error?: string }) => cb(s);
+    ipcRenderer.on('update-status', listener);
+    return () => ipcRenderer.removeListener('update-status', listener);
+  },
+
   // Универсальные настройки приложения.
   getSetting: (key: string): Promise<unknown> => ipcRenderer.invoke('settings:get', key),
   setSetting: (key: string, value: unknown): Promise<{ ok: true }> =>

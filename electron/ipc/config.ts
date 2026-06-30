@@ -2,6 +2,7 @@ import { app, ipcMain, safeStorage } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import { getGpuMode, setGpuMode, type GpuMode } from './encoder';
+import { DEFAULT_KEYS } from './defaultKeys';
 
 // Локальное хранение секретов (API-ключ AssemblyAI) в userData. В git/исходники не попадает.
 function configPath(): string {
@@ -66,13 +67,14 @@ function decode(stored: string | undefined): string {
   return '';
 }
 
+// Пользовательский ключ имеет приоритет; иначе — зашитый дефолт (DEFAULT_KEYS).
 export function getAssemblyKey(): string {
-  return decode(readRaw().assemblyai);
+  return decode(readRaw().assemblyai) || DEFAULT_KEYS.assemblyai;
 }
 
 // API-ключ OpenRouter (модуль «Воронка») — шифруется так же, как ключ AssemblyAI.
 export function getOpenRouterKey(): string {
-  return decode(readRaw().openrouter);
+  return decode(readRaw().openrouter) || DEFAULT_KEYS.openrouter;
 }
 
 export function registerConfigHandlers() {

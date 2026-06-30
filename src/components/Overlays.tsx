@@ -3,6 +3,7 @@ import Toast from './Toast';
 import QueuePanel from './QueuePanel';
 import HistoryPanel from './HistoryPanel';
 import FirstRunSetup from './FirstRunSetup';
+import UpdateBanner from './UpdateBanner';
 
 // Глобальные оверлеи поверх любого экрана: тосты + плавающие мини-окна + мастер настройки.
 export default function Overlays() {
@@ -14,6 +15,7 @@ export default function Overlays() {
       {showHistory && <HistoryPanel />}
       {showQueue && <QueuePanel />}
       {showSetup && <FirstRunSetup />}
+      <UpdateBanner />
       <Toast />
     </>
   );
