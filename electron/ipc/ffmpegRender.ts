@@ -34,6 +34,28 @@ function hasAudio(file: string): Promise<boolean> {
 
 export type Quality = '720p' | '1080p' | '4k';
 export type Format = '9:16' | '1:1' | '16:9';
+// Стиль переходов между клипами (xfade). 'none' = жёсткие резы (как раньше).
+export type TransitionStyle = 'none' | 'dissolve' | 'slide' | 'zoom' | 'mix';
+
+// Длительность фрагмента (для расчёта смещений xfade).
+function probeDuration(file: string): Promise<number> {
+  return new Promise((resolve) => {
+    ffmpeg.ffprobe(file, (err, data) => resolve(err || !data ? 0 : data.format?.duration ?? 0));
+  });
+}
+
+// Наборы переходов xfade по стилю (используем широко поддерживаемые значения).
+const XFADE: Record<Exclude<TransitionStyle, 'none'>, string[]> = {
+  dissolve: ['fade', 'dissolve'],
+  slide: ['slideleft', 'slideright', 'slideup', 'slidedown'],
+  zoom: ['circleopen', 'circleclose', 'radial', 'smoothleft'],
+  mix: ['fade', 'dissolve', 'slideleft', 'slideright', 'smoothleft', 'smoothright', 'circleopen', 'circleclose', 'wipeleft', 'radial'],
+};
+
+function pickTransition(style: Exclude<TransitionStyle, 'none'>, i: number): string {
+  const set = XFADE[style];
+  return set[(i - 1) % set.length];
+}
 
 export interface RenderClip {
   sourceFile: string;
@@ -56,6 +78,7 @@ export interface RenderRequest {
   uniqualizer: UniqualizerSettings;
   count: number; // сколько уникальных копий создать
   quality: Quality;
+  transition?: TransitionStyle; // переходы между клипами (по умолчанию none)
   outputPath: string;
 }
 
@@ -269,22 +292,61 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       progress((i / req.clips.length) * 55);
     }
 
-    // Этап 4: склейка (concat demuxer).
-    const listPath = path.join(tmpDir, 'concat.txt');
-    fs.writeFileSync(
-      listPath,
-      fragments.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n')
-    );
+    // Этап 4: склейка. Переходы (xfade) или жёсткие резы (concat demuxer).
     const concatPath = path.join(tmpDir, 'concat.mp4');
     let videoSource = concatPath;
-    await runCommand(
-      ffmpeg()
-        .input(listPath)
-        .inputOptions(['-f', 'concat', '-safe', '0'])
-        .outputOptions(['-c', 'copy'])
-        .output(concatPath),
-      hooks
-    );
+    const transition = req.transition && req.transition !== 'none' ? req.transition : null;
+
+    if (transition && fragments.length > 1) {
+      // Кроссфейд-переходы: фрагменты накладываются на D сек со сменой по xfade,
+      // аудио — acrossfade. Смещения считаются по реальной длительности фрагментов.
+      const durs = await Promise.all(fragments.map(probeDuration));
+      const minDur = Math.min(...durs.filter((d) => d > 0), 1);
+      const D = Math.max(0.12, Math.min(0.3, minDur * 0.4));
+      const xcmd = ffmpeg();
+      fragments.forEach((f) => xcmd.input(f));
+      const fc: string[] = [];
+      // Видео-цепочка xfade.
+      let prevV = '[0:v]';
+      let runningLen = durs[0] || minDur;
+      for (let i = 1; i < fragments.length; i++) {
+        const off = Math.max(0, runningLen - D);
+        const out = i === fragments.length - 1 ? 'vout' : `vx${i}`;
+        fc.push(`${prevV}[${i}:v]xfade=transition=${pickTransition(transition, i)}:duration=${D.toFixed(3)}:offset=${off.toFixed(3)}[${out}]`);
+        prevV = `[${out}]`;
+        runningLen = runningLen + (durs[i] || minDur) - D;
+      }
+      const maps = ['-map', '[vout]'];
+      // Аудио-цепочка acrossfade (фрагменты имеют звук только при useOriginal).
+      if (useOriginal) {
+        let prevA = '[0:a]';
+        for (let i = 1; i < fragments.length; i++) {
+          const out = i === fragments.length - 1 ? 'aout' : `ax${i}`;
+          fc.push(`${prevA}[${i}:a]acrossfade=d=${D.toFixed(3)}[${out}]`);
+          prevA = `[${out}]`;
+        }
+        maps.push('-map', '[aout]', '-c:a', 'aac', '-ar', '44100', '-ac', '2');
+      }
+      const xenc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 });
+      await runCommand(
+        xcmd.complexFilter(fc).outputOptions([...maps, ...xenc, '-pix_fmt', 'yuv420p', '-r', '30']).output(concatPath),
+        hooks
+      );
+    } else {
+      const listPath = path.join(tmpDir, 'concat.txt');
+      fs.writeFileSync(
+        listPath,
+        fragments.map((f) => `file '${f.replace(/'/g, "'\\''")}'`).join('\n')
+      );
+      await runCommand(
+        ffmpeg()
+          .input(listPath)
+          .inputOptions(['-f', 'concat', '-safe', '0'])
+          .outputOptions(['-c', 'copy'])
+          .output(concatPath),
+        hooks
+      );
+    }
     progress(62);
 
     // Этап 3: глобальный фильтр с учётом filterIntensity (blend по K = intensity/100).

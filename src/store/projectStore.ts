@@ -29,6 +29,7 @@ export interface ProjectState {
   duration: number; // Длительность итогового видео (сек)
   format: '9:16' | '1:1' | '16:9';
   fade: 'none' | 'in' | 'out' | 'all';
+  transition: 'none' | 'dissolve' | 'slide' | 'zoom' | 'mix'; // переходы между клипами
 
   // Громкости аудио-микса (0..1)
   volumeOriginal: number; // оригинальный звук видео
@@ -67,6 +68,7 @@ export interface ProjectActions {
   setDuration: (duration: number) => void;
   setFormat: (format: ProjectState['format']) => void;
   setFade: (fade: ProjectState['fade']) => void;
+  setTransition: (transition: ProjectState['transition']) => void;
   setActiveEffect: (effect: EffectName, level: 0 | 1 | 2) => void;
   setEffectSetting: (effect: EffectName, settings: Partial<EffectSettings>) => void;
   setActiveFilter: (filter: FilterName | null) => void;
@@ -112,6 +114,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   duration: 15,
   format: '9:16',
   fade: 'none',
+  transition: 'none',
 
   volumeOriginal: 0.5,
   volumeMusic: 1.0,
@@ -152,6 +155,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   setDuration: (duration) => set({ duration }),
   setFormat: (format) => set({ format }),
   setFade: (fade) => set({ fade }),
+  setTransition: (transition) => set({ transition }),
   setActiveEffect: (effect, level) =>
     set((state) => ({
       activeEffects: { ...state.activeEffects, [effect]: level },

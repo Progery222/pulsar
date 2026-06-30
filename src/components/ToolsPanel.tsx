@@ -5,7 +5,7 @@ import { fileName, formatTime, isVideoFile, mediaUrl } from '../utils/media';
 import { regenerateMontage } from '../utils/regenerate';
 import TweakModal from './TweakModal';
 
-type ToolKey = 'videos' | 'tweak' | 'duration' | 'segment' | 'mood' | 'fade' | 'format';
+type ToolKey = 'videos' | 'tweak' | 'duration' | 'segment' | 'mood' | 'transition' | 'fade' | 'format';
 
 const TOOLS: { key: ToolKey; icon: string; label: string }[] = [
   { key: 'videos', icon: '▦', label: 'Videos' },
@@ -13,8 +13,17 @@ const TOOLS: { key: ToolKey; icon: string; label: string }[] = [
   { key: 'duration', icon: '⏱', label: 'Duration' },
   { key: 'segment', icon: '〜', label: 'Segment' },
   { key: 'mood', icon: '☺', label: 'Mood' },
+  { key: 'transition', icon: '⇄', label: 'Переходы' },
   { key: 'fade', icon: '▣', label: 'Fade' },
   { key: 'format', icon: '▭', label: 'Format' },
+];
+
+const TRANSITIONS: { key: 'none' | 'dissolve' | 'slide' | 'zoom' | 'mix'; title: string; desc: string }[] = [
+  { key: 'none', title: 'Без переходов', desc: 'Жёсткие резы по битам (как раньше).' },
+  { key: 'dissolve', title: 'Растворение', desc: 'Мягкий кроссфейд между клипами. Плавно и универсально.' },
+  { key: 'slide', title: 'Слайды', desc: 'Клипы сдвигают друг друга (влево/вправо/вверх/вниз).' },
+  { key: 'zoom', title: 'Зум / круг', desc: 'Раскрытие кругом и радиальные переходы. Динамично.' },
+  { key: 'mix', title: 'Микс (рандом)', desc: 'Случайный переход на каждой склейке — максимум разнообразия.' },
 ];
 
 const DURATION_PRESETS: { label: string; time: string; seconds: number }[] = [
@@ -214,12 +223,14 @@ export default function ToolsPanel() {
   const mood = useProjectStore((s) => s.mood);
   const fade = useProjectStore((s) => s.fade);
   const format = useProjectStore((s) => s.format);
+  const transition = useProjectStore((s) => s.transition);
   const selectedTrack = useProjectStore((s) => s.selectedTrack);
   const beatData = useProjectStore((s) => s.beatData);
   const setDuration = useProjectStore((s) => s.setDuration);
   const setMood = useProjectStore((s) => s.setMood);
   const setFade = useProjectStore((s) => s.setFade);
   const setFormat = useProjectStore((s) => s.setFormat);
+  const setTransition = useProjectStore((s) => s.setTransition);
 
   const [active, setActive] = useState<ToolKey>('duration');
   const [modal, setModal] = useState<'none' | 'videos' | 'tweak'>('none');
@@ -306,6 +317,31 @@ export default function ToolsPanel() {
                 </button>
               );
             })}
+          </div>
+        )}
+
+        {active === 'transition' && (
+          <div className="flex flex-col gap-3 p-4">
+            {TRANSITIONS.map((t) => {
+              const sel = t.key === transition;
+              return (
+                <button
+                  key={t.key}
+                  onClick={() => setTransition(t.key)}
+                  className="rounded-card p-4 text-left"
+                  style={{
+                    backgroundColor: 'var(--bg-tertiary)',
+                    border: sel ? '2px solid var(--accent-green)' : '2px solid transparent',
+                  }}
+                >
+                  <div className="font-semibold" style={{ fontSize: 15, color: sel ? 'var(--accent-green)' : 'var(--text-primary)' }}>{t.title}</div>
+                  <div className="mt-1 text-text-secondary" style={{ fontSize: 12 }}>{t.desc}</div>
+                </button>
+              );
+            })}
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '0 4px' }}>
+              Переходы накладываются на склейках (~0.25с). Делают монтаж плавнее, как в проф-редакторах.
+            </p>
           </div>
         )}
 

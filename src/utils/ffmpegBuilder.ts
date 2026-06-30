@@ -49,6 +49,7 @@ export async function buildAndRender(
       uniqualizer: project.uniqualizerSettings,
       count: project.uniqualizerCount,
       quality,
+      transition: project.transition,
       outputPath,
     };
 
