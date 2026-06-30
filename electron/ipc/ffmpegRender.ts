@@ -1,3 +1,4 @@
+import { app } from 'electron';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
@@ -79,7 +80,44 @@ export interface RenderRequest {
   count: number; // сколько уникальных копий создать
   quality: Quality;
   transition?: TransitionStyle; // переходы между клипами (по умолчанию none)
+  title?: RenderTitle | null; // заголовок-текст поверх видео
   outputPath: string;
+}
+
+// Заголовок (текст) поверх монтажа — простая «капкат-подобная» подпись.
+export interface RenderTitle {
+  text: string;
+  position: 'top' | 'center' | 'bottom';
+  size: number; // высота шрифта в px (для 1080-кадра)
+  color: string; // HEX
+  box: boolean; // подложка под текстом
+}
+
+// Папка встроенных шрифтов (dev vs упакованное).
+function fontsDir(): string {
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'assets', 'fonts')
+    : path.join(process.env.APP_ROOT ?? process.cwd(), 'assets', 'fonts');
+}
+function escDrawtext(t: string): string {
+  return t.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "’").replace(/%/g, '\\%');
+}
+function escFilterPath(p: string): string {
+  return p.replace(/\\/g, '/').replace(/:/g, '\\:');
+}
+// drawtext-фильтр заголовка: позиция + подложка + плавное появление/исчезание.
+function buildTitleFilter(title: RenderTitle, h: number, duration: number): string | null {
+  const text = title.text.trim();
+  if (!text) return null;
+  const font = path.join(fontsDir(), 'Montserrat.ttf');
+  const fontPart = fs.existsSync(font) ? `fontfile='${escFilterPath(font)}':` : '';
+  const fontsize = Math.round((title.size / 1080) * h);
+  const color = title.color.startsWith('#') ? `0x${title.color.slice(1)}` : title.color;
+  const y = title.position === 'top' ? 'h*0.10' : title.position === 'center' ? '(h-text_h)/2' : 'h*0.80';
+  const dur = Math.max(1, duration);
+  const alpha = `'if(lt(t,0.3),t/0.3,if(gt(t,${(dur - 0.3).toFixed(2)}),max(0,(${dur.toFixed(2)}-t)/0.3),1))'`;
+  const box = title.box ? `:box=1:boxcolor=black@0.4:boxborderw=${Math.round(fontsize * 0.35)}` : '';
+  return `drawtext=${fontPart}text='${escDrawtext(text)}':fontsize=${fontsize}:fontcolor=${color}:x=(w-text_w)/2:y=${y}:alpha=${alpha}${box}`;
 }
 
 export interface RenderHooks {
@@ -442,7 +480,12 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     } else {
       baseOut.push('-an');
     }
-    if (videoFades.length) baseCmd.videoFilters(videoFades);
+    const baseVf = [...videoFades];
+    if (req.title) {
+      const tf = buildTitleFilter(req.title, h, req.duration);
+      if (tf) baseVf.push(tf);
+    }
+    if (baseVf.length) baseCmd.videoFilters(baseVf);
     await runCommand(
       baseCmd
         .outputOptions(baseOut)

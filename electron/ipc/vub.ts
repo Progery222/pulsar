@@ -118,57 +118,80 @@ function scanVideos(folder: string): string[] {
 // Нормализация аудио под concat (одинаковые SR/формат/каналы у всех сегментов).
 const A_NORM = 'aresample=44100,aformat=sample_fmts=fltp:channel_layouts=stereo';
 
-// Склейка: хук в начало, затем основное видео (body). Оба приводятся к WxH/fps/sar
-// основного ролика; отсутствующая аудиодорожка заменяется тишиной нужной длины.
+// Запуск ffmpeg-команды с захватом stderr — чтобы при ошибке вернуть понятную причину.
+function runFf(cmd: ffmpeg.FfmpegCommand, dest: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let tail = '';
+    cmd.on('stderr', (l: string) => {
+      tail = (tail + '\n' + l).slice(-800);
+    });
+    cmd.on('end', () => {
+      active.delete(cmd);
+      resolve();
+    });
+    cmd.on('error', (e) => {
+      active.delete(cmd);
+      const last = tail.trim().split('\n').filter(Boolean).pop() ?? '';
+      reject(new Error(`${e.message || 'ffmpeg error'}${last ? ` | ${last}` : ''}`));
+    });
+    active.add(cmd);
+    cmd.output(dest).run();
+  });
+}
+
+// Нормализация клипа к WxH/30fps/yuv420p + aac 44100 stereo (тишина, если нет звука).
+// Простой одно-входовый ре-энкод — куда надёжнее «скрейп»-видео, чем сложный concat-граф.
+async function normalizeClip(src: string, dest: string, W: number, H: number): Promise<void> {
+  const info = await probe(src);
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
+  const cmd = ffmpeg(src).addInputOption('-nostdin');
+  const fc = [`[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v]`];
+  const oo = ['-map', '[v]'];
+  if (info.hasAudio) {
+    fc.push(`[0:a]${A_NORM}[a]`);
+  } else {
+    cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f', 'lavfi', '-t', String(Math.max(0.3, info.duration || 2))]);
+    fc.push(`[1:a]${A_NORM}[a]`);
+  }
+  oo.push('-map', '[a]');
+  cmd.complexFilter(fc, ['v', 'a']).outputOptions([...oo, ...venc, '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2']);
+  await runFf(cmd, dest);
+}
+
+// Склейка: хук в начало, затем основное видео (body).
+// Хук сначала нормализуется отдельно (надёжный декод), потом конкат hookN + body.
 async function prependHook(hookFile: string, body: string, dest: string): Promise<void> {
   const b = await probe(body);
-  const h = await probe(hookFile);
   const W = b.width || 1080;
   const H = b.height || 1920;
-  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
+  const hookN = `${dest}.hk.mp4`;
+  try {
+    // 1) Чистая нормализация хука (изолирует проблемы декода).
+    await normalizeClip(hookFile, hookN, W, H).catch((e) => {
+      throw new Error(`нормализация хука: ${e instanceof Error ? e.message : e}`);
+    });
 
-  await new Promise<void>((resolve, reject) => {
-    const cmd = ffmpeg(hookFile).addInputOption('-nostdin').input(body);
-    const fc: string[] = [];
+    // 2) Конкат: hookN (всегда WxH/30/aac) + body.
+    const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
+    const cmd = ffmpeg(hookN).addInputOption('-nostdin').input(body);
     const vnorm = (idx: number, label: string) =>
       `[${idx}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[${label}]`;
-    fc.push(vnorm(0, 'hv'));
-    fc.push(vnorm(1, 'bv'));
-    fc.push('[hv][bv]concat=n=2:v=1:a=0[v]');
-
-    // Аудио: для входов без дорожки добавляем lavfi-тишину нужной длительности.
-    let next = 2;
-    const aLabels: string[] = [];
-    for (const [idx, info] of [[0, h], [1, b]] as [number, ProbeResult][]) {
-      const l = `a${idx}`;
-      if (info.hasAudio) {
-        fc.push(`[${idx}:a]${A_NORM}[${l}]`);
-      } else {
-        cmd
-          .input('anullsrc=channel_layout=stereo:sample_rate=44100')
-          .inputOptions(['-f', 'lavfi', '-t', String(Math.max(0.1, info.duration || 1))]);
-        fc.push(`[${next}:a]${A_NORM}[${l}]`);
-        next++;
-      }
-      aLabels.push(`[${l}]`);
+    const fc: string[] = [vnorm(0, 'hv'), vnorm(1, 'bv'), '[hv][bv]concat=n=2:v=1:a=0[v]'];
+    const aLabels: string[] = ['[a0]'];
+    fc.push(`[0:a]${A_NORM}[a0]`); // hookN гарантированно имеет аудио
+    if (b.hasAudio) {
+      fc.push(`[1:a]${A_NORM}[a1]`);
+    } else {
+      cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f', 'lavfi', '-t', String(Math.max(0.1, b.duration || 1))]);
+      fc.push(`[2:a]${A_NORM}[a1]`);
     }
+    aLabels.push('[a1]');
     fc.push(`${aLabels.join('')}concat=n=2:v=0:a=1[a]`);
-
-    cmd
-      .complexFilter(fc, ['v', 'a'])
-      .outputOptions([...venc, '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart'])
-      .output(dest)
-      .on('end', () => {
-        active.delete(cmd);
-        resolve();
-      })
-      .on('error', (e) => {
-        active.delete(cmd);
-        reject(e);
-      });
-    active.add(cmd);
-    cmd.run();
-  });
+    cmd.complexFilter(fc, ['v', 'a']).outputOptions([...venc, '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart']);
+    await runFf(cmd, dest);
+  } finally {
+    await fs.promises.unlink(hookN).catch(() => {});
+  }
 }
 
 // Склейка-шаблон: тело режется в N случайных точках, между сегментами вставляются
@@ -457,8 +480,9 @@ async function processOne(
               await fs.promises.unlink(cur).catch(() => {});
               cur = t;
             } catch (e) {
-              console.warn('VUB hook failed:', e instanceof Error ? e.message : e);
-              if (task.index === 0) warn(`Хук не применился (${path.basename(hookFile)}) — без хука.`);
+              const msg = e instanceof Error ? e.message : String(e);
+              console.warn('VUB hook failed:', msg);
+              if (task.index === 0) warn(`Хук не применился (${path.basename(hookFile)}): ${msg.slice(0, 180)}`);
               await fs.promises.unlink(t).catch(() => {});
             }
           }
