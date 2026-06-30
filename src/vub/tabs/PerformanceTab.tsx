@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useVubStore, type FileProgress } from '../store';
 import { useQueueStore } from '../../store/queueStore';
 import { Slider } from '../components/ui';
-import { outFileName } from '../naming';
+import { outFileName, dedupeNames } from '../naming';
 import { showToast } from '../../store/toastStore';
 import { listPresets, savePreset, getPreset, deletePreset } from '../presets';
 
@@ -104,6 +104,9 @@ export default function PerformanceTab() {
         g++;
       }
     }
+    // Та же дедупликация имён, что и в main — чтобы прогресс/история совпадали с файлами.
+    const dn = dedupeNames(initial.map((p) => p.name));
+    initial.forEach((p, i) => (p.name = dn[i]));
     setProgress(initial);
     useQueueStore.getState().addJobs(
       initial.map((p) => ({ id: p.id, mode: 'vub' as const, name: p.name, status: 'queued' as const, percent: 0 }))

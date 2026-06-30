@@ -8,7 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { buildVubPlan, upscaleDims } from '../../src/vub/ffmpegBuild';
 import { buildAss } from '../../src/vub/assBuilder';
-import { outFileName } from '../../src/vub/naming';
+import { outFileName, dedupeNames } from '../../src/vub/naming';
 import type { TranscriptWord, VubProcessRequest, VubVideo } from '../../src/vub/types';
 import { transcribe } from './transcribe';
 import { getAssemblyKey } from './config';
@@ -564,6 +564,11 @@ export function registerVubHandlers() {
         g++;
       }
     }
+
+    // Устраняем коллизии имён (например, все исходники названы «004»), иначе файлы
+    // перезаписывают друг друга и на выходе остаётся один.
+    const deduped = dedupeNames(tasks.map((t) => t.outName));
+    tasks.forEach((t, i) => (t.outName = deduped[i]));
 
     await runPool(tasks, req.threads, (task) =>
       processOne(task, req, hookFiles, templateFiles, (status, percent, error) => emit(task.id, status, percent, error), warn)

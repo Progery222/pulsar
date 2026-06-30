@@ -19,3 +19,27 @@ export function outFileName(a: NameArgs): string {
   }
   return `${name}.mp4`;
 }
+
+// Устранение коллизий имён: если несколько исходников дают одинаковое выходное имя
+// (например, все файлы названы «004»), к повторам добавляется _2, _3 … — иначе они
+// перезаписывают друг друга и на выходе остаётся один файл.
+export function dedupeNames(names: string[]): string[] {
+  const seen = new Set<string>();
+  return names.map((n) => {
+    if (!seen.has(n)) {
+      seen.add(n);
+      return n;
+    }
+    const dot = n.lastIndexOf('.');
+    const base = dot >= 0 ? n.slice(0, dot) : n;
+    const ext = dot >= 0 ? n.slice(dot) : '';
+    let k = 2;
+    let candidate = `${base}_${k}${ext}`;
+    while (seen.has(candidate)) {
+      k++;
+      candidate = `${base}_${k}${ext}`;
+    }
+    seen.add(candidate);
+    return candidate;
+  });
+}
