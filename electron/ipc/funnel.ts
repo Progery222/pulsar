@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
@@ -94,21 +95,24 @@ interface Probe {
   hasAudio: boolean;
   width: number;
   height: number;
+  sampleRate: number;
 }
 function probe(file: string): Promise<Probe> {
   return new Promise((resolve) => {
     ffmpeg.ffprobe(file, (err, data) => {
       if (err || !data) {
-        resolve({ duration: 0, hasAudio: false, width: 0, height: 0 });
+        resolve({ duration: 0, hasAudio: false, width: 0, height: 0, sampleRate: 44100 });
         return;
       }
       const streams = data.streams ?? [];
       const v = streams.find((s) => s.codec_type === 'video');
+      const a = streams.find((s) => s.codec_type === 'audio');
       resolve({
         duration: data.format?.duration ?? 0,
         hasAudio: streams.some((s) => s.codec_type === 'audio'),
         width: v?.width ?? 0,
         height: v?.height ?? 0,
+        sampleRate: Number(a?.sample_rate) || 44100,
       });
     });
   });
@@ -420,36 +424,56 @@ function runCmd(cmd: ffmpeg.FfmpegCommand, out: string): Promise<{ ok: true } | 
   });
 }
 
-// Лёгкая уникализация результата (переиспользуем планировщик фильтров VUB).
+// Уникализация результата — обновлённый движок VUB: цвет (+hue/colorbalance),
+// геометрия (зум+pan, поворот), аудио анти-fingerprint (pitch+EQ+задержка),
+// жёсткий «дрейф кадра», метаданные «нативного экспорта с телефона» + дозапись байт.
 async function uniqueize(src: string, out: string): Promise<{ ok: true } | { error: string }> {
   const off: VubParams['brightness'] = { enabled: false, min: 0, max: 0 };
   const params: VubParams = {
-    brightness: { enabled: true, min: -5, max: 5 },
-    contrast: { enabled: true, min: -5, max: 5 },
+    brightness: { enabled: true, min: -6, max: 6 }, // тянет hue + colorbalance
+    contrast: { enabled: true, min: -6, max: 6 },
     sharpness: off,
     volume: off,
     duration: off,
     rotation: { enabled: true, min: -2, max: 2 },
-    pitch: off,
-    zoom: { enabled: true, min: 3, max: 6 },
+    pitch: { enabled: true, min: -2, max: 2 }, // + 3-полосный аудио-EQ + задержка
+    zoom: { enabled: true, min: 3, max: 7 }, // + случайный pan
   };
   const effects: VubEffects = {
     darken: { enabled: false, duration: 0, audioFadeIn: false },
-    mirror: { enabled: false, mode: 'never' },
+    mirror: { enabled: false, mode: 'never' }, // в воронке текст не зеркалим
     grid: { enabled: false, opacityMin: 0, opacityMax: 0 },
     gridColor: { enabled: false, colors: [] },
     gridSize: { enabled: false, size: 32 },
   };
   const text: VubText = { spintax: '', font: '', size: 24, color: '#FFFFFF', position: 'bottom' };
-  const plan = buildVubPlan(params, effects, text, true, 0, 1);
-  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
+  const { sampleRate } = await probe(src);
+  // nativeExport=true (метаданные телефона), hard.drift=true (непрерывный дрейф кадра).
+  const plan = buildVubPlan(params, effects, text, true, 0, 1, true, sampleRate, {
+    drift: true,
+    warp: false,
+    frameBlend: false,
+    fpsInterp: false,
+    audioFx: false,
+  });
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 21 + Math.floor(Math.random() * 4) });
   const cmd = ffmpeg(src).addInputOption('-nostdin');
   if (plan.videoFilters.length) cmd.videoFilters(plan.videoFilters.join(','));
   if (plan.audioFilters.length) cmd.audioFilters(plan.audioFilters.join(','));
   cmd.outputOptions('-map_metadata', '-1');
   for (const [k, v] of Object.entries(plan.metadata)) cmd.outputOptions('-metadata', `${k}=${v}`);
-  cmd.outputOptions(venc).outputOptions('-movflags', '+faststart');
-  return runCmd(cmd, out);
+  // +use_metadata_tags — чтобы теги телефона (com.apple.*, com.android.*) записались.
+  cmd.outputOptions(venc).outputOptions('-movflags', '+faststart+use_metadata_tags');
+  const res = await runCmd(cmd, out);
+  // Дозапись случайных байт в конец (меняет хэш файла).
+  if ('ok' in res) {
+    try {
+      await fs.promises.appendFile(out, randomBytes(512 + Math.floor(Math.random() * 1537)));
+    } catch {
+      /* noop */
+    }
+  }
+  return res;
 }
 
 // Удаление «выжженного» текста (субтитры/плашки) через детектор Cleaner + delogo.

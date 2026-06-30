@@ -130,9 +130,9 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('vub-progress', listener);
   },
 
-  // Скачивание видео по ссылке (TikTok, YouTube, Instagram, …).
-  downloadVideo: (url: string): Promise<{ ok: true; path: string } | { error: string }> =>
-    ipcRenderer.invoke('download:url', url),
+  // Скачивание видео по ссылке (TikTok, YouTube, Instagram, …). baseDir — необязательная папка.
+  downloadVideo: (url: string, baseDir?: string): Promise<{ ok: true; path: string } | { error: string }> =>
+    ipcRenderer.invoke('download:url', url, baseDir),
   onDownloadProgress: (
     cb: (e: { stage?: string; percent?: number; line?: string }) => void
   ): (() => void) => {

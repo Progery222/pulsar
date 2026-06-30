@@ -170,6 +170,19 @@ export default function ModeSelector() {
             </svg>
           }
         />
+        <ModeCard
+          index={6}
+          title="Скачать видео"
+          description="Загрузка по ссылкам с TikTok, YouTube, Instagram и др. (пачкой)"
+          onClick={() => setAppMode('download')}
+          icon={
+            <svg {...I(30)}>
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+          }
+        />
       </div>
 
       {/* Вспомогательные разделы: очередь и история — мини-окна; настройки — экран. */}

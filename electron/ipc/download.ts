@@ -114,7 +114,9 @@ function runDownload(url: string, outDir: string): Promise<{ ok: true; path: str
 }
 
 export function registerDownloadHandlers() {
-  ipcMain.handle('download:url', async (_e, url: string) => {
+  // url — ссылка; baseDir (необязательно) — куда сохранять (иначе Downloads/Pulsar).
+  // Каждое скачивание идёт в свою подпапку-таймстамп, чтобы файлы не перемешивались.
+  ipcMain.handle('download:url', async (_e, url: string, baseDir?: string) => {
     if (!url || !/^https?:\/\//i.test(url.trim())) {
       return { error: 'Введите корректную ссылку (http/https)' };
     }
@@ -123,7 +125,8 @@ export function registerDownloadHandlers() {
       if ('error' in inst) return inst;
       if (!(await ytdlpInstalled())) return { error: 'yt-dlp не установился. Проверьте Python.' };
     }
-    const outDir = path.join(app.getPath('downloads'), 'Beatleap', String(Date.now()));
+    const root = baseDir && baseDir.trim() ? baseDir : path.join(app.getPath('downloads'), 'Pulsar');
+    const outDir = path.join(root, String(Date.now()));
     fs.mkdirSync(outDir, { recursive: true });
     try {
       return await runDownload(url.trim(), outDir);

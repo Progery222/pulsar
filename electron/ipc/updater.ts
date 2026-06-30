@@ -50,8 +50,8 @@ export function registerUpdaterHandlers() {
   });
   ipcMain.handle('update:version', () => app.getVersion());
 
-  // Авто-проверка вскоре после старта (в dev-режиме просто молча падает в catch).
-  setTimeout(() => {
-    autoUpdater.checkForUpdates().catch(() => {});
-  }, 4000);
+  // Авто-проверка вскоре после старта + затем в фоне раз в час (без перезапуска).
+  const check = () => autoUpdater.checkForUpdates().catch(() => {});
+  setTimeout(check, 4000);
+  setInterval(check, 60 * 60 * 1000);
 }
