@@ -47,7 +47,8 @@
       {
         "provider": "github",
         "owner": "Progery222",
-        "repo": "pulsar"
+        "repo": "pulsar",
+        "releaseType": "release"
       }
     ],
     "files": [
