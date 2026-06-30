@@ -1,6 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import electronUpdater from 'electron-updater';
-import { UPDATE_GITHUB_TOKEN } from './defaultKeys';
 
 const { autoUpdater } = electronUpdater;
 
@@ -22,21 +21,6 @@ export function registerUpdaterHandlers() {
   // Скачиваем только по нажатию пользователя; ставим при выходе.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = true;
-
-  // Приватный GitHub-репо: задаём токен (только-чтение), иначе релизы недоступны.
-  if (UPDATE_GITHUB_TOKEN) {
-    try {
-      autoUpdater.setFeedURL({
-        provider: 'github',
-        owner: 'Progery222',
-        repo: 'pulsar',
-        private: true,
-        token: UPDATE_GITHUB_TOKEN,
-      });
-    } catch {
-      /* в dev setFeedURL может бросать — игнорируем */
-    }
-  }
 
   autoUpdater.on('update-available', (info) => broadcast({ state: 'available', version: info.version }));
   autoUpdater.on('update-not-available', () => broadcast({ state: 'none' }));
