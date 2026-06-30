@@ -1,0 +1,29 @@
+name: release
+
+# Запускается при пуше тега вида v1.0.1 — собирает Windows-инсталлятор
+# в облаке GitHub и публикует его как релиз (друзья получают авто-обновление).
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install deps
+        run: npm ci
+
+      - name: Build & publish
+        run: npm run release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
