@@ -39,6 +39,7 @@ export default function FirstRunSetup() {
   const [minimized, setMinimized] = useState(false);
   const [pyInstalling, setPyInstalling] = useState(false);
   const [needsRestart, setNeedsRestart] = useState(false);
+  const [installingAll, setInstallingAll] = useState(false);
   const logRef = useRef<HTMLDivElement>(null);
 
   async function installPython() {
@@ -83,6 +84,28 @@ export default function FirstRunSetup() {
     refresh();
   }
 
+  // Установить все недостающие движки подряд (Python должен быть установлен).
+  async function installAll() {
+    if (!status?.pythonOk || installingAll) return;
+    setInstallingAll(true);
+    setLog([]);
+    const st = await window.electronAPI.setupStatus();
+    for (const e of ENGINE_INFO) {
+      if (st.engines?.[e.id]) continue;
+      setInstalling(e.id);
+      setPercent(null);
+      setPhase('');
+      setLog((p) => [...p, `→ Установка: ${e.name}`]);
+      const r = await window.electronAPI.setupInstall(e.id);
+      if ('error' in r) setLog((p) => [...p, `Ошибка (${e.name}): ${r.error}`]);
+      setInstalling(null);
+      await refresh();
+    }
+    setInstallingAll(false);
+    setPercent(null);
+    setLog((p) => [...p, 'Готово — все компоненты обработаны.']);
+  }
+
   async function finish() {
     await window.electronAPI.setSetting('firstRunDone', true);
     setShowSetup(false);
@@ -93,7 +116,8 @@ export default function FirstRunSetup() {
     setShowSetup(false);
   }
 
-  const busy = !!installing || pyInstalling;
+  const busy = !!installing || pyInstalling || installingAll;
+  const allInstalled = !!status?.engines && ENGINE_INFO.every((e) => status.engines?.[e.id]);
 
   // ── Свёрнутый индикатор: компактная плашка внизу, работа продолжается ──
   if (minimized) {
@@ -196,6 +220,23 @@ export default function FirstRunSetup() {
           )}
         </div>
 
+        {/* Установить всё разом */}
+        {!allInstalled && (
+          <button
+            onClick={installAll}
+            disabled={!status?.pythonOk || busy}
+            className="btn-primary"
+            style={{ width: '100%', padding: '12px 16px', fontSize: 15, fontWeight: 600, marginBottom: 16, opacity: !status?.pythonOk || busy ? 0.5 : 1 }}
+          >
+            {installingAll ? `Устанавливаю всё… ${installing ? `(${installing})` : ''}` : '⬇ Установить всё'}
+          </button>
+        )}
+        {!status?.pythonOk && (
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 16, marginTop: -8 }}>
+            Сначала установите Python — без него движки не поставить.
+          </div>
+        )}
+
         {/* Движки */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 16 }}>
           {ENGINE_INFO.map((e) => {
@@ -213,9 +254,9 @@ export default function FirstRunSetup() {
                   ) : (
                     <button
                       onClick={() => install(e.id)}
-                      disabled={!status?.pythonOk || !!installing}
+                      disabled={!status?.pythonOk || busy}
                       className="btn-primary"
-                      style={{ padding: '7px 16px', fontSize: 13, flexShrink: 0, opacity: !status?.pythonOk || installing ? 0.4 : 1 }}
+                      style={{ padding: '7px 16px', fontSize: 13, flexShrink: 0, opacity: !status?.pythonOk || busy ? 0.4 : 1 }}
                     >
                       {isInstalling ? 'Установка…' : 'Скачать'}
                     </button>
