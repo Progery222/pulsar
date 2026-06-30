@@ -46,8 +46,9 @@
     "publish": [
       {
         "provider": "github",
-        "owner": "alekseevdenis1995-ai",
-        "repo": "pulsar"
+        "owner": "Progery222",
+        "repo": "pulsar",
+        "private": true
       }
     ],
     "files": [

@@ -8,3 +8,10 @@ export const DEFAULT_KEYS: { assemblyai: string; openrouter: string } = {
   assemblyai: '',
   openrouter: '',
 };
+
+// Токен для авто-обновления из ПРИВАТНОГО GitHub-репо (Progery222/pulsar).
+// Создай fine-grained PAT: доступ только к репо pulsar, права Contents = Read-only.
+// Вставь сюда и пересобери. Без него обновления из приватного репо качаться не будут.
+// ВНИМАНИЕ: токен попадёт в .exe — поэтому он должен быть только-чтение одного репо.
+export const UPDATE_GITHUB_TOKEN = '';
+
