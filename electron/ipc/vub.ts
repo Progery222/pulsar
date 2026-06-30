@@ -21,6 +21,7 @@ interface VubTask {
   outName: string; // имя выходного файла
   index: number; // номер вариации (0-based)
   total: number; // всего вариаций на это видео
+  globalIndex: number; // сквозной номер по всей очереди (для разных хуков у разных видео)
 }
 
 // Bundled FFmpeg (распаковка из asar в упакованном приложении).
@@ -310,8 +311,8 @@ async function processOne(
     : path.join(stageDir, `vub_out_${Math.random().toString(36).slice(2, 10)}.mp4`);
   const staged = out !== finalOut;
 
-  // Хук: каждая вариация берёт свой файл (по индексу) -> разные хуки у копий.
-  const hookFile = hookFiles.length ? hookFiles[task.index % hookFiles.length] : null;
+  // Хук: по сквозному номеру -> разные хуки и у разных видео, и у копий одного видео.
+  const hookFile = hookFiles.length ? hookFiles[task.globalIndex % hookFiles.length] : null;
   // Шаблон: случайный набор клипов для вставки (свой на каждую копию).
   const tplCount = req.template?.enabled ? Math.max(1, req.template.count || 1) : 0;
   const templateClips =
@@ -560,6 +561,7 @@ export function registerVubHandlers() {
           }),
           index: i,
           total: variations,
+          globalIndex: g,
         });
         g++;
       }
