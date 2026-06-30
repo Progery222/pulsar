@@ -1,6 +1,14 @@
 import { app, ipcMain } from 'electron';
 import { spawn } from 'node:child_process';
+import ffmpegStatic from 'ffmpeg-static';
 import path from 'node:path';
+
+// Папка с встроенным ffmpeg — добавляем её в PATH питон-процесса, иначе librosa
+// не может декодировать часть аудиоформатов (audioread backend ищет `ffmpeg` в PATH).
+function ffmpegDir(): string | null {
+  const p = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
+  return p ? path.dirname(p) : null;
+}
 
 // Путь к Python-скрипту (dev vs упакованное приложение).
 function scriptPath(): string {
@@ -23,15 +31,19 @@ export function registerAudioHandlers() {
   ipcMain.handle('analyze-audio', async (_event, audioPath: string) => {
     return new Promise((resolve) => {
       const pythonCmd = process.platform === 'win32' ? 'python' : 'python3';
-      const child = spawn(pythonCmd, [scriptPath(), resolveAudioPath(audioPath)]);
+      const ffDir = ffmpegDir();
+      const env = ffDir
+        ? { ...process.env, PATH: `${ffDir}${path.delimiter}${process.env.PATH ?? ''}` }
+        : process.env;
+      const child = spawn(pythonCmd, [scriptPath(), resolveAudioPath(audioPath)], { env });
 
       let stdout = '';
       let stderr = '';
 
       const timer = setTimeout(() => {
         child.kill();
-        resolve({ error: 'Python beat detection timeout (30s)' });
-      }, 30000);
+        resolve({ error: 'Python beat detection timeout (40s)' });
+      }, 40000);
 
       child.stdout.on('data', (chunk) => {
         stdout += chunk.toString();

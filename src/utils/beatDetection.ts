@@ -48,10 +48,11 @@ export async function analyzeBeat(
   fallbackDuration = 0
 ): Promise<BeatData> {
   try {
-    // Клиентский предел: если Python-анализ не ответил за 10с (например, CPU
-    // занят другой задачей), не ждём 30с серверного таймаута, а сразу уходим в
-    // fallback — равномерная сетка лучше, чем зависший экран обработки.
-    const timeoutMs = 10000;
+    // Клиентский предел: librosa холодно стартует ~16с (импорт numba/scipy),
+    // поэтому 10с не хватало и реальный бит-детект всегда падал в fallback.
+    // Даём 30с — успевает и холодный старт, и анализ; при настоящем зависании
+    // всё равно уходим в равномерную сетку, а не виснем.
+    const timeoutMs = 30000;
     const result = await Promise.race([
       window.electronAPI.analyzeAudio(audioPath),
       new Promise<never>((_, reject) =>
