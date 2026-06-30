@@ -79,6 +79,7 @@ export interface ProjectActions {
   setGeneratedClips: (clips: GeneratedClip[]) => void;
   reorderClips: (from: number, to: number) => void; // ручная перестановка клипов (таймлайн)
   removeClip: (index: number) => void; // удалить клип
+  trimClip: (index: number, startTime: number, duration: number) => void; // изменить старт/длину клипа
   setIsProcessing: (value: boolean) => void;
   setIsExporting: (value: boolean) => void;
   setExportProgress: (progress: number) => void;
@@ -228,6 +229,32 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
       const result = remapClipOrder(clips, (arr) => arr.filter((_, i) => i !== index));
       const newDuration = result.reduce((acc, c) => acc + c.duration, 0);
       return { generatedClips: result, duration: Number(newDuration.toFixed(3)) };
+    }),
+  trimClip: (index, startTime, duration) =>
+    set((s) => {
+      const clips = s.generatedClips;
+      if (index < 0 || index >= clips.length) return {};
+      // Смещения эффектов фиксируем по исходным стартам.
+      const starts: number[] = [];
+      let acc = 0;
+      for (const c of clips) {
+        starts.push(acc);
+        acc += c.duration;
+      }
+      const dur = Math.max(0.2, Number(duration.toFixed(3)));
+      const st = Math.max(0, Number(startTime.toFixed(3)));
+      const updated = clips.map((c, i) => (i === index ? { ...c, startTime: st, duration: dur } : c));
+      let nacc = 0;
+      const result = updated.map((c, i) => {
+        const start = nacc;
+        nacc += c.duration;
+        const offs = clips[i].effectSlots.map((e) => ({ effect: e.effect, off: Math.max(0, e.time - starts[i]) }));
+        return {
+          ...c,
+          effectSlots: offs.filter((o) => o.off <= c.duration).map((o) => ({ effect: o.effect, time: Number((start + o.off).toFixed(3)) })),
+        };
+      });
+      return { generatedClips: result, duration: Number(nacc.toFixed(3)) };
     }),
   setIsProcessing: (value) => set({ isProcessing: value }),
   setIsExporting: (value) => set({ isExporting: value }),

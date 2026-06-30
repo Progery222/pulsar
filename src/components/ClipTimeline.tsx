@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { mediaUrl } from '../utils/media';
+
+const PX_PER_SEC = 34; // ширина блока ∝ длительности; этот же масштаб для trim
 
 // Миниатюра кадра клипа (ленивая загрузка через media:thumb, кэш в main).
 function ClipThumb({ src, time }: { src: string; time: number }) {
@@ -30,7 +32,46 @@ export default function ClipTimeline() {
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
+  // Trim: тянем края клипа -> меняем старт/длину.
+  const trimRef = useRef<{ i: number; side: 'l' | 'r'; startX: number; origStart: number; origDur: number } | null>(null);
+  const onTrimMove = useCallback((e: PointerEvent) => {
+    const d = trimRef.current;
+    if (!d) return;
+    const delta = (e.clientX - d.startX) / PX_PER_SEC;
+    const trim = useProjectStore.getState().trimClip;
+    if (d.side === 'r') {
+      trim(d.i, d.origStart, d.origDur + delta);
+    } else {
+      const ns = Math.max(0, d.origStart + delta);
+      trim(d.i, ns, d.origDur - (ns - d.origStart));
+    }
+  }, []);
+  const onTrimUp = useCallback(() => {
+    trimRef.current = null;
+    window.removeEventListener('pointermove', onTrimMove);
+    window.removeEventListener('pointerup', onTrimUp);
+  }, [onTrimMove]);
+  const onTrimDown = (e: React.PointerEvent, i: number, side: 'l' | 'r') => {
+    e.stopPropagation();
+    e.preventDefault();
+    const c = clips[i];
+    trimRef.current = { i, side, startX: e.clientX, origStart: c.startTime, origDur: c.duration };
+    window.addEventListener('pointermove', onTrimMove);
+    window.addEventListener('pointerup', onTrimUp);
+  };
+
   if (!clips.length) return null;
+
+  const grip = (side: 'l' | 'r'): React.CSSProperties => ({
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    [side === 'l' ? 'left' : 'right']: 0,
+    width: 8,
+    cursor: 'ew-resize',
+    background: `linear-gradient(${side === 'l' ? 'to right' : 'to left'}, rgba(204,255,0,0.5), transparent)`,
+    zIndex: 2,
+  });
 
   return (
     <div style={{ borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)', padding: '8px 10px' }}>
@@ -50,7 +91,7 @@ export default function ClipTimeline() {
           return (
             <div
               key={i}
-              draggable
+              draggable={!isSel}
               onDragStart={() => setDragFrom(i)}
               onDragEnd={() => {
                 setDragFrom(null);
@@ -80,6 +121,8 @@ export default function ClipTimeline() {
               }}
             >
               <ClipThumb src={c.sourceFile} time={c.startTime} />
+              {isSel && <div onPointerDown={(e) => onTrimDown(e, i, 'l')} style={grip('l')} title="Тянуть — обрезать слева" />}
+              {isSel && <div onPointerDown={(e) => onTrimDown(e, i, 'r')} style={grip('r')} title="Тянуть — изменить длину" />}
               <span
                 style={{
                   position: 'absolute',
