@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useVubStore } from '../vub/store';
 
 interface Entry {
   name: string;
@@ -21,68 +20,74 @@ function startDrag(e: React.DragEvent, entry: Entry) {
   e.dataTransfer.effectAllowed = 'copy';
 }
 
-function Node({ entry, depth }: { entry: Entry; depth: number }) {
+function Node({ entry, depth, onPickFile }: { entry: Entry; depth: number; onPickFile: (p: string) => void }) {
   const [open, setOpen] = useState(false);
   const [children, setChildren] = useState<Entry[] | null>(null);
   const [loading, setLoading] = useState(false);
-  const addVideos = useVubStore((s) => s.addVideos);
+  const [hover, setHover] = useState(false);
 
-  async function loadChildren() {
-    setLoading(true);
-    const r = await window.electronAPI.listDir(entry.path);
-    setChildren(r.entries);
-    setLoading(false);
-  }
   async function toggle() {
     if (!entry.isDir) return;
-    if (children === null) await loadChildren();
+    if (children === null) {
+      setLoading(true);
+      const r = await window.electronAPI.listDir(entry.path);
+      setChildren(r.entries);
+      setLoading(false);
+    }
     setOpen((o) => !o);
   }
   function onActivate() {
     if (entry.isDir) toggle();
-    else if (isVideo(entry.name)) addVideos([entry.path]);
+    else if (isVideo(entry.name)) onPickFile(entry.path);
   }
+
+  const video = !entry.isDir && isVideo(entry.name);
 
   return (
     <div>
       <div
         draggable
         onDragStart={(e) => startDrag(e, entry)}
-        onClick={entry.isDir ? toggle : undefined}
+        onClick={entry.isDir ? toggle : onActivate}
         onDoubleClick={onActivate}
-        title={entry.path + (entry.isDir ? '' : isVideo(entry.name) ? '  (двойной клик — добавить)' : '')}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        title={entry.path + (video ? '  ·  двойной клик — добавить' : '')}
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: 4,
-          padding: '3px 6px',
-          paddingLeft: 6 + depth * 12,
+          gap: 6,
+          height: 26,
+          paddingRight: 8,
+          paddingLeft: 8 + depth * 12,
           cursor: 'pointer',
           fontSize: 13,
-          color: entry.isDir ? 'var(--text-primary)' : isVideo(entry.name) ? 'var(--accent-green)' : 'var(--text-secondary)',
-          borderRadius: 4,
+          color: video ? 'var(--accent-green)' : 'var(--text-primary)',
+          background: hover ? 'var(--bg-tertiary)' : 'transparent',
           whiteSpace: 'nowrap',
           overflow: 'hidden',
+          userSelect: 'none',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
-        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
-        <span style={{ width: 10, flexShrink: 0, color: 'var(--text-secondary)' }}>{entry.isDir ? (open ? '▾' : '▸') : ''}</span>
-        <span style={{ flexShrink: 0 }}>{entry.isDir ? '📁' : isVideo(entry.name) ? '🎬' : '📄'}</span>
+        <span style={{ width: 10, flexShrink: 0, fontSize: 10, color: 'var(--text-secondary)' }}>
+          {entry.isDir ? (open ? '▾' : '▸') : ''}
+        </span>
+        <span style={{ flexShrink: 0, fontSize: 13, opacity: 0.9 }}>{entry.isDir ? '📁' : video ? '🎬' : '📄'}</span>
         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{entry.name}</span>
       </div>
       {open && loading && (
-        <div style={{ paddingLeft: 22 + depth * 12, fontSize: 12, color: 'var(--text-secondary)' }}>загрузка…</div>
+        <div style={{ height: 22, paddingLeft: 26 + depth * 12, fontSize: 12, color: 'var(--text-secondary)' }}>загрузка…</div>
       )}
-      {open && children && children.map((c) => <Node key={c.path} entry={c} depth={depth + 1} />)}
+      {open && children && children.map((c) => <Node key={c.path} entry={c} depth={depth + 1} onPickFile={onPickFile} />)}
       {open && children && children.length === 0 && !loading && (
-        <div style={{ paddingLeft: 22 + depth * 12, fontSize: 12, color: 'var(--text-secondary)' }}>пусто</div>
+        <div style={{ height: 22, paddingLeft: 26 + depth * 12, fontSize: 12, color: 'var(--text-secondary)' }}>пусто</div>
       )}
     </div>
   );
 }
 
-export default function FileExplorer({ onClose }: { onClose?: () => void }) {
+// Боковой файловый проводник в стиле приложения.
+export default function FileExplorer({ onPickFile, onClose }: { onPickFile: (p: string) => void; onClose?: () => void }) {
   const [roots, setRoots] = useState<Entry[]>([]);
 
   useEffect(() => {
@@ -91,21 +96,34 @@ export default function FileExplorer({ onClose }: { onClose?: () => void }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: 'var(--bg-secondary)', borderRight: '1px solid var(--border)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', borderBottom: '1px solid var(--border)' }}>
-        <span style={{ fontSize: 12, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1 }}>Файлы</span>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          paddingTop: 56,
+          padding: '56px 12px 10px 20px',
+          flexShrink: 0,
+        }}
+      >
+        <span style={{ fontSize: 13, color: 'var(--text-secondary)', textTransform: 'uppercase', letterSpacing: 1 }}>Файлы</span>
         {onClose && (
-          <button onClick={onClose} title="Свернуть панель" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>
+          <button
+            onClick={onClose}
+            title="Свернуть панель"
+            style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 15, lineHeight: 1 }}
+          >
             ⟨
           </button>
         )}
       </div>
-      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', padding: '6px 0' }}>
+      <div style={{ flex: 1, overflowY: 'auto', overflowX: 'hidden', paddingBottom: 8 }}>
         {roots.map((r) => (
-          <Node key={r.path} entry={r} depth={0} />
+          <Node key={r.path} entry={r} depth={0} onPickFile={onPickFile} />
         ))}
       </div>
-      <div style={{ padding: '8px 12px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-        🎬 = видео. Двойной клик добавляет в очередь. Перетащи файл/папку в нужное поле.
+      <div style={{ padding: '8px 14px', borderTop: '1px solid var(--border)', fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.45, flexShrink: 0 }}>
+        🎬 видео — двойной клик добавляет. Файл/папку можно перетащить в нужное поле.
       </div>
     </div>
   );

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { EDGE_VOICES } from '../tts/TtsApp';
+import ExplorerLayout from '../components/ExplorerLayout';
 
 const SRC_LANGS = [
   { value: 'auto', label: 'Авто-определение' },
@@ -120,6 +121,7 @@ export default function DubApp() {
   const voices = EDGE_VOICES[targetLang] ?? [];
 
   return (
+    <ExplorerLayout onPickFile={(p) => setVideoPath(p)}>
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg-primary)' }}>
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '80px 24px 48px' }}>
         <h1 className="font-semibold" style={{ fontSize: 32, color: 'var(--text-primary)', marginBottom: 8 }}>
@@ -211,5 +213,6 @@ export default function DubApp() {
         </p>
       </div>
     </div>
+    </ExplorerLayout>
   );
 }

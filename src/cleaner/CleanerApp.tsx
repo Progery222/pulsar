@@ -4,6 +4,7 @@ import { useVubStore } from '../vub/store';
 import { useUIStore } from '../store/uiStore';
 import { useQueueStore } from '../store/queueStore';
 import { Block, Checkbox, Select, Slider, Switch } from '../vub/components/ui';
+import ExplorerLayout from '../components/ExplorerLayout';
 import ZoneEditor from './ZoneEditor';
 
 function mediaUrl(p: string): string {
@@ -49,10 +50,16 @@ export default function CleanerApp() {
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
+    const ext = /\.(mp4|mov|mkv|webm|avi|m4v)$/i;
     const paths = Array.from(e.dataTransfer.files)
       .map((f) => (f as File & { path?: string }).path)
-      .filter((p): p is string => !!p && /\.(mp4|mov|avi)$/i.test(p));
-    if (paths.length) addVideos(paths);
+      .filter((p): p is string => !!p && ext.test(p));
+    if (paths.length) {
+      addVideos(paths);
+      return;
+    }
+    const internal = e.dataTransfer.getData('application/x-pulsar-path');
+    if (internal && ext.test(internal)) addVideos([internal]);
   }
   async function pickFolder() {
     const dir = await window.electronAPI.selectDirectory();
@@ -108,6 +115,7 @@ export default function CleanerApp() {
   };
 
   return (
+    <ExplorerLayout onPickFile={(p) => addVideos([p])}>
     <div style={{ height: '100%', overflowY: 'auto', padding: '56px 40px 40px', background: 'var(--bg-primary)' }}>
       <div style={{ maxWidth: 760, margin: '0 auto' }}>
         <h1 className="font-semibold" style={{ fontSize: 24, marginBottom: 6 }}>Замена титров (AI)</h1>
@@ -354,5 +362,6 @@ export default function CleanerApp() {
         </p>
       </div>
     </div>
+    </ExplorerLayout>
   );
 }

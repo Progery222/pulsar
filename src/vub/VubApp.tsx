@@ -1,6 +1,5 @@
-import { useState } from 'react';
 import { useVubStore, type VubTabKey } from './store';
-import FileExplorer from '../components/FileExplorer';
+import ExplorerLayout from '../components/ExplorerLayout';
 import VideosTab from './tabs/VideosTab';
 import ParamsTab from './tabs/ParamsTab';
 import EffectsTab from './tabs/EffectsTab';
@@ -31,25 +30,11 @@ const TABS: { key: VubTabKey; label: string }[] = [
 export default function VubApp() {
   const activeTab = useVubStore((s) => s.activeTab);
   const setActiveTab = useVubStore((s) => s.setActiveTab);
-  const [showExplorer, setShowExplorer] = useState(true);
+  const addVideos = useVubStore((s) => s.addVideos);
 
   return (
+    <ExplorerLayout onPickFile={(p) => addVideos([p])}>
     <div style={{ display: 'flex', height: '100%', width: '100%', background: 'var(--bg-primary)' }}>
-      {/* Боковой файловый проводник */}
-      {showExplorer ? (
-        <div style={{ width: 240, flexShrink: 0 }}>
-          <FileExplorer onClose={() => setShowExplorer(false)} />
-        </div>
-      ) : (
-        <button
-          onClick={() => setShowExplorer(true)}
-          title="Показать файлы"
-          style={{ width: 28, flexShrink: 0, background: 'var(--bg-secondary)', border: 'none', borderRight: '1px solid var(--border)', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}
-        >
-          ⟩
-        </button>
-      )}
-
       {/* Левое меню */}
       <nav
         style={{
@@ -104,5 +89,6 @@ export default function VubApp() {
         {activeTab === 'performance' && <PerformanceTab />}
       </main>
     </div>
+    </ExplorerLayout>
   );
 }
