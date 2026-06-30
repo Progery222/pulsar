@@ -1,11 +1,12 @@
 import { useVubStore } from '../store';
-import { Block, Checkbox } from '../components/ui';
+import { Checkbox } from '../components/ui';
 import { mediaUrl } from '../../utils/media';
 import type { VubHard } from '../types';
 
-// Превью «до/после» для видеофильтров (PNG в assets/previews/hard, путь относительный).
-const previewPath = (key: string) => `assets/previews/hard/${key}.png`;
-const HAS_PREVIEW: Record<string, boolean> = { drift: true, warp: true, frameBlend: true, fpsInterp: true };
+// Превью «до/после» в assets/previews/hard. Эффекты во времени — анимированные GIF,
+// пространственный warp — статичный PNG. Путь относительный (резолвится в main).
+const PREVIEW_EXT: Record<string, string> = { drift: 'gif', warp: 'png', frameBlend: 'gif', fpsInterp: 'gif' };
+const previewPath = (key: string) => `assets/previews/hard/${key}.${PREVIEW_EXT[key]}`;
 
 // Вкладка «Жёсткие фильтры (анти-детект)». Каждый фильтр нелинейно меняет кадр/спектр —
 // детектить заметно труднее косметики. У каждого показан реальный пример ffmpeg.
@@ -63,44 +64,82 @@ export default function HardTab() {
         рандомизируются на каждую копию).
       </p>
 
-      {HARD.map(({ key, label, level, desc, example }) => (
-        <Block key={key}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-            <Checkbox checked={hard[key]} onChange={(v) => setHard({ [key]: v })} label={label} />
-            <span style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{level}</span>
-          </div>
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 8px', lineHeight: 1.5 }}>{desc}</p>
-          {HAS_PREVIEW[key] && (
-            <div style={{ margin: '0 0 8px' }}>
-              <img
-                src={mediaUrl(previewPath(key))}
-                alt={`${label} превью`}
-                style={{ width: '100%', maxWidth: 420, borderRadius: 6, border: '1px solid var(--border)', display: 'block' }}
-              />
-              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>
-                Слева — оригинал, справа — с фильтром (на тестовом ролике).
+      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 10 }}>
+        В превью: слева — оригинал, справа — с фильтром (анимация показывает эффект во времени).
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12, alignItems: 'start' }}>
+        {HARD.map(({ key, label, level, desc, example }) => {
+          const on = hard[key];
+          return (
+            <div
+              key={key}
+              style={{
+                background: 'var(--bg-secondary)',
+                border: `1.5px solid ${on ? 'var(--accent-green)' : 'var(--border)'}`,
+                borderRadius: 10,
+                padding: 12,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 8,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <Checkbox checked={on} onChange={(v) => setHard({ [key]: v })} label={label} />
+                <span style={{ fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap' }}>{level}</span>
               </div>
+
+              {PREVIEW_EXT[key] ? (
+                <img
+                  src={mediaUrl(previewPath(key))}
+                  alt={`${label} превью`}
+                  style={{ width: '100%', borderRadius: 6, border: '1px solid var(--border)', display: 'block' }}
+                />
+              ) : (
+                <div
+                  style={{
+                    width: '100%',
+                    aspectRatio: '16/7',
+                    borderRadius: 6,
+                    border: '1px dashed var(--border)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 28,
+                    color: 'var(--text-secondary)',
+                  }}
+                >
+                  🔊
+                </div>
+              )}
+
+              <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0, lineHeight: 1.45 }}>{desc}</p>
+
+              <details>
+                <summary style={{ fontSize: 11, color: 'var(--text-secondary)', cursor: 'pointer' }}>команда ffmpeg</summary>
+                <code
+                  style={{
+                    display: 'block',
+                    fontSize: 10.5,
+                    fontFamily: 'monospace',
+                    color: 'var(--accent-green)',
+                    background: 'var(--bg-tertiary)',
+                    border: '1px solid var(--border)',
+                    borderRadius: 6,
+                    padding: '8px 10px',
+                    marginTop: 6,
+                    whiteSpace: 'pre-wrap',
+                    wordBreak: 'break-all',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {example}
+                </code>
+              </details>
             </div>
-          )}
-          <code
-            style={{
-              display: 'block',
-              fontSize: 11,
-              fontFamily: 'monospace',
-              color: 'var(--accent-green)',
-              background: 'var(--bg-tertiary)',
-              border: '1px solid var(--border)',
-              borderRadius: 6,
-              padding: '8px 10px',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-all',
-              lineHeight: 1.5,
-            }}
-          >
-            {example}
-          </code>
-        </Block>
-      ))}
+          );
+        })}
+      </div>
     </div>
   );
 }
