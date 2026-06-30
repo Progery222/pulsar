@@ -2,6 +2,7 @@ import { useVubStore, type VubTabKey } from './store';
 import VideosTab from './tabs/VideosTab';
 import ParamsTab from './tabs/ParamsTab';
 import EffectsTab from './tabs/EffectsTab';
+import HardTab from './tabs/HardTab';
 import HooksTab from './tabs/HooksTab';
 import WatermarkTab from './tabs/WatermarkTab';
 import TextTab from './tabs/TextTab';
@@ -14,6 +15,7 @@ const TABS: { key: VubTabKey; label: string }[] = [
   { key: 'videos', label: 'Загруженные видео' },
   { key: 'params', label: 'Параметры видео' },
   { key: 'effects', label: 'Видеоэффекты' },
+  { key: 'hard', label: 'Жёсткие фильтры' },
   { key: 'hooks', label: 'Хуки' },
   { key: 'watermark', label: 'Водяной знак' },
   { key: 'text', label: 'Текст' },
@@ -74,6 +76,7 @@ export default function VubApp() {
         {activeTab === 'videos' && <VideosTab />}
         {activeTab === 'params' && <ParamsTab />}
         {activeTab === 'effects' && <EffectsTab />}
+        {activeTab === 'hard' && <HardTab />}
         {activeTab === 'hooks' && <HooksTab />}
         {activeTab === 'watermark' && <WatermarkTab />}
         {activeTab === 'text' && <TextTab />}

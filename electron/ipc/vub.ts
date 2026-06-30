@@ -162,10 +162,120 @@ async function prependHook(hookFile: string, body: string, dest: string): Promis
   });
 }
 
+// Склейка-шаблон: тело режется в N случайных точках, между сегментами вставляются
+// клипы. Всё приводится к WxH/fps/sar тела; отсутствующее аудио заменяется тишиной.
+async function applyTemplate(body: string, clips: string[], dest: string): Promise<void> {
+  const b = await probe(body);
+  const W = b.width || 1080;
+  const H = b.height || 1920;
+  const dur = b.duration || 0;
+  if (!clips.length || dur < 2) {
+    await fs.promises.copyFile(body, dest);
+    return;
+  }
+  const N = clips.length;
+  const segCount = N + 1;
+
+  // Случайные точки вставки (с отступом от краёв), отсортированы.
+  const pts: number[] = [];
+  for (let i = 0; i < N; i++) pts.push(0.4 + Math.random() * Math.max(0.5, dur - 0.8));
+  pts.sort((a, b2) => a - b2);
+  const bounds = [0, ...pts, dur];
+
+  const info: ProbeResult[] = [];
+  for (const c of clips) info.push(await probe(c));
+
+  const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
+  const vNorm = (label: string) =>
+    `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[${label}]`;
+
+  await new Promise<void>((resolve, reject) => {
+    const cmd = ffmpeg(body).addInputOption('-nostdin');
+    clips.forEach((c) => cmd.input(c));
+    let nextIdx = 1 + N; // следующий свободный индекс для lavfi-тишины
+    const fc: string[] = [];
+
+    // Видео тела -> split -> trim сегментов.
+    const sv = Array.from({ length: segCount }, (_, i) => `sv${i}`);
+    fc.push(`[0:v]split=${segCount}${sv.map((l) => `[${l}]`).join('')}`);
+    const vParts: string[] = [];
+    for (let i = 0; i < segCount; i++) {
+      const lbl = `vp${i}`;
+      fc.push(`[${sv[i]}]trim=${bounds[i].toFixed(3)}:${bounds[i + 1].toFixed(3)},setpts=PTS-STARTPTS,${vNorm(lbl)}`);
+      vParts.push(lbl);
+    }
+    // Видео клипов.
+    const clipV: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const lbl = `cv${i}`;
+      fc.push(`[${i + 1}:v]${vNorm(lbl)}`);
+      clipV.push(lbl);
+    }
+
+    // Аудио тела (или тишина, если у тела нет звука).
+    const segA: string[] = [];
+    if (b.hasAudio) {
+      const sa = Array.from({ length: segCount }, (_, i) => `sa${i}`);
+      fc.push(`[0:a]asplit=${segCount}${sa.map((l) => `[${l}]`).join('')}`);
+      for (let i = 0; i < segCount; i++) {
+        const lbl = `ap${i}`;
+        fc.push(`[${sa[i]}]atrim=${bounds[i].toFixed(3)}:${bounds[i + 1].toFixed(3)},asetpts=PTS-STARTPTS,${A_NORM}[${lbl}]`);
+        segA.push(lbl);
+      }
+    } else {
+      for (let i = 0; i < segCount; i++) {
+        const lbl = `ap${i}`;
+        cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f', 'lavfi', '-t', (bounds[i + 1] - bounds[i]).toFixed(3)]);
+        fc.push(`[${nextIdx}:a]${A_NORM}[${lbl}]`);
+        nextIdx++;
+        segA.push(lbl);
+      }
+    }
+    // Аудио клипов (или тишина их длины).
+    const clipA: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const lbl = `ca${i}`;
+      if (info[i].hasAudio) {
+        fc.push(`[${i + 1}:a]${A_NORM}[${lbl}]`);
+      } else {
+        cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f', 'lavfi', '-t', Math.max(0.1, info[i].duration || 1).toFixed(3)]);
+        fc.push(`[${nextIdx}:a]${A_NORM}[${lbl}]`);
+        nextIdx++;
+      }
+      clipA.push(lbl);
+    }
+
+    // Чередование: сегмент, клип, сегмент, клип, …, сегмент.
+    const order: string[] = [];
+    for (let i = 0; i < segCount; i++) {
+      order.push(`[${vParts[i]}][${segA[i]}]`);
+      if (i < N) order.push(`[${clipV[i]}][${clipA[i]}]`);
+    }
+    const total = segCount + N;
+    fc.push(`${order.join('')}concat=n=${total}:v=1:a=1[v][a]`);
+
+    cmd
+      .complexFilter(fc, ['v', 'a'])
+      .outputOptions([...venc, '-c:a', 'aac', '-b:a', '160k', '-movflags', '+faststart'])
+      .output(dest)
+      .on('end', () => {
+        active.delete(cmd);
+        resolve();
+      })
+      .on('error', (e) => {
+        active.delete(cmd);
+        reject(e);
+      });
+    active.add(cmd);
+    cmd.run();
+  });
+}
+
 async function processOne(
   task: VubTask,
   req: VubProcessRequest,
   hookFiles: string[],
+  templateFiles: string[],
   send: (status: 'processing' | 'done' | 'error', percent: number, error?: string) => void,
   warn: (msg: string) => void
 ): Promise<void> {
@@ -194,8 +304,15 @@ async function processOne(
 
   // Хук: каждая вариация берёт свой файл (по индексу) -> разные хуки у копий.
   const hookFile = hookFiles.length ? hookFiles[task.index % hookFiles.length] : null;
-  // С хуком сначала рендерим тело в temp, затем склеиваем хук+тело -> out.
-  const bodyOut = hookFile
+  // Шаблон: случайный набор клипов для вставки (свой на каждую копию).
+  const tplCount = req.template?.enabled ? Math.max(1, req.template.count || 1) : 0;
+  const templateClips =
+    tplCount && templateFiles.length
+      ? Array.from({ length: tplCount }, () => templateFiles[Math.floor(Math.random() * templateFiles.length)])
+      : [];
+  // Если есть пост-обработка (хук/шаблон) — рендерим тело в temp, иначе сразу в out.
+  const hasPost = !!hookFile || templateClips.length > 0;
+  const bodyOut = hasPost
     ? path.join(stageDir, `vub_body_${Math.random().toString(36).slice(2, 10)}.mp4`)
     : out;
 
@@ -314,17 +431,46 @@ async function processOne(
       .on('end', () => {
         active.delete(cmd);
         cleanup();
-        // С хуком: склеиваем хук+тело в out. Если хук битый — сохраняем без хука.
-        const hookStep = hookFile
-          ? prependHook(hookFile, bodyOut, out)
-              .catch(async (e: unknown) => {
-                console.warn('VUB hook concat failed:', e instanceof Error ? e.message : e);
-                if (task.index === 0) warn(`Хук не применился (${path.basename(hookFile)}) — сохранено без хука.`);
-                await fs.promises.copyFile(bodyOut, out).catch(() => {});
-              })
-              .finally(() => fs.promises.unlink(bodyOut).catch(() => {}))
-          : Promise.resolve();
-        hookStep
+        const tmp = () => path.join(stageDir, `vub_step_${Math.random().toString(36).slice(2, 10)}.mp4`);
+        // Пост-обработка цепочкой: тело -> [хук] -> [шаблон] -> out. Каждый шаг
+        // некритичен: при ошибке остаётся предыдущий результат.
+        const runSteps = async () => {
+          let cur = bodyOut;
+          if (hookFile) {
+            const t = tmp();
+            try {
+              await prependHook(hookFile, cur, t);
+              await fs.promises.unlink(cur).catch(() => {});
+              cur = t;
+            } catch (e) {
+              console.warn('VUB hook failed:', e instanceof Error ? e.message : e);
+              if (task.index === 0) warn(`Хук не применился (${path.basename(hookFile)}) — без хука.`);
+              await fs.promises.unlink(t).catch(() => {});
+            }
+          }
+          if (templateClips.length) {
+            const t = tmp();
+            try {
+              await applyTemplate(cur, templateClips, t);
+              await fs.promises.unlink(cur).catch(() => {});
+              cur = t;
+            } catch (e) {
+              console.warn('VUB template failed:', e instanceof Error ? e.message : e);
+              if (task.index === 0) warn('Склейка из папки не применилась — сохранено без вставок.');
+              await fs.promises.unlink(t).catch(() => {});
+            }
+          }
+          if (cur !== out) {
+            await fs.promises.rm(out, { force: true }).catch(() => {});
+            try {
+              await fs.promises.rename(cur, out);
+            } catch {
+              await fs.promises.copyFile(cur, out);
+              await fs.promises.unlink(cur).catch(() => {});
+            }
+          }
+        };
+        runSteps()
           .then(() => finalizeOutput())
           .then(() => appendRandomTail())
           .then(() => send('done', 100))
@@ -379,6 +525,11 @@ export function registerVubHandlers() {
     if (req.hooks?.enabled && req.hooks.folder && !hookFiles.length) {
       warn('Хуки: в выбранной папке нет видеофайлов — хук не будет добавлен.');
     }
+    // Шаблон-склейка: папка с клипами для вставки.
+    const templateFiles = req.template?.enabled && req.template.folder ? scanVideos(req.template.folder) : [];
+    if (req.template?.enabled && req.template.folder && !templateFiles.length) {
+      warn('Склейка: в выбранной папке нет видеофайлов — вставки не будут добавлены.');
+    }
 
     // Разворачиваем очередь: каждое видео -> N уникальных вариаций.
     const variations = Math.max(1, req.variations || 1);
@@ -407,7 +558,7 @@ export function registerVubHandlers() {
     }
 
     await runPool(tasks, req.threads, (task) =>
-      processOne(task, req, hookFiles, (status, percent, error) => emit(task.id, status, percent, error), warn)
+      processOne(task, req, hookFiles, templateFiles, (status, percent, error) => emit(task.id, status, percent, error), warn)
     );
     return { ok: true };
   });

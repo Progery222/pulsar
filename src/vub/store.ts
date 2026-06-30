@@ -146,7 +146,7 @@ export const useVubStore = create<VubState>((set) => ({
   text: { spintax: '', font: 'Inter', size: 32, color: '#FFFFFF', position: 'bottom' },
   setText: (value) => set((s) => ({ text: { ...s.text, ...value } })),
 
-  template: { folder: null, everySeconds: 10 },
+  template: { enabled: false, folder: null, count: 2 },
   setTemplate: (value) => set((s) => ({ template: { ...s.template, ...value } })),
 
   hooks: { enabled: false, folder: null },

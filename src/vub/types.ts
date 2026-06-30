@@ -4,6 +4,7 @@ export type VubTabKey =
   | 'videos'
   | 'params'
   | 'effects'
+  | 'hard'
   | 'hooks'
   | 'watermark'
   | 'text'
@@ -110,9 +111,12 @@ export interface VubText {
   position: 'top' | 'center' | 'bottom';
 }
 
+// Шаблон (склейка): из папки берутся случайные клипы и вставляются в видео в
+// случайных местах (cutaway-вставки). count — сколько клипов вставить.
 export interface VubTemplate {
+  enabled: boolean;
   folder: string | null;
-  everySeconds: number;
+  count: number;
 }
 
 // Хуки: папка с короткими роликами-«зацепками». Случайный хук добавляется в начало

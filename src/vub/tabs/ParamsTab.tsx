@@ -17,22 +17,12 @@ const PARAMS: { key: keyof VubParams; label: string; min: number; max: number }[
   { key: 'zoom', label: 'Зум / кадрирование', min: 0, max: 20 },
 ];
 
-const HARD: { key: 'drift' | 'warp' | 'frameBlend' | 'fpsInterp' | 'audioFx'; label: string; desc: string }[] = [
-  { key: 'drift', label: 'Дрейф кадра', desc: 'Кадр непрерывно «плывёт» (зум + плавный сдвиг по времени). Хеш не закрепляется ни на одном кадре. Почти незаметно.' },
-  { key: 'warp', label: 'Дисторсия линзы', desc: 'Нелинейно смещает каждый пиксель (эффект лёгкой «линзы»). Сильно ломает перцептивный хеш. Чуть заметно по краям.' },
-  { key: 'frameBlend', label: 'Смешение кадров', desc: 'Лёгкий motion blur от смешения соседних кадров — каждый кадр становится новым. Заметно на резком движении.' },
-  { key: 'fpsInterp', label: 'Интерполяция fps', desc: 'Пересчитывает кадры в другой fps → другой временной отпечаток. Самый сильный по времени, но ТЯЖЁЛЫЙ (медленный рендер).' },
-  { key: 'audioFx', label: 'Аудио: vibrato + эхо', desc: 'Модуляция высоты + короткое эхо — ломает тембр и акустический отпечаток. Слышно на слух.' },
-];
-
 // Вкладка 2: Параметры видео (§4.3 ТЗ).
 export default function ParamsTab() {
   const params = useVubStore((s) => s.params);
   const setParam = useVubStore((s) => s.setParam);
   const upscale = useVubStore((s) => s.upscale);
   const setUpscale = useVubStore((s) => s.setUpscale);
-  const hard = useVubStore((s) => s.hard);
-  const setHard = useVubStore((s) => s.setHard);
   const pitch = params.pitch;
 
   return (
@@ -106,20 +96,6 @@ export default function ParamsTab() {
           полутона почти незаметно на слух, но ломает акустический отпечаток. Больше — надёжнее.
         </p>
       </Block>
-
-      <div style={{ marginTop: 24, marginBottom: 8, fontSize: 16, fontWeight: 600, color: 'var(--danger)' }}>
-        Жёсткие фильтры (анти-детект)
-      </div>
-      <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px' }}>
-        Меняют каждый кадр/спектр нелинейно — детектить заметно труднее, но заметнее на глаз/слух
-        и тяжелее по CPU. Включай по 1–2, не все сразу.
-      </p>
-      {HARD.map(({ key, label, desc }) => (
-        <Block key={key}>
-          <Checkbox checked={hard[key]} onChange={(v) => setHard({ [key]: v })} label={label} />
-          <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '8px 0 0', lineHeight: 1.5 }}>{desc}</p>
-        </Block>
-      ))}
     </div>
   );
 }
