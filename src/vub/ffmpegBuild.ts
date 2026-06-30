@@ -1,5 +1,7 @@
 // Независимая от редактора логика генерации FFmpeg-фильтров для VUB (§5 ТЗ VUB).
-import type { RangeParam, VubEffects, VubParams, VubText } from './types';
+import type { RangeParam, VubEffects, VubHard, VubParams, VubText } from './types';
+
+const NO_HARD: VubHard = { drift: false, warp: false, frameBlend: false, fpsInterp: false, audioFx: false };
 
 export function rand(min: number, max: number): number {
   return min + Math.random() * (max - min);
@@ -118,7 +120,8 @@ export function buildVubPlan(
   variationIndex = 0,
   variationTotal = 1,
   nativeExport = false,
-  sampleRate = 44100
+  sampleRate = 44100,
+  hard: VubHard = NO_HARD
 ): FfmpegPlan {
   const vf: string[] = [];
   const af: string[] = [];
@@ -195,6 +198,40 @@ export function buildVubPlan(
     const ry = Math.random().toFixed(3);
     vf.push(`scale=iw*${z}:ih*${z}`);
     vf.push(`crop=iw/${z}:ih/${z}:(iw-iw/${z})*${rx}:(ih-ih/${z})*${ry}`);
+  }
+
+  // --- Жёсткие анти-детект фильтры ---
+  // Непрерывный дрейф кадра: зум даёт запас, кроп едет по синусу/косинусу во времени.
+  // Композиция «плывёт» -> перцептивный хеш не закрепляется ни на одном кадре.
+  if (hard.drift) {
+    const z = 1.08;
+    const ax = rand(2, 5).toFixed(2);
+    const ay = rand(2, 5).toFixed(2);
+    const px = rand(2.5, 4.5).toFixed(2);
+    const py = rand(2.5, 4.5).toFixed(2);
+    vf.push(`scale=iw*${z}:ih*${z}`);
+    vf.push(
+      `crop=iw/${z}:ih/${z}:x='(in_w-out_w)/2+${ax}*sin(2*PI*t/${px})':y='(in_h-out_h)/2+${ay}*cos(2*PI*t/${py})'`
+    );
+  }
+  // Дисторсия линзы: нелинейное смещение каждого пикселя (зум по краям даёт запас под артефакты).
+  if (hard.warp) {
+    const k1 = rand(-0.07, 0.07).toFixed(3);
+    const k2 = rand(-0.03, 0.03).toFixed(3);
+    vf.push('scale=iw*1.06:ih*1.06', `lenscorrection=k1=${k1}:k2=${k2}`, 'crop=iw/1.06:ih/1.06');
+  }
+  // Смешение соседних кадров -> лёгкий motion blur, каждый кадр становится новым.
+  if (hard.frameBlend) {
+    vf.push('tmix=frames=2');
+  }
+  // Интерполяция в другой fps -> другой временной отпечаток (тяжёлая операция).
+  if (hard.fpsInterp) {
+    vf.push('minterpolate=fps=48:mi_mode=blend');
+  }
+  // Аудио: vibrato (модуляция высоты) + короткое эхо -> ломает тембр/акустический отпечаток.
+  if (hard.audioFx) {
+    af.push(`vibrato=f=${rand(4, 7).toFixed(2)}:d=${rand(0.2, 0.4).toFixed(2)}`);
+    af.push(`aecho=0.8:0.85:${20 + Math.floor(Math.random() * 40)}:0.18`);
   }
 
   // --- Эффекты ---

@@ -70,6 +70,16 @@ export interface VubParams {
   zoom: RangeParam; // зум/кадрирование, % (сдвигает композицию -> ломает перцептивный хеш видео)
 }
 
+// Жёсткие анти-детект фильтры: нелинейно меняют каждый кадр/спектр, ломать хеш
+// сильнее косметики, но заметнее на глаз/слух (и тяжелее по CPU).
+export interface VubHard {
+  drift: boolean; // непрерывный дрейф кадра (зум + синусоидальный сдвиг кропа по времени)
+  warp: boolean; // лёгкая дисторсия линзы (нелинейное смещение пикселей)
+  frameBlend: boolean; // смешение соседних кадров (motion blur)
+  fpsInterp: boolean; // интерполяция в другой fps (другой временной отпечаток, тяжело)
+  audioFx: boolean; // vibrato + эхо (ломает тембр/аудио-отпечаток)
+}
+
 export type MirrorMode = 'random' | 'always' | 'never';
 
 export interface VubEffects {
@@ -138,6 +148,7 @@ export interface VubProcessRequest {
   text: VubText;
   template: VubTemplate;
   hooks: VubHooks;
+  hard: VubHard;
   cleanMetadata: boolean;
   nativeExport: boolean; // метаданные «нативного экспорта с телефона (Pulsar)» вместо случайных
   upscale: VubUpscale;

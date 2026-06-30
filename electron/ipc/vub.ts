@@ -174,7 +174,7 @@ async function processOne(
   if (cancelled) return;
 
   // Каждая вариация — свой набор значений, распределённый по диапазонам (§ вариации).
-  const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total, req.nativeExport, sampleRate);
+  const plan = buildVubPlan(req.params, req.effects, req.text, req.cleanMetadata, task.index, task.total, req.nativeExport, sampleRate, req.hard);
 
   // Апскейл: повышение разрешения рендером. scale первым фильтром — последующие
   // eq/unsharp/поворот работают уже по кадру высокого разрешения. lanczos = качественная интерполяция.

@@ -11,6 +11,7 @@ import type {
   VubText,
   VubUpscale,
   VubHooks,
+  VubHard,
   VubVideo,
   VubWatermark,
 } from './types';
@@ -27,6 +28,7 @@ export type {
   VubText,
   VubUpscale,
   VubHooks,
+  VubHard,
   VubVideo,
   VubWatermark,
   WatermarkZone,
@@ -59,6 +61,9 @@ interface VubState {
 
   hooks: VubHooks;
   setHooks: (value: Partial<VubHooks>) => void;
+
+  hard: VubHard;
+  setHard: (value: Partial<VubHard>) => void;
 
   cleanMetadata: boolean;
   setCleanMetadata: (value: boolean) => void;
@@ -146,6 +151,9 @@ export const useVubStore = create<VubState>((set) => ({
 
   hooks: { enabled: false, folder: null },
   setHooks: (value) => set((s) => ({ hooks: { ...s.hooks, ...value } })),
+
+  hard: { drift: false, warp: false, frameBlend: false, fpsInterp: false, audioFx: false },
+  setHard: (value) => set((s) => ({ hard: { ...s.hard, ...value } })),
 
   cleanMetadata: true,
   setCleanMetadata: (value) => set({ cleanMetadata: value }),
