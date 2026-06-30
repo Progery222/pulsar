@@ -85,11 +85,11 @@ const ANDROID_MODELS = ['SM-S918B', 'SM-S921B', 'Pixel 8 Pro', '2211133G', 'CPH2
 function deviceMetadata(): Record<string, string> {
   const creation_time = recentCreationTime();
   if (Math.random() < 0.5) {
-    // iOS / QuickTime
+    // iOS (mp4-совместимый брэнд — TikTok строго парсит контейнер, «qt» он отвергает).
     return {
-      major_brand: 'qt',
+      major_brand: 'mp42',
       minor_version: '0',
-      compatible_brands: 'qt',
+      compatible_brands: 'mp42isom',
       'com.apple.quicktime.make': 'Apple',
       'com.apple.quicktime.model': pick(IPHONE_MODELS) ?? 'iPhone15,2',
       'com.apple.quicktime.software': pick(IOS_VERS) ?? '17.5.1',

@@ -1,6 +1,5 @@
 import { app, BrowserWindow, ipcMain } from 'electron';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { randomBytes } from 'node:crypto';
 import ffmpeg from 'fluent-ffmpeg';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
@@ -21,6 +20,7 @@ try {
 import { detect } from './cleaner';
 import { runDub } from './dub';
 import { videoEncoderOptions } from './encoder';
+import { appendFreeAtom } from './mp4util';
 import { buildVubPlan } from '../../src/vub/ffmpegBuild';
 import { randomVoice } from '../../src/tts/edgeVoices';
 import type { VubEffects, VubParams, VubText } from '../../src/vub/types';
@@ -525,10 +525,10 @@ async function uniqueize(src: string, out: string): Promise<{ ok: true } | { err
   // +use_metadata_tags — чтобы теги телефона (com.apple.*, com.android.*) записались.
   cmd.outputOptions(venc).outputOptions('-movflags', '+faststart+use_metadata_tags');
   const res = await runCmd(cmd, out);
-  // Дозапись случайных байт в конец (меняет хэш файла).
+  // Меняем хэш файла валидным free-атомом (не ломает контейнер -> TikTok декодирует).
   if ('ok' in res) {
     try {
-      await fs.promises.appendFile(out, randomBytes(512 + Math.floor(Math.random() * 1537)));
+      await appendFreeAtom(out);
     } catch {
       /* noop */
     }

@@ -7,6 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { buildVubPlan, upscaleDims } from '../../src/vub/ffmpegBuild';
+import { appendFreeAtom } from './mp4util';
 import { buildAss } from '../../src/vub/assBuilder';
 import { outFileName, dedupeNames } from '../../src/vub/naming';
 import type { TranscriptWord, VubProcessRequest, VubVideo } from '../../src/vub/types';
@@ -452,12 +453,10 @@ async function processOne(
     }
   }
 
-  // Дозапись 512–2048 случайных байт в конец файла (из движка v2): меняет хэш файла,
-  // не влияя на воспроизведение. Только при включённой уникализации метаданных.
+  // Меняем хэш файла валидным free-атомом (не ломает контейнер). Только при уникализации.
   async function appendRandomTail() {
     if (!req.cleanMetadata) return;
-    const size = 512 + Math.floor(Math.random() * 1537);
-    await fs.promises.appendFile(finalOut, crypto.randomBytes(size)).catch(() => {});
+    await appendFreeAtom(finalOut).catch(() => {});
   }
 
   await new Promise<void>((resolve) => {

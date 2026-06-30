@@ -13,6 +13,7 @@ import type { FilterName } from '../../src/types';
 import type { UniqualizerSettings } from '../../src/types/uniqualizer';
 import { buildUniqualizerFilters, buildVisibleVariation, randomMetadata, uniqualizerEncoding } from '../../src/utils/uniqualizer';
 import { videoEncoderOptions } from './encoder';
+import { appendFreeAtom } from './mp4util';
 
 // Bundled FFmpeg (§2 ТЗ). В упакованном приложении бинарник распакован из asar.
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
@@ -240,11 +241,9 @@ function suffixPath(p: string, idx: number, total: number): string {
   return `${baseName}_${String(idx).padStart(width, '0')}${ext}`;
 }
 
-// Уникализатор §2: дозапись 512–2048 случайных байт в конец файла (меняет хэш).
+// Уникализатор §2: меняем хэш валидным free-атомом (не ломает контейнер).
 async function appendRandomBytes(filePath: string): Promise<void> {
-  const size = Math.floor(Math.random() * 1536) + 512; // 512–2048
-  const randomBytes = crypto.randomBytes(size);
-  await fs.promises.appendFile(filePath, randomBytes);
+  await appendFreeAtom(filePath);
 }
 
 // FFmpeg Pipeline (§10): 6 этапов. Чистая функция без Electron-зависимостей.
