@@ -50,6 +50,7 @@ export async function buildAndRender(
       count: project.uniqualizerCount,
       quality,
       transition: project.transition,
+      title: project.title.text.trim() ? project.title : null,
       outputPath,
     };
 

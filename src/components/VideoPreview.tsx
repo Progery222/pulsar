@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { mediaUrl } from '../utils/media';
+import { useProjectStore } from '../store/projectStore';
 
 type Format = '9:16' | '1:1' | '16:9';
 
@@ -33,6 +34,7 @@ export default function VideoPreview({
   const containerRef = useRef<HTMLDivElement>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const ratio = RATIO_NUM[format];
+  const title = useProjectStore((s) => s.title);
 
   // Best-fit прямоугольник заданного соотношения внутри контейнера.
   useEffect(() => {
@@ -102,6 +104,38 @@ export default function VideoPreview({
             className="pointer-events-none absolute inset-0 bg-black"
             style={{ opacity: 0 }}
           />
+          {/* Живое превью заголовка (как в рендере) */}
+          {title.text.trim() && (
+            <div
+              className="pointer-events-none absolute"
+              style={{
+                left: 0,
+                right: 0,
+                textAlign: 'center',
+                padding: '0 6%',
+                ...(title.position === 'top'
+                  ? { top: '10%' }
+                  : title.position === 'center'
+                    ? { top: '50%', transform: 'translateY(-50%)' }
+                    : { top: '80%' }),
+              }}
+            >
+              <span
+                style={{
+                  fontFamily: 'Montserrat, system-ui, sans-serif',
+                  fontWeight: 800,
+                  fontSize: (title.size / 1080) * box.h,
+                  lineHeight: 1.1,
+                  color: title.color,
+                  ...(title.box
+                    ? { background: 'rgba(0,0,0,0.4)', padding: `${(title.size / 1080) * box.h * 0.18}px ${(title.size / 1080) * box.h * 0.35}px`, borderRadius: 6, boxDecorationBreak: 'clone' as const, WebkitBoxDecorationBreak: 'clone' as const }
+                    : { textShadow: '0 2px 8px rgba(0,0,0,0.6)' }),
+                }}
+              >
+                {title.text}
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         <div className="text-text-secondary">Нет клипов</div>

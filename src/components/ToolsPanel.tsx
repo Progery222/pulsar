@@ -5,7 +5,7 @@ import { fileName, formatTime, isVideoFile, mediaUrl } from '../utils/media';
 import { regenerateMontage } from '../utils/regenerate';
 import TweakModal from './TweakModal';
 
-type ToolKey = 'videos' | 'tweak' | 'duration' | 'segment' | 'mood' | 'transition' | 'fade' | 'format';
+type ToolKey = 'videos' | 'tweak' | 'duration' | 'segment' | 'mood' | 'transition' | 'text' | 'fade' | 'format';
 
 const TOOLS: { key: ToolKey; icon: string; label: string }[] = [
   { key: 'videos', icon: '▦', label: 'Videos' },
@@ -14,8 +14,16 @@ const TOOLS: { key: ToolKey; icon: string; label: string }[] = [
   { key: 'segment', icon: '〜', label: 'Segment' },
   { key: 'mood', icon: '☺', label: 'Mood' },
   { key: 'transition', icon: '⇄', label: 'Переходы' },
+  { key: 'text', icon: 'T', label: 'Текст' },
   { key: 'fade', icon: '▣', label: 'Fade' },
   { key: 'format', icon: '▭', label: 'Format' },
+];
+
+const TEXT_COLORS = ['#FFFFFF', '#FFE000', '#00E0FF', '#FF3B6B', '#0D0D0D', '#CCFF00'];
+const TEXT_POSITIONS: { key: 'top' | 'center' | 'bottom'; label: string }[] = [
+  { key: 'top', label: 'Сверху' },
+  { key: 'center', label: 'Центр' },
+  { key: 'bottom', label: 'Снизу' },
 ];
 
 const TRANSITIONS: { key: 'none' | 'dissolve' | 'slide' | 'zoom' | 'mix'; title: string; desc: string }[] = [
@@ -224,6 +232,8 @@ export default function ToolsPanel() {
   const fade = useProjectStore((s) => s.fade);
   const format = useProjectStore((s) => s.format);
   const transition = useProjectStore((s) => s.transition);
+  const title = useProjectStore((s) => s.title);
+  const setTitle = useProjectStore((s) => s.setTitle);
   const selectedTrack = useProjectStore((s) => s.selectedTrack);
   const beatData = useProjectStore((s) => s.beatData);
   const setDuration = useProjectStore((s) => s.setDuration);
@@ -341,6 +351,59 @@ export default function ToolsPanel() {
             })}
             <p style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '0 4px' }}>
               Переходы накладываются на склейках (~0.25с). Делают монтаж плавнее, как в проф-редакторах.
+            </p>
+          </div>
+        )}
+
+        {active === 'text' && (
+          <div className="flex flex-col gap-3 p-4">
+            <input
+              type="text"
+              value={title.text}
+              onChange={(e) => setTitle({ text: e.target.value })}
+              placeholder="Заголовок поверх видео…"
+              style={{ width: '100%', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 12px', fontSize: 14 }}
+            />
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>Позиция</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {TEXT_POSITIONS.map((p) => (
+                  <button
+                    key={p.key}
+                    onClick={() => setTitle({ position: p.key })}
+                    style={{ flex: 1, padding: '8px 0', borderRadius: 8, fontSize: 13, cursor: 'pointer', background: title.position === p.key ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: title.position === p.key ? '#0D0D0D' : 'var(--text-primary)', border: '1px solid var(--border)' }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 6 }}>Цвет</div>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                {TEXT_COLORS.map((c) => (
+                  <button
+                    key={c}
+                    onClick={() => setTitle({ color: c })}
+                    title={c}
+                    style={{ width: 30, height: 30, borderRadius: 6, background: c, cursor: 'pointer', border: title.color === c ? '3px solid var(--accent-green)' : '1px solid var(--border)' }}
+                  />
+                ))}
+              </div>
+            </div>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>
+                <span>Размер</span>
+                <span>{title.size}</span>
+              </div>
+              <input type="range" min={32} max={140} value={title.size} onChange={(e) => setTitle({ size: Number(e.target.value) })} style={{ width: '100%' }} />
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer' }}>
+              <input type="checkbox" checked={title.box} onChange={(e) => setTitle({ box: e.target.checked })} />
+              Подложка под текстом (читабельнее)
+            </label>
+            <p style={{ fontSize: 11, color: 'var(--text-secondary)' }}>
+              Текст появляется поверх всего видео с плавным въездом/выездом. Видно в финальном экспорте.
             </p>
           </div>
         )}
