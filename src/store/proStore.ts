@@ -118,6 +118,7 @@ export interface ProState {
   updateClipAdjust: (id: string, patch: Partial<{ filter: AdjustFilter; intensity: number }>) => void;
   updateClipAudio: (id: string, patch: Partial<import('../pro/proTypes').ClipAudio>) => void;
   updateClipColor: (id: string, patch: Partial<import('../pro/proTypes').ClipColor>) => void;
+  setClipBlend: (id: string, blend: import('../pro/proTypes').BlendMode) => void;
   addTextClip: (trackId: string, start: number, duration: number) => void;
   updateClipText: (id: string, patch: Partial<import('../pro/proTypes').ClipText>) => void;
   // История (§6 ТЗ). pushHistory вызывается в начале дискретного действия/жеста.
@@ -488,6 +489,11 @@ export const useProStore = create<ProState>()(
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
         c.color = { ...DEFAULT_COLOR, ...c.color, ...patch };
+      }),
+    setClipBlend: (id, blend) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (c) c.blend = blend;
       }),
     addTextClip: (trackId, start, duration) =>
       set((s) => {

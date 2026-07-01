@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, type AdjustFilter } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, type AdjustFilter, type BlendMode } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -193,6 +193,7 @@ function InspectorTab() {
   const updateAudio = useProStore((s) => s.updateClipAudio);
   const updateColor = useProStore((s) => s.updateClipColor);
   const updateText = useProStore((s) => s.updateClipText);
+  const setBlend = useProStore((s) => s.setClipBlend);
   const tracks = useProStore((s) => s.doc.tracks);
   const push = useProStore((s) => s.pushHistory);
 
@@ -348,6 +349,14 @@ function InspectorTab() {
             <ResetBtn onClick={() => col(DEFAULT_COLOR)} />
           </>
         ); })()}
+      </Section>
+      <Section title="Наложение (в экспорте)">
+        <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+          <span>Режим</span>
+          <select value={clip.blend ?? 'normal'} onChange={(e) => { push(); setBlend(id, e.target.value as BlendMode); }} style={{ width: 130, padding: '4px 6px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}>
+            {BLEND_MODES.map((m) => <option key={m} value={m}>{BLEND_LABEL[m]}</option>)}
+          </select>
+        </label>
       </Section>
       <Section title="Transition (crossfade)">
         {findPrevAdjacent(clips, clip) ? (

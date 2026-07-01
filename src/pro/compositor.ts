@@ -1,5 +1,5 @@
 import { mediaUrl } from '../utils/media';
-import { DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TRANSFORM, type ClipColor, type ClipCrop, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
+import { DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TRANSFORM, type BlendMode, type ClipColor, type ClipCrop, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
 
 // WebGL-компоновщик слоёв Viewer (§7 ТЗ, real-time preview) + пул видео.
 
@@ -264,7 +264,7 @@ export class Compositor {
   // drawList — снизу вверх. adjustments — фильтры корр. слоёв (постобработка).
   render(
     doc: ProDocument,
-    drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor }[],
+    drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor; blend?: BlendMode }[],
     adjustments: { filter: number; intensity: number }[] = []
   ) {
     const gl = this.gl;
@@ -305,14 +305,19 @@ export class Compositor {
     gl.enable(gl.BLEND);
   }
 
-  private drawClips(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor }[]) {
+  private drawClips(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor; blend?: BlendMode }[]) {
     const gl = this.gl;
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
     gl.useProgram(this.prog);
-    for (const { clip, video, alpha, color } of drawList) {
+    for (const { clip, video, alpha, color, blend } of drawList) {
       if (video.readyState < 2 || !video.videoWidth) continue;
+      // Режим наложения на нижние слои.
+      if (blend === 'add') gl.blendFunc(gl.ONE, gl.ONE);
+      else if (blend === 'screen') gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_COLOR);
+      else if (blend === 'multiply') gl.blendFunc(gl.DST_COLOR, gl.ZERO);
+      else gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
       gl.uniform1f(this.uAlpha, alpha ?? 1);
       const cc = { ...DEFAULT_COLOR, ...color };
       gl.uniform1f(this.uColor[0], cc.brightness / 100);

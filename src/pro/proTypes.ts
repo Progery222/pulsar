@@ -48,7 +48,12 @@ export interface ProClip {
   audio?: ClipAudio; // параметры аудио-клипа
   color?: ClipColor; // цветокоррекция видео-клипа
   text?: ClipText; // текстовый/титровый клип (sourceFile пустой)
+  blend?: BlendMode; // режим наложения на нижние слои (виден в экспорте)
 }
+
+export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply';
+export const BLEND_MODES: BlendMode[] = ['normal', 'add', 'screen', 'multiply'];
+export const BLEND_LABEL: Record<BlendMode, string> = { normal: 'Обычный', add: 'Сложение', screen: 'Экран', multiply: 'Умножение' };
 
 // Текстовый клип (титры). x,y — доля кадра (центр текста), size — % высоты кадра.
 export interface ClipText {
