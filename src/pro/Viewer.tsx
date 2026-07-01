@@ -102,9 +102,10 @@ export default function Viewer() {
       const activeSrc = new Set<string>();
       const drawList: { clip: ProClip; video: HTMLVideoElement; alpha: number }[] = [];
       for (const it of items) {
-        const path = st.useProxy && st.proxyMap[it.clip.sourceFile] ? st.proxyMap[it.clip.sourceFile] : it.clip.sourceFile;
-        const v = pool.get(path);
-        activeSrc.add(path);
+        const base = st.useProxy && st.proxyMap[it.clip.sourceFile] ? st.proxyMap[it.clip.sourceFile] : it.clip.sourceFile;
+        const key = it.out ? base + '#out' : base;
+        const v = pool.get(key, base);
+        activeSrc.add(key);
         const srcTime = Math.max(0, it.sourceTime);
         if (st.isPlaying) {
           if (v.paused) v.play().catch(() => {});

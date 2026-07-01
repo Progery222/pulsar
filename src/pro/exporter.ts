@@ -71,7 +71,8 @@ export async function runProExport(doc: ProDocument, onProgress: Progress): Prom
       const items = buildFrame(doc, t);
       const drawList: { clip: (typeof items)[number]['clip']; video: HTMLVideoElement; alpha: number }[] = [];
       for (const it of items) {
-        const v = pool.get(it.clip.sourceFile);
+        const key = it.out ? it.clip.sourceFile + '#out' : it.clip.sourceFile;
+        const v = pool.get(key, it.clip.sourceFile);
         await seekTo(v, Math.max(0, it.sourceTime));
         drawList.push({ clip: it.clip, video: v, alpha: it.alpha });
       }

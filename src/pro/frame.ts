@@ -6,6 +6,7 @@ export interface DrawItem {
   clip: ProClip;
   sourceTime: number; // тайм внутри исходника
   alpha: number; // для crossfade
+  out?: boolean; // уходящий слой перехода — нужен отдельный video-элемент
 }
 
 // Видео-слои под плейхедом, снизу вверх (hidden/solo + crossfade, §5 ТЗ).
@@ -24,7 +25,7 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
         const f = (ph - B.timelineStart) / d;
         alphaB = f;
         const A = findPrevAdjacent(doc.clips, B);
-        if (A) out.push({ clip: A, sourceTime: A.inPoint + A.duration + (ph - B.timelineStart), alpha: 1 - f });
+        if (A) out.push({ clip: A, sourceTime: A.inPoint + A.duration + (ph - B.timelineStart), alpha: 1 - f, out: true });
       }
       out.push({ clip: B, sourceTime: B.inPoint + (ph - B.timelineStart), alpha: alphaB });
     }

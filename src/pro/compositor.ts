@@ -7,15 +7,17 @@ import { DEFAULT_CROP, DEFAULT_TRANSFORM, type ClipCrop, type ClipTransform, typ
 export class VideoPool {
   private map = new Map<string, HTMLVideoElement>();
 
-  get(src: string): HTMLVideoElement {
-    let v = this.map.get(src);
+  // key разделяет элементы (напр. одновременный кадр одного источника при crossfade);
+  // src — реальный путь для загрузки (по умолчанию = key).
+  get(key: string, src?: string): HTMLVideoElement {
+    let v = this.map.get(key);
     if (!v) {
       v = document.createElement('video');
-      v.src = mediaUrl(src);
+      v.src = mediaUrl(src ?? key);
       v.muted = true;
       v.preload = 'auto';
       v.playsInline = true;
-      this.map.set(src, v);
+      this.map.set(key, v);
     }
     return v;
   }
