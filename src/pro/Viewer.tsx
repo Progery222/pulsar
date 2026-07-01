@@ -48,6 +48,7 @@ export default function Viewer() {
   const poolRef = useRef<VideoPool | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [exp, setExp] = useState<{ phase: string; cur: number; total: number } | null>(null);
+  const [glError, setGlError] = useState<string | null>(null);
   const exportingRef = useRef(false);
 
   const onExport = async () => {
@@ -82,7 +83,13 @@ export default function Viewer() {
   // Инициализация WebGL + пула, петля рендера.
   useEffect(() => {
     if (!canvasRef.current) return;
-    const comp = new Compositor(canvasRef.current);
+    let comp: Compositor;
+    try {
+      comp = new Compositor(canvasRef.current);
+    } catch (e) {
+      setGlError(e instanceof Error ? e.message : 'WebGL недоступен');
+      return;
+    }
     const pool = new VideoPool();
     compRef.current = comp;
     poolRef.current = pool;
@@ -175,8 +182,13 @@ export default function Viewer() {
       <div ref={wrapRef} className="flex flex-1 items-center justify-center" style={{ position: 'relative', minHeight: 0, overflow: 'hidden', padding: 12 }}>
         <div style={{ position: 'relative', width: dispW, height: dispH }}>
           <canvas ref={canvasRef} width={doc.width} height={doc.height} style={{ width: dispW, height: dispH, display: 'block', background: '#000' }} />
-          {viewerMode === 'transform' && <TransformOverlay doc={doc} scale={scale} />}
-          {viewerMode === 'crop' && <CropOverlay doc={doc} scale={scale} />}
+          {glError && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: '#fff', fontSize: 12.5, lineHeight: 1.5 }}>
+              Предпросмотр недоступен: {glError}.<br />Монтаж работает, экспорт тоже. Включите аппаратное ускорение GPU для превью.
+            </div>
+          )}
+          {!glError && viewerMode === 'transform' && <TransformOverlay doc={doc} scale={scale} />}
+          {!glError && viewerMode === 'crop' && <CropOverlay doc={doc} scale={scale} />}
         </div>
       </div>
 

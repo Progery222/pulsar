@@ -108,7 +108,8 @@ void main(){
 `;
 
 function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLShader {
-  const sh = gl.createShader(type)!;
+  const sh = gl.createShader(type);
+  if (!sh) throw new Error('WebGL: не удалось создать шейдер');
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
@@ -145,7 +146,8 @@ export class Compositor {
   private fboH = 0;
 
   constructor(canvas: HTMLCanvasElement, opts?: { preserveDrawingBuffer?: boolean }) {
-    const gl = canvas.getContext('webgl', { premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: opts?.preserveDrawingBuffer })!;
+    const gl = canvas.getContext('webgl', { premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: opts?.preserveDrawingBuffer });
+    if (!gl) throw new Error('WebGL недоступен');
     this.gl = gl;
     const prog = gl.createProgram()!;
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));

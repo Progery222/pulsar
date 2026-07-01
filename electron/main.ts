@@ -13,6 +13,14 @@ try {
 } catch {
   /* noop */
 }
+
+// Разрешаем программный WebGL (SwiftShader), если аппаратный GPU недоступен/заблокирован —
+// иначе WebGL-компоновщик Viewer в Pulsar Pro не инициализируется (createShader → null).
+try {
+  app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+} catch {
+  /* noop */
+}
 import { registerFileHandlers } from './ipc/files';
 import { registerAudioHandlers } from './ipc/audio';
 import { registerFfmpegHandlers } from './ipc/ffmpeg';
