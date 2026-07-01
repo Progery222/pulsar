@@ -1,15 +1,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
-import { Compositor, frameCorners, VideoPool } from './compositor';
-import { buildFrame, activeAdjustments } from './frame';
+import { frameCorners } from './compositor';
 import { runProExport } from './exporter';
 import { showToast } from '../store/toastStore';
+import { mediaUrl } from '../utils/media';
 import { DEFAULT_CROP, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
 
-// Viewer (§4, §7 ТЗ): WebGL-компоновщик слоёв в реальном времени + оверлеи Transform/Crop.
+// Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
+// используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
 
 function clamp(v: number, a: number, b: number) {
   return Math.min(b, Math.max(a, v));
+}
+
+function maxEnd(doc: ProDocument): number {
+  return doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
+}
+
+// Верхний активный клип на дорожках нужного типа (с учётом hidden/solo/mute).
+function topActiveClip(doc: ProDocument, ph: number, kind: 'video' | 'audio'): ProClip | null {
+  const tracks = doc.tracks.filter((t) => t.kind === kind && !t.isAdjustment);
+  const anySolo = tracks.some((t) => t.solo);
+  for (const t of tracks) {
+    // doc-порядок: верхняя дорожка первой.
+    if (kind === 'video' && t.hidden) continue;
+    if (kind === 'audio' && t.muted) continue;
+    if (anySolo && !t.solo) continue;
+    for (const c of doc.clips) {
+      if (c.trackId === t.id && ph >= c.timelineStart && ph < c.timelineStart + c.duration) return c;
+    }
+  }
+  return null;
 }
 
 export default function Viewer() {
@@ -20,6 +41,15 @@ export default function Viewer() {
   const setPlaying = useProStore((s) => s.setPlaying);
   const setPlayhead = useProStore((s) => s.setPlayhead);
   const useProxy = useProStore((s) => s.useProxy);
+
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const curVideoSrc = useRef('');
+  const curAudioSrc = useRef('');
+  const exportingRef = useRef(false);
+  const [box, setBox] = useState({ w: 0, h: 0 });
+  const [exp, setExp] = useState<{ phase: string; cur: number; total: number } | null>(null);
 
   const onToggleProxy = async () => {
     const st = useProStore.getState();
@@ -42,21 +72,14 @@ export default function Viewer() {
     showToast('Прокси готовы');
   };
 
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const compRef = useRef<Compositor | null>(null);
-  const poolRef = useRef<VideoPool | null>(null);
-  const [box, setBox] = useState({ w: 0, h: 0 });
-  const [exp, setExp] = useState<{ phase: string; cur: number; total: number } | null>(null);
-  const [glError, setGlError] = useState<string | null>(null);
-  const exportingRef = useRef(false);
-
   const onExport = async () => {
     if (exp) return;
     setExp({ phase: 'capture', cur: 0, total: 1 });
-    // Останавливаем живую петлю превью, чтобы не конкурировать за декодер видео.
     useProStore.getState().setPlaying(false);
     exportingRef.current = true;
+    // Освобождаем превью-видео на время экспорта.
+    videoRef.current?.pause();
+    audioRef.current?.pause();
     try {
       const res = await runProExport(useProStore.getState().doc, (phase, cur, total) => setExp({ phase, cur, total }));
       if (res.ok) showToast('Экспорт готов: ' + (res.outPath ?? ''));
@@ -80,72 +103,92 @@ export default function Viewer() {
     return () => ro.disconnect();
   }, []);
 
-  // Инициализация WebGL + пула, петля рендера.
+  // Петля превью: продвижение playhead + синхронизация video/audio под ним.
   useEffect(() => {
-    if (!canvasRef.current) return;
-    let comp: Compositor;
-    try {
-      comp = new Compositor(canvasRef.current);
-    } catch (e) {
-      setGlError(e instanceof Error ? e.message : 'WebGL недоступен');
-      return;
-    }
-    const pool = new VideoPool();
-    compRef.current = comp;
-    poolRef.current = pool;
     let raf = 0;
     let last = performance.now();
     const loop = (ts: number) => {
       const dt = (ts - last) / 1000;
       last = ts;
       if (exportingRef.current) {
-        // Во время экспорта живой рендер приостановлен (декодер занят экспортом).
         raf = requestAnimationFrame(loop);
         return;
       }
       const st = useProStore.getState();
-      let ph = st.playhead;
       const d = st.doc;
-      const contentEnd = d.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
+      let ph = st.playhead;
       if (st.isPlaying) {
         ph += dt;
-        if (ph >= contentEnd) {
-          ph = contentEnd;
+        const end = maxEnd(d);
+        if (ph >= end) {
+          ph = end;
           st.setPlaying(false);
         }
         st.setPlayhead(ph);
       }
-      const items = buildFrame(d, ph);
-      const activeSrc = new Set<string>();
-      const drawList: { clip: ProClip; video: HTMLVideoElement; alpha: number }[] = [];
-      for (const it of items) {
-        const base = st.useProxy && st.proxyMap[it.clip.sourceFile] ? st.proxyMap[it.clip.sourceFile] : it.clip.sourceFile;
-        const key = it.out ? base + '#out' : base;
-        const v = pool.get(key, base);
-        activeSrc.add(key);
-        const srcTime = Math.max(0, it.sourceTime);
-        if (st.isPlaying) {
-          if (v.paused) v.play().catch(() => {});
-          if (Math.abs(v.currentTime - srcTime) > 0.25) v.currentTime = srcTime;
-        } else {
-          if (!v.paused) v.pause();
-          if (Math.abs(v.currentTime - srcTime) > 0.04) v.currentTime = srcTime;
-        }
-        drawList.push({ clip: it.clip, video: v, alpha: it.alpha });
-      }
-      pool.pauseExcept(activeSrc);
-      comp.render(d, drawList, activeAdjustments(d, ph));
+      syncVideo(d, ph, st.isPlaying, st.useProxy, st.proxyMap);
+      syncAudio(d, ph, st.isPlaying);
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
-    return () => {
-      cancelAnimationFrame(raf);
-      pool.dispose();
-      comp.dispose();
-    };
+    return () => cancelAnimationFrame(raf);
   }, []);
 
-  // Letterbox: буфер canvas = разрешение проекта, CSS — вписанный прямоугольник.
+  function syncVideo(d: ProDocument, ph: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>) {
+    const el = videoRef.current;
+    if (!el) return;
+    const clip = topActiveClip(d, ph, 'video');
+    if (!clip) {
+      el.style.opacity = '0';
+      if (!el.paused) el.pause();
+      curVideoSrc.current = '';
+      return;
+    }
+    el.style.opacity = '1';
+    const base = proxy && proxyMap[clip.sourceFile] ? proxyMap[clip.sourceFile] : clip.sourceFile;
+    if (curVideoSrc.current !== base) {
+      curVideoSrc.current = base;
+      el.src = mediaUrl(base);
+    }
+    const srcTime = Math.max(0, clip.inPoint + (ph - clip.timelineStart));
+    if (playing) {
+      if (el.paused) el.play().catch(() => {});
+      if (Math.abs(el.currentTime - srcTime) > 0.3) el.currentTime = srcTime;
+    } else {
+      if (!el.paused) el.pause();
+      if (Math.abs(el.currentTime - srcTime) > 0.05) el.currentTime = srcTime;
+    }
+    const t = { ...DEFAULT_TRANSFORM, ...clip.transform };
+    const cr = { ...DEFAULT_CROP, ...clip.crop };
+    const dispScale = el.offsetWidth / (d.width || 1) || 1;
+    el.style.transform = `translate(${t.x * dispScale}px, ${t.y * dispScale}px) rotate(${t.rotation}deg) scale(${t.scale})`;
+    el.style.clipPath = `inset(${cr.top * 100}% ${cr.right * 100}% ${cr.bottom * 100}% ${cr.left * 100}%)`;
+  }
+
+  function syncAudio(d: ProDocument, ph: number, playing: boolean) {
+    const el = audioRef.current;
+    if (!el) return;
+    const clip = topActiveClip(d, ph, 'audio');
+    if (!clip) {
+      if (!el.paused) el.pause();
+      curAudioSrc.current = '';
+      return;
+    }
+    if (curAudioSrc.current !== clip.sourceFile) {
+      curAudioSrc.current = clip.sourceFile;
+      el.src = mediaUrl(clip.sourceFile);
+    }
+    const srcTime = Math.max(0, clip.inPoint + (ph - clip.timelineStart));
+    if (playing) {
+      if (el.paused) el.play().catch(() => {});
+      if (Math.abs(el.currentTime - srcTime) > 0.3) el.currentTime = srcTime;
+    } else {
+      if (!el.paused) el.pause();
+      if (Math.abs(el.currentTime - srcTime) > 0.05) el.currentTime = srcTime;
+    }
+  }
+
+  // Letterbox.
   const aspect = doc.width / doc.height;
   let dispW = box.w;
   let dispH = box.w / aspect;
@@ -157,14 +200,9 @@ export default function Viewer() {
 
   return (
     <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)', position: 'relative' }}>
-      {/* Панель режимов оверлея. */}
       <div style={{ display: 'flex', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--border)' }}>
-        <ModeBtn active={viewerMode === 'transform'} onClick={() => setViewerMode(viewerMode === 'transform' ? 'none' : 'transform')}>
-          Transform
-        </ModeBtn>
-        <ModeBtn active={viewerMode === 'crop'} onClick={() => setViewerMode(viewerMode === 'crop' ? 'none' : 'crop')}>
-          Crop
-        </ModeBtn>
+        <ModeBtn active={viewerMode === 'transform'} onClick={() => setViewerMode(viewerMode === 'transform' ? 'none' : 'transform')}>Transform</ModeBtn>
+        <ModeBtn active={viewerMode === 'crop'} onClick={() => setViewerMode(viewerMode === 'crop' ? 'none' : 'crop')}>Crop</ModeBtn>
         <ModeBtn active={useProxy} onClick={onToggleProxy}>Proxy</ModeBtn>
         <button
           onClick={onExport}
@@ -173,30 +211,32 @@ export default function Viewer() {
         >
           {exp ? 'Экспорт…' : 'Экспорт ⬇'}
         </button>
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)', alignSelf: 'center' }}>
-          {doc.width}×{doc.height}
-        </span>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', alignSelf: 'center' }}>{doc.width}×{doc.height}</span>
       </div>
 
-      {/* Окно предпросмотра. */}
       <div ref={wrapRef} className="flex flex-1 items-center justify-center" style={{ position: 'relative', minHeight: 0, overflow: 'hidden', padding: 12 }}>
-        <div style={{ position: 'relative', width: dispW, height: dispH }}>
-          <canvas ref={canvasRef} width={doc.width} height={doc.height} style={{ width: dispW, height: dispH, display: 'block', background: '#000' }} />
-          {glError && (
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 20, color: '#fff', fontSize: 12.5, lineHeight: 1.5 }}>
-              Предпросмотр недоступен: {glError}.<br />Монтаж работает, экспорт тоже. Включите аппаратное ускорение GPU для превью.
+        <div style={{ position: 'relative', width: dispW, height: dispH, background: '#000' }}>
+          <video
+            ref={videoRef}
+            muted
+            playsInline
+            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block', transformOrigin: 'center center', background: '#000' }}
+          />
+          {viewerMode === 'transform' && <TransformOverlay doc={doc} scale={scale} />}
+          {viewerMode === 'crop' && <CropOverlay doc={doc} scale={scale} />}
+          {!doc.clips.length && (
+            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-secondary)', fontSize: 12.5, pointerEvents: 'none' }}>
+              Пусто — добавьте видео на таймлайн
             </div>
           )}
-          {!glError && viewerMode === 'transform' && <TransformOverlay doc={doc} scale={scale} />}
-          {!glError && viewerMode === 'crop' && <CropOverlay doc={doc} scale={scale} />}
         </div>
+        <audio ref={audioRef} style={{ display: 'none' }} />
       </div>
 
-      {/* Транспорт. */}
       <div className="flex items-center justify-center" style={{ gap: 14, padding: '10px 0', borderTop: '1px solid var(--border)' }}>
         <Transport label="⏮" title="В начало" onClick={() => setPlayhead(0)} />
         <Transport label={isPlaying ? '⏸' : '▶'} title="Play / Pause (Space)" primary onClick={() => setPlaying(!isPlaying)} />
-        <Transport label="⏭" title="В конец" onClick={() => { const e = useProStore.getState().doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0); setPlayhead(e); }} />
+        <Transport label="⏭" title="В конец" onClick={() => setPlayhead(maxEnd(useProStore.getState().doc))} />
       </div>
 
       {exp && (
@@ -215,10 +255,9 @@ export default function Viewer() {
   );
 }
 
-// Первый выделенный видео-клип (для оверлея).
 function useSelectedVideoClip(doc: ProDocument): ProClip | null {
   const sel = useProStore((s) => s.selectedClipIds);
-  const videoTrackIds = new Set(doc.tracks.filter((t) => t.kind === 'video').map((t) => t.id));
+  const videoTrackIds = new Set(doc.tracks.filter((t) => t.kind === 'video' && !t.isAdjustment).map((t) => t.id));
   for (const id of sel) {
     const c = doc.clips.find((cl) => cl.id === id);
     if (c && videoTrackIds.has(c.trackId)) return c;
@@ -226,7 +265,7 @@ function useSelectedVideoClip(doc: ProDocument): ProClip | null {
   return null;
 }
 
-// ─── Transform (bounding box + ручки, §4.1 ТЗ) ──────────────────────────────
+// ─── Transform (§4.1 ТЗ) ────────────────────────────────────────────────────
 
 function TransformOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
   const clip = useSelectedVideoClip(doc);
@@ -259,31 +298,29 @@ function TransformOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
   };
 
   const onMove = () => {
-    let last: { x: number; y: number } | null = null;
+    let lastP: { x: number; y: number } | null = null;
     return drag((ev) => {
       const st = useProStore.getState();
-      if (!last) last = { x: ev.clientX, y: ev.clientY };
-      const dx = (ev.clientX - last.x) / scale;
-      const dy = (ev.clientY - last.y) / scale;
-      last = { x: ev.clientX, y: ev.clientY };
+      if (!lastP) lastP = { x: ev.clientX, y: ev.clientY };
+      const dx = (ev.clientX - lastP.x) / scale;
+      const dy = (ev.clientY - lastP.y) / scale;
+      lastP = { x: ev.clientX, y: ev.clientY };
       const ct = { ...DEFAULT_TRANSFORM, ...st.doc.clips.find((c) => c.id === clip.id)?.transform };
       st.updateClipTransform(clip.id, { x: ct.x + dx, y: ct.y + dy });
     });
   };
-
   const onScale = () => {
     const t0 = { ...DEFAULT_TRANSFORM, ...clip.transform };
     const cX = doc.width / 2 + t0.x;
     const cY = doc.height / 2 + t0.y;
-    let d0 = 1;
+    let d0 = 0;
     return drag((ev) => {
       const p = projAt(ev.clientX, ev.clientY);
-      const d = Math.hypot(p.x - cX, p.y - cY);
-      if (d0 === 1) d0 = d || 1;
-      useProStore.getState().updateClipTransform(clip.id, { scale: Math.max(0.05, t0.scale * (d / d0)) });
+      const dd = Math.hypot(p.x - cX, p.y - cY);
+      if (!d0) d0 = dd || 1;
+      useProStore.getState().updateClipTransform(clip.id, { scale: Math.max(0.05, t0.scale * (dd / d0)) });
     });
   };
-
   const onRotate = () => {
     const t0 = { ...DEFAULT_TRANSFORM, ...clip.transform };
     const cX = doc.width / 2 + t0.x;
@@ -293,21 +330,13 @@ function TransformOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
       const p = projAt(ev.clientX, ev.clientY);
       const a = Math.atan2(p.y - cY, p.x - cX);
       if (a0 === null) a0 = a;
-      const deg = ((a - a0) * 180) / Math.PI;
-      useProStore.getState().updateClipTransform(clip.id, { rotation: t0.rotation + deg });
+      useProStore.getState().updateClipTransform(clip.id, { rotation: t0.rotation + ((a - a0) * 180) / Math.PI });
     });
   };
 
   return (
     <svg ref={rootRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', overflow: 'visible' }}>
-      <polygon
-        points={dc.map((p) => p.join(',')).join(' ')}
-        fill="rgba(204,255,0,0.05)"
-        stroke="var(--accent-green)"
-        strokeWidth={1.5}
-        style={{ cursor: 'move' }}
-        onPointerDown={onMove()}
-      />
+      <polygon points={dc.map((p) => p.join(',')).join(' ')} fill="rgba(204,255,0,0.05)" stroke="var(--accent-green)" strokeWidth={1.5} style={{ cursor: 'move' }} onPointerDown={onMove()} />
       <line x1={topMid[0]} y1={topMid[1]} x2={rotH[0]} y2={rotH[1]} stroke="var(--accent-green)" strokeWidth={1.5} />
       <circle cx={rotH[0]} cy={rotH[1]} r={6} fill="var(--accent-green)" style={{ cursor: 'grab' }} onPointerDown={onRotate()} />
       {dc.map((p, i) => (
@@ -360,7 +389,6 @@ function CropOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
   const fullH = H * scale;
   return (
     <svg ref={rootRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-      {/* Затемнение обрезаемых краёв. */}
       <path d={`M0 0H${fullW}V${fullH}H0Z M${x0} ${y0}V${y1}H${x1}V${y0}Z`} fill="rgba(0,0,0,0.5)" fillRule="evenodd" />
       <rect x={x0} y={y0} width={x1 - x0} height={y1 - y0} fill="none" stroke="var(--accent-green)" strokeWidth={1.5} />
       <line x1={x0} y1={y0} x2={x1} y2={y0} stroke="transparent" strokeWidth={10} style={{ cursor: 'ns-resize' }} onPointerDown={dragEdge('top')} />
@@ -381,18 +409,7 @@ function HintOverlay({ text }: { text: string }) {
 
 function ModeBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      style={{
-        padding: '5px 12px',
-        fontSize: 12.5,
-        borderRadius: 7,
-        cursor: 'pointer',
-        color: active ? 'var(--bg-primary)' : 'var(--text-primary)',
-        background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)',
-        border: '1px solid var(--border)',
-      }}
-    >
+    <button onClick={onClick} style={{ padding: '5px 12px', fontSize: 12.5, borderRadius: 7, cursor: 'pointer', color: active ? 'var(--bg-primary)' : 'var(--text-primary)', background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
       {children}
     </button>
   );
@@ -400,20 +417,7 @@ function ModeBtn({ active, onClick, children }: { active: boolean; onClick: () =
 
 function Transport({ label, title, onClick, primary }: { label: string; title: string; onClick?: () => void; primary?: boolean }) {
   return (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        width: primary ? 44 : 36,
-        height: 36,
-        borderRadius: 8,
-        fontSize: 16,
-        cursor: 'pointer',
-        color: primary ? 'var(--bg-primary)' : 'var(--text-primary)',
-        background: primary ? 'var(--accent-green)' : 'var(--bg-tertiary)',
-        border: '1px solid var(--border)',
-      }}
-    >
+    <button onClick={onClick} title={title} style={{ width: primary ? 44 : 36, height: 36, borderRadius: 8, fontSize: 16, cursor: 'pointer', color: primary ? 'var(--bg-primary)' : 'var(--text-primary)', background: primary ? 'var(--accent-green)' : 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
       {label}
     </button>
   );

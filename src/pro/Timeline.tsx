@@ -162,6 +162,7 @@ export default function Timeline() {
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const onMarqueeDown = (e: React.PointerEvent) => {
     if (e.button !== 0) return; // клики по клипам гасят всплытие (stopPropagation)
+    e.preventDefault();
     const el = rightRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
@@ -231,7 +232,7 @@ export default function Timeline() {
   const contentEnd = doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
 
   return (
-    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-secondary)' }}>
+    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-secondary)', userSelect: 'none', WebkitUserSelect: 'none' }}>
       <ZoomBar contentEnd={contentEnd} />
       <div className="flex" style={{ flex: 1, minHeight: 0 }}>
         {/* Колонка заголовков дорожек. */}
@@ -412,6 +413,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
   const onBodyDown = (e: React.PointerEvent, c: (typeof clips)[number]) => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();
     const st = useProStore.getState();
     if (st.activeTool === 'blade') {
       st.pushHistory();
@@ -469,6 +471,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
   const onGripDown = (e: React.PointerEvent, c: (typeof clips)[number], side: 'l' | 'r') => {
     if (e.button !== 0) return;
     e.stopPropagation();
+    e.preventDefault();
     const st = useProStore.getState();
     if (st.activeTool === 'blade') {
       st.splitClipAt(c.id, timeAt(e.clientX));

@@ -160,7 +160,7 @@ export default function ProEditor() {
   }, []);
 
   return (
-    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)', overflow: 'hidden' }}>
+    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)', overflow: 'hidden', paddingTop: 54, boxSizing: 'border-box' }}>
       {/* Верхняя область: Media/Inspector (слева) + Viewer (центр). */}
       <div className="flex" style={{ flex: 1, minHeight: 0 }}>
         <div style={{ width: leftWidth, minWidth: 0, borderRight: '1px solid var(--border)' }}>
