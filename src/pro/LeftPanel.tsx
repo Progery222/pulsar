@@ -96,18 +96,9 @@ function MediaTab() {
       {sources.length > 0 && (
         <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
           <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 6 }}>Источники проекта</div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 120, overflow: 'auto' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px, 1fr))', gap: 6, maxHeight: 220, overflow: 'auto' }}>
             {sources.map((src) => (
-              <div
-                key={src}
-                draggable
-                onDragStart={(e) => { e.dataTransfer.setData('application/x-pulsar-path', src); e.dataTransfer.effectAllowed = 'copy'; }}
-                title="Перетащи на таймлайн или ＋"
-                style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', background: 'var(--bg-tertiary)', borderRadius: 6, fontSize: 12, color: 'var(--text-primary)', cursor: 'grab' }}
-              >
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{isVideoFile(src) ? '🎬' : '🎵'} {fileName(src)}</span>
-                <button onClick={() => addFileToProject(src)} title="Добавить ещё раз" style={addBtn}>＋</button>
-              </div>
+              <MediaTile key={src} path={src} name={fileName(src)} />
             ))}
           </div>
         </div>

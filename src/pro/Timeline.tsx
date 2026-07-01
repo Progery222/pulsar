@@ -451,11 +451,6 @@ function ToolColumn() {
   const snapping = useProStore((s) => s.snapping);
   const toggleSnapping = useProStore((s) => s.toggleSnapping);
   const I = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
-  const tools = [
-    { id: 'select' as const, title: 'Курсор — выделение/перемещение (V)', icon: <svg {...I}><path d="M3 3l7 18 2.5-7.5L20 11z" /></svg> },
-    { id: 'blade' as const, title: 'Лезвие — разрезать клип (C/B)', icon: <svg {...I}><path d="M4 4l10 10" /><circle cx="17" cy="17" r="3" /><path d="M14 14l6-6" /></svg> },
-    { id: 'ripple' as const, title: 'Ripple — удаление/трим со сдвигом', icon: <svg {...I}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></svg> },
-  ];
   const cell = (active: boolean): React.CSSProperties => ({
     width: 30,
     height: 30,
@@ -468,14 +463,42 @@ function ToolColumn() {
     background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)',
     border: '1px solid var(--border)',
   });
+  const splitAtPlayhead = () => {
+    const st = useProStore.getState();
+    const ph = st.playhead;
+    const targets = st.selectedClipIds.length ? st.doc.clips.filter((c) => st.selectedClipIds.includes(c.id)) : st.doc.clips.slice();
+    st.pushHistory();
+    for (const c of targets) if (ph > c.timelineStart && ph < c.timelineStart + c.duration) st.splitClipAt(c.id, ph);
+  };
+  const fitZoom = () => {
+    const st = useProStore.getState();
+    const end = st.doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0) || 10;
+    st.setScrollX(0);
+    st.setZoom(Math.max(4, 900 / end));
+  };
+  const div = <div style={{ width: 22, height: 1, background: 'var(--border)', margin: '2px 0' }} />;
   return (
-    <div style={{ width: 40, flex: '0 0 auto', borderRight: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: 8 }}>
-      {tools.map((t) => (
-        <button key={t.id} onClick={() => setTool(t.id)} title={t.title} style={cell(activeTool === t.id)}>
-          {t.icon}
-        </button>
-      ))}
-      <div style={{ width: 22, height: 1, background: 'var(--border)', margin: '2px 0' }} />
+    <div style={{ width: 40, flex: '0 0 auto', borderRight: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: 8, overflow: 'auto' }}>
+      <button onClick={() => setTool('select')} title="Курсор — выделение/перемещение (V)" style={cell(activeTool === 'select')}>
+        <svg {...I}><path d="M3 3l7 18 2.5-7.5L20 11z" /></svg>
+      </button>
+      <button onClick={() => setTool('blade')} title="Лезвие — разрезать клип (C/B)" style={cell(activeTool === 'blade')}>
+        <svg {...I}><path d="M4 4l10 10" /><circle cx="17" cy="17" r="3" /><path d="M14 14l6-6" /></svg>
+      </button>
+      {div}
+      <button onClick={splitAtPlayhead} title="Разрезать по плейхеду (Ctrl+K)" style={cell(false)}>
+        <svg {...I}><circle cx="6" cy="6" r="3" /><circle cx="6" cy="18" r="3" /><line x1="20" y1="4" x2="8.12" y2="15.88" /><line x1="14.47" y1="14.48" x2="20" y2="20" /><line x1="8.12" y1="8.12" x2="12" y2="12" /></svg>
+      </button>
+      <button onClick={() => useProStore.getState().undo()} title="Отменить (Ctrl+Z)" style={cell(false)}>
+        <svg {...I}><path d="M3 7v6h6" /><path d="M3.5 13a9 9 0 1 0 2.6-6.4L3 9" /></svg>
+      </button>
+      <button onClick={() => useProStore.getState().redo()} title="Повторить (Ctrl+Shift+Z)" style={cell(false)}>
+        <svg {...I}><path d="M21 7v6h-6" /><path d="M20.5 13a9 9 0 1 1-2.6-6.4L21 9" /></svg>
+      </button>
+      <button onClick={fitZoom} title="Вписать масштаб" style={cell(false)}>
+        <svg {...I}><polyline points="15 3 21 3 21 9" /><polyline points="9 21 3 21 3 15" /><line x1="21" y1="3" x2="14" y2="10" /><line x1="3" y1="21" x2="10" y2="14" /></svg>
+      </button>
+      {div}
       <button onClick={toggleSnapping} title="Магнит — прилипание (N)" style={cell(snapping)}>
         <svg {...I}><path d="M6 4v6a6 6 0 0 0 12 0V4" /><line x1="6" y1="4" x2="10" y2="4" /><line x1="14" y1="4" x2="18" y2="4" /></svg>
       </button>
