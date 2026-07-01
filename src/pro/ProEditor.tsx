@@ -23,14 +23,36 @@ export default function ProEditor() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const st = useProStore.getState();
+      const key = e.key.toLowerCase();
+      if (e.ctrlKey && key === 'k') {
+        // Разрезать по плейхеду (§3.3 ТЗ).
+        e.preventDefault();
+        const ph = st.playhead;
+        const targets = st.selectedClipIds.length ? st.doc.clips.filter((c) => st.selectedClipIds.includes(c.id)) : st.doc.clips.slice();
+        for (const c of targets) if (ph > c.timelineStart && ph < c.timelineStart + c.duration) st.splitClipAt(c.id, ph);
+        return;
+      }
       if (e.key === '+' || e.key === '=') {
         e.preventDefault();
         zoomAtPlayhead(st.pxPerSec * 1.3);
       } else if (e.key === '-' || e.key === '_') {
         e.preventDefault();
         zoomAtPlayhead(st.pxPerSec / 1.3);
-      } else if (e.key.toLowerCase() === 'n') {
+      } else if (key === 'n') {
         st.toggleSnapping();
+      } else if (key === 'c' || key === 'b') {
+        st.setTool('blade');
+      } else if (key === 'v') {
+        st.setTool('select');
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        if (!st.selectedClipIds.length) return;
+        // Ripple Delete: Shift+Delete или активный режим Ripple.
+        if (e.shiftKey || st.activeTool === 'ripple') st.rippleDeleteClips(st.selectedClipIds);
+        else st.removeClips(st.selectedClipIds); // обычное удаление (оставляет gap)
+      } else if (e.key === 'Escape') {
+        st.setTool('select');
+        st.setSelection([]);
       } else if (e.code === 'Space') {
         e.preventDefault();
         st.setPlaying(!st.isPlaying);

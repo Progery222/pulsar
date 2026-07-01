@@ -63,6 +63,7 @@ export default function Timeline() {
   const playhead = useProStore((s) => s.playhead);
   const setScrollX = useProStore((s) => s.setScrollX);
   const setPlayhead = useProStore((s) => s.setPlayhead);
+  const activeTool = useProStore((s) => s.activeTool);
 
   const rightRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ w: 0, h: 0 });
@@ -121,6 +122,78 @@ export default function Timeline() {
     },
     []
   );
+
+  // Прилипание (§3.3 ТЗ): к краям других клипов, плейхеду и нулю. Отключается N.
+  const snapTime = (t: number, exclude: Set<string>): number => {
+    const st = useProStore.getState();
+    if (!st.snapping) return t;
+    const thresh = 8 / st.pxPerSec;
+    const points = [0, st.playhead];
+    for (const c of st.doc.clips) {
+      if (exclude.has(c.id)) continue;
+      points.push(c.timelineStart, c.timelineStart + c.duration);
+    }
+    let best = t;
+    let bd = thresh;
+    for (const p of points) {
+      const d = Math.abs(p - t);
+      if (d < bd) {
+        bd = d;
+        best = p;
+      }
+    }
+    return best;
+  };
+
+  // Дорожка под курсором (для перемещения между дорожками).
+  const trackAtClientY = (clientY: number): string | null => {
+    const el = rightRef.current;
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    const yInTracks = clientY - rect.top - RULER_H + clampedScrollY;
+    for (const { track, y } of laneOffsets) {
+      if (yInTracks >= y && yInTracks < y + track.height) return track.id;
+    }
+    return null;
+  };
+
+  // Marquee-выделение (лассо, §3.3 ТЗ) — координаты относительно зоны дорожек.
+  const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
+  const onMarqueeDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return; // клики по клипам гасят всплытие (stopPropagation)
+    const el = rightRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const start = { x: e.clientX - rect.left, y: e.clientY - rect.top - RULER_H };
+    setMarquee({ x0: start.x, y0: start.y, x1: start.x, y1: start.y });
+    const move = (ev: PointerEvent) => setMarquee({ x0: start.x, y0: start.y, x1: ev.clientX - rect.left, y1: ev.clientY - rect.top - RULER_H });
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      const x1 = ev.clientX - rect.left;
+      const y1 = ev.clientY - rect.top - RULER_H;
+      finalizeMarquee(start.x, start.y, x1, y1);
+      setMarquee(null);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+  const finalizeMarquee = (x0: number, y0: number, x1: number, y1: number) => {
+    const st = useProStore.getState();
+    if (Math.abs(x1 - x0) < 4 && Math.abs(y1 - y0) < 4) {
+      st.setSelection([]); // клик по пустому — снять выделение
+      return;
+    }
+    const t0 = (Math.min(x0, x1) + st.scrollX) / st.pxPerSec;
+    const t1 = (Math.max(x0, x1) + st.scrollX) / st.pxPerSec;
+    const cy0 = Math.min(y0, y1) + clampedScrollY;
+    const cy1 = Math.max(y0, y1) + clampedScrollY;
+    const hitTracks = laneOffsets.filter(({ track, y }) => !(y + track.height < cy0 || y > cy1)).map((l) => l.track.id);
+    const ids = st.doc.clips
+      .filter((c) => hitTracks.includes(c.trackId) && !(c.timelineStart + c.duration < t0 || c.timelineStart > t1))
+      .map((c) => c.id);
+    st.setSelection(ids);
+  };
   const onRulerDown = (e: React.PointerEvent) => {
     scrubbing.current = true;
     setPlayhead(timeAtClientX(e.clientX));
@@ -185,12 +258,40 @@ export default function Timeline() {
           </div>
 
           {/* Дорожки с клипами. */}
-          <div style={{ position: 'absolute', top: RULER_H, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>
+          <div
+            onPointerDown={onMarqueeDown}
+            style={{ position: 'absolute', top: RULER_H, left: 0, right: 0, bottom: 0, overflow: 'hidden', cursor: activeTool === 'blade' ? 'crosshair' : 'default' }}
+          >
             <div style={{ transform: `translateY(${-clampedScrollY}px)`, position: 'relative' }}>
               {laneOffsets.map(({ track, y }) => (
-                <Lane key={track.id} track={track} y={y} vpW={vp.w} pxPerSec={pxPerSec} scrollX={scrollX} />
+                <Lane
+                  key={track.id}
+                  track={track}
+                  y={y}
+                  vpW={vp.w}
+                  pxPerSec={pxPerSec}
+                  scrollX={scrollX}
+                  timeAt={timeAtClientX}
+                  snap={snapTime}
+                  trackAt={trackAtClientY}
+                />
               ))}
             </div>
+            {marquee && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: Math.min(marquee.x0, marquee.x1),
+                  top: Math.min(marquee.y0, marquee.y1),
+                  width: Math.abs(marquee.x1 - marquee.x0),
+                  height: Math.abs(marquee.y1 - marquee.y0),
+                  border: '1px solid var(--accent-green)',
+                  background: 'rgba(204,255,0,0.12)',
+                  pointerEvents: 'none',
+                  zIndex: 5,
+                }}
+              />
+            )}
             {!doc.clips.length && (
               <div className="flex h-full w-full items-center justify-center" style={{ position: 'absolute', inset: 0, color: 'var(--text-secondary)', fontSize: 13, pointerEvents: 'none' }}>
                 Импортируйте медиа кнопкой ＋ у дорожки
@@ -250,14 +351,14 @@ function TrackHeader({ track }: { track: ProTrack }) {
       let at = playhead;
       for (const p of paths) {
         const dur = (await probeDuration(p, 'video')) || 3;
-        addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0 });
+        addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
         at += dur;
       }
     } else {
       const p = await window.electronAPI.selectAudio();
       if (!p) return;
       const dur = (await probeDuration(p, 'audio')) || 3;
-      addClip({ trackId: track.id, sourceFile: p, timelineStart: playhead, duration: dur, inPoint: 0 });
+      addClip({ trackId: track.id, sourceFile: p, timelineStart: playhead, duration: dur, inPoint: 0, sourceDuration: dur });
     }
   };
 
@@ -283,10 +384,104 @@ function TrackHeader({ track }: { track: ProTrack }) {
 
 // ─── Дорожка с клипами (виртуализация) ──────────────────────────────────────
 
-function Lane({ track, y, vpW, pxPerSec, scrollX }: { track: ProTrack; y: number; vpW: number; pxPerSec: number; scrollX: number }) {
+interface LaneHelpers {
+  timeAt: (clientX: number) => number;
+  snap: (t: number, exclude: Set<string>) => number;
+  trackAt: (clientY: number) => string | null;
+}
+
+function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { track: ProTrack; y: number; vpW: number; pxPerSec: number; scrollX: number } & LaneHelpers) {
   const clips = useProStore((s) => s.doc.clips.filter((c) => c.trackId === track.id));
   const selected = useProStore((s) => s.selectedClipIds);
-  const setSelection = useProStore((s) => s.setSelection);
+
+  // Перемещение клипа (Move, §3.3): вдоль таймлайна + между дорожками, с прилипанием.
+  const onBodyDown = (e: React.PointerEvent, c: (typeof clips)[number]) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const st = useProStore.getState();
+    if (st.activeTool === 'blade') {
+      st.splitClipAt(c.id, timeAt(e.clientX));
+      return;
+    }
+    const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+    let sel = st.selectedClipIds;
+    if (multi) sel = sel.includes(c.id) ? sel : [...sel, c.id];
+    else if (!sel.includes(c.id)) sel = [c.id];
+    st.setSelection(sel);
+
+    const movingIds = sel;
+    const startTime = timeAt(e.clientX);
+    const origStart = new Map(st.doc.clips.filter((cl) => movingIds.includes(cl.id)).map((cl) => [cl.id, cl.timelineStart]));
+    const minOrig = Math.min(...origStart.values());
+    const origPrimary = c.timelineStart;
+    const dur = c.duration;
+    const exclude = new Set(movingIds);
+
+    const move = (ev: PointerEvent) => {
+      const dt = timeAt(ev.clientX) - startTime;
+      const raw = origPrimary + dt;
+      const snapStart = snap(raw, exclude);
+      const snapEnd = snap(raw + dur, exclude) - dur;
+      const target = Math.abs(snapEnd - raw) < Math.abs(snapStart - raw) ? snapEnd : snapStart;
+      let applied = target - origPrimary;
+      applied = Math.max(applied, -minOrig); // не левее нуля
+      const cur = useProStore.getState();
+      if (movingIds.length === 1) {
+        const tId = trackAt(ev.clientY) || c.trackId;
+        cur.moveClip(c.id, tId, origPrimary + applied);
+      } else {
+        for (const id of movingIds) {
+          const os = origStart.get(id) ?? 0;
+          const clip = cur.doc.clips.find((x) => x.id === id);
+          if (clip) cur.moveClip(id, clip.trackId, os + applied);
+        }
+      }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // Подрезка краёв (Trim, §3.3): левый край меняет in-point+старт, правый — длину.
+  const onGripDown = (e: React.PointerEvent, c: (typeof clips)[number], side: 'l' | 'r') => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    const st = useProStore.getState();
+    if (st.activeTool === 'blade') {
+      st.splitClipAt(c.id, timeAt(e.clientX));
+      return;
+    }
+    st.setSelection([c.id]);
+    const startTime = timeAt(e.clientX);
+    const orig = { start: c.timelineStart, inPoint: c.inPoint, duration: c.duration, srcDur: c.sourceDuration };
+    const exclude = new Set([c.id]);
+    const move = (ev: PointerEvent) => {
+      const dt = timeAt(ev.clientX) - startTime;
+      const cur = useProStore.getState();
+      if (side === 'l') {
+        let newStart = snap(orig.start + dt, exclude);
+        newStart = Math.max(orig.start - orig.inPoint, newStart); // in-point >= 0
+        newStart = Math.min(newStart, orig.start + orig.duration - 0.05); // длина >= min
+        const shift = newStart - orig.start;
+        cur.setClipTrim(c.id, { timelineStart: newStart, inPoint: orig.inPoint + shift, duration: orig.duration - shift });
+      } else {
+        let newEnd = snap(orig.start + orig.duration + dt, exclude);
+        newEnd = Math.max(newEnd, orig.start + 0.05);
+        let dur2 = newEnd - orig.start;
+        if (orig.srcDur) dur2 = Math.min(dur2, orig.srcDur - orig.inPoint); // не длиннее источника
+        cur.setClipTrim(c.id, { timelineStart: orig.start, inPoint: orig.inPoint, duration: dur2 });
+      }
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
 
   return (
     <div style={{ position: 'absolute', top: y, left: 0, right: 0, height: track.height, borderBottom: '1px solid var(--border)' }}>
@@ -309,12 +504,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX }: { track: ProTrack; y: number
         return (
           <div
             key={c.id}
-            onPointerDown={(e) => {
-              if (e.button !== 0) return;
-              e.stopPropagation();
-              const multi = e.shiftKey || e.ctrlKey || e.metaKey;
-              setSelection(multi ? Array.from(new Set([...selected, c.id])) : [c.id]);
-            }}
+            onPointerDown={(e) => onBodyDown(e, c)}
             style={{
               position: 'absolute',
               left: visL,
@@ -327,7 +517,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX }: { track: ProTrack; y: number
               borderRightWidth: trueRight ? (isSel ? 2 : 1) : 0,
               borderRadius: 5,
               overflow: 'hidden',
-              cursor: 'pointer',
+              cursor: 'grab',
             }}
           >
             {track.kind === 'video' ? (
@@ -338,11 +528,26 @@ function Lane({ track, y, vpW, pxPerSec, scrollX }: { track: ProTrack; y: number
             <span style={{ position: 'absolute', left: 4, bottom: 2, fontSize: 10, color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 3, padding: '0 4px', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
               {c.duration.toFixed(1)}с
             </span>
+            {trueLeft && <div onPointerDown={(e) => onGripDown(e, c, 'l')} style={gripStyle('l')} title="Подрезать слева" />}
+            {trueRight && <div onPointerDown={(e) => onGripDown(e, c, 'r')} style={gripStyle('r')} title="Подрезать справа" />}
           </div>
         );
       })}
     </div>
   );
+}
+
+function gripStyle(side: 'l' | 'r'): React.CSSProperties {
+  return {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    [side === 'l' ? 'left' : 'right']: 0,
+    width: 8,
+    cursor: 'ew-resize',
+    zIndex: 2,
+    background: `linear-gradient(${side === 'l' ? 'to right' : 'to left'}, rgba(204,255,0,0.45), transparent)`,
+  };
 }
 
 // Полоса миниатюр по видимой части клипа.

@@ -45,7 +45,15 @@ export interface ProState {
   // Документ.
   addClip: (clip: Omit<ProClip, 'id'>) => string;
   toggleTrackFlag: (trackId: string, flag: 'muted' | 'solo' | 'locked' | 'hidden') => void;
+  moveClip: (id: string, trackId: string, timelineStart: number) => void;
+  moveClipsBy: (ids: string[], dt: number) => void;
+  setClipTrim: (id: string, patch: { timelineStart: number; inPoint: number; duration: number }) => void;
+  splitClipAt: (id: string, atTime: number) => void;
+  removeClips: (ids: string[]) => void;
+  rippleDeleteClips: (ids: string[]) => void;
 }
+
+const MIN_DUR = 0.05; // минимальная длина клипа (сек)
 
 export const useProStore = create<ProState>()(
   immer((set) => ({
@@ -118,6 +126,83 @@ export const useProStore = create<ProState>()(
       set((s) => {
         const t = s.doc.tracks.find((tr) => tr.id === trackId);
         if (t) t[flag] = !t[flag];
+      }),
+
+    moveClip: (id, trackId, timelineStart) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        const target = s.doc.tracks.find((t) => t.id === trackId);
+        const cur = s.doc.tracks.find((t) => t.id === c.trackId);
+        // Смена дорожки — только между дорожками того же типа.
+        if (target && cur && target.kind === cur.kind && !target.locked) c.trackId = trackId;
+        c.timelineStart = Math.max(0, timelineStart);
+      }),
+
+    moveClipsBy: (ids, dt) =>
+      set((s) => {
+        // Не даём уехать левее нуля: ограничиваем сдвиг самым левым клипом.
+        const sel = s.doc.clips.filter((c) => ids.includes(c.id));
+        if (!sel.length) return;
+        const minStart = Math.min(...sel.map((c) => c.timelineStart));
+        const applied = Math.max(dt, -minStart);
+        for (const c of sel) c.timelineStart += applied;
+      }),
+
+    setClipTrim: (id, patch) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        c.timelineStart = Math.max(0, patch.timelineStart);
+        c.inPoint = Math.max(0, patch.inPoint);
+        c.duration = Math.max(MIN_DUR, patch.duration);
+      }),
+
+    splitClipAt: (id, atTime) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        const end = c.timelineStart + c.duration;
+        if (atTime <= c.timelineStart + MIN_DUR || atTime >= end - MIN_DUR) return;
+        const offset = atTime - c.timelineStart; // сек от начала клипа
+        const rightId = nextClipId();
+        const rightEffects = (c.effects ?? []).filter((ef) => ef.offset >= offset).map((ef) => ({ ...ef, offset: ef.offset - offset }));
+        const leftEffects = (c.effects ?? []).filter((ef) => ef.offset < offset);
+        const right: ProClip = {
+          ...c,
+          id: rightId,
+          timelineStart: atTime,
+          inPoint: c.inPoint + offset,
+          duration: c.duration - offset,
+          effects: rightEffects.length ? rightEffects : undefined,
+        };
+        c.duration = offset;
+        c.effects = leftEffects.length ? leftEffects : undefined;
+        s.doc.clips.push(right);
+      }),
+
+    removeClips: (ids) =>
+      set((s) => {
+        s.doc.clips = s.doc.clips.filter((c) => !ids.includes(c.id));
+        s.selectedClipIds = s.selectedClipIds.filter((id) => !ids.includes(id));
+      }),
+
+    rippleDeleteClips: (ids) =>
+      set((s) => {
+        const removed = s.doc.clips.filter((c) => ids.includes(c.id));
+        const tracks = Array.from(new Set(removed.map((c) => c.trackId)));
+        for (const trackId of tracks) {
+          const rem = removed.filter((c) => c.trackId === trackId).sort((a, b) => b.timelineStart - a.timelineStart);
+          for (const r of rem) {
+            for (const c of s.doc.clips) {
+              if (c.trackId === trackId && !ids.includes(c.id) && c.timelineStart > r.timelineStart) {
+                c.timelineStart = Math.max(0, c.timelineStart - r.duration);
+              }
+            }
+          }
+        }
+        s.doc.clips = s.doc.clips.filter((c) => !ids.includes(c.id));
+        s.selectedClipIds = s.selectedClipIds.filter((id) => !ids.includes(id));
       }),
   }))
 );
