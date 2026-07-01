@@ -568,6 +568,10 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const isVideo = track.kind === 'video' && !track.isAdjustment;
     openMenu(e.clientX, e.clientY, [
       ...(canSplit ? [{ label: 'Разрезать по плейхеду (Ctrl+K)', onClick: () => { st.pushHistory(); st.splitClipAt(c.id, ph); } }] : []),
+      ...(clips.some((o) => o.sourceFile === c.sourceFile && o.id !== c.id && Math.abs(o.timelineStart - (c.timelineStart + c.duration)) < 0.05)
+        ? [{ label: 'Склеить со следующим', onClick: () => { st.pushHistory(); st.mergeWithNext(c.id); } }]
+        : []),
+      ...(c.transition ? [{ label: 'Убрать переход', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, null); } }] : []),
       { label: 'Копировать (Ctrl+C)', onClick: () => st.copyClips(ids) },
       { label: 'Дублировать (Ctrl+D)', onClick: () => { st.pushHistory(); st.duplicateClips(ids); } },
       ...(isVideo

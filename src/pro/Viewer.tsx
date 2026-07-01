@@ -54,6 +54,7 @@ export default function Viewer() {
   const useProxy = useProStore((s) => s.useProxy);
   const setResolution = useProStore((s) => s.setResolution);
   const playhead = useProStore((s) => s.playhead); // для реактивного текстового оверлея
+  const selClip = useSelectedVideoClip(doc); // для перетаскивания кадра в превью
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -204,6 +205,27 @@ export default function Viewer() {
     }
   }
 
+  // Перетаскивание кадра мышкой прямо в превью (меняет Position выделенного клипа).
+  const onFrameDrag = (e: React.PointerEvent) => {
+    if (!selClip || e.button !== 0) return;
+    e.preventDefault();
+    const sc = dispW / (doc.width || 1) || 1;
+    let last = { x: e.clientX, y: e.clientY };
+    let pushed = false;
+    const move = (ev: PointerEvent) => {
+      if (!pushed) { useProStore.getState().pushHistory(); pushed = true; }
+      const dx = (ev.clientX - last.x) / sc;
+      const dy = (ev.clientY - last.y) / sc;
+      last = { x: ev.clientX, y: ev.clientY };
+      const st = useProStore.getState();
+      const ct = { ...DEFAULT_TRANSFORM, ...st.doc.clips.find((c) => c.id === selClip.id)?.transform };
+      st.updateClipTransform(selClip.id, { x: ct.x + dx, y: ct.y + dy });
+    };
+    const up = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // Letterbox.
   const aspect = doc.width / doc.height;
   let dispW = box.w;
@@ -257,6 +279,9 @@ export default function Viewer() {
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transformOrigin: 'center center', background: '#000' }}
             />
           </div>
+          {viewerMode === 'none' && selClip && (
+            <div onPointerDown={onFrameDrag} title="Тяни — двигать кадр (Position)" style={{ position: 'absolute', inset: 0, cursor: 'move', zIndex: 1 }} />
+          )}
           {activeTexts(doc, playhead).map((c) => {
             const tt = { ...DEFAULT_TEXT, ...c.text };
             return (

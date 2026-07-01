@@ -99,6 +99,7 @@ export interface ProState {
   moveClipsBy: (ids: string[], dt: number) => void;
   setClipTrim: (id: string, patch: { timelineStart: number; inPoint: number; duration: number }) => void;
   splitClipAt: (id: string, atTime: number) => void;
+  mergeWithNext: (id: string) => void;
   removeClips: (ids: string[]) => void;
   rippleDeleteClips: (ids: string[]) => void;
   copyClips: (ids: string[]) => void;
@@ -351,6 +352,19 @@ export const useProStore = create<ProState>()(
         c.duration = offset;
         c.effects = leftEffects.length ? leftEffects : undefined;
         s.doc.clips.push(right);
+      }),
+
+    mergeWithNext: (id) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        // Соседний справа клип того же источника, вплотную.
+        const next = s.doc.clips
+          .filter((o) => o.trackId === c.trackId && o.id !== id && o.sourceFile === c.sourceFile && Math.abs(o.timelineStart - (c.timelineStart + c.duration)) < 0.05)
+          .sort((a, b) => a.timelineStart - b.timelineStart)[0];
+        if (!next) return;
+        c.duration += next.duration;
+        s.doc.clips = s.doc.clips.filter((o) => o.id !== next.id);
       }),
 
     removeClips: (ids) =>
