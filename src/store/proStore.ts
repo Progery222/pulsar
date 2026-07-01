@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { createEmptyProDocument, type ProClip, type ProDocument, type ProTool } from '../pro/proTypes';
+import {
+  createEmptyProDocument,
+  DEFAULT_CROP,
+  DEFAULT_TRANSFORM,
+  type ClipCrop,
+  type ClipTransform,
+  type ProClip,
+  type ProDocument,
+  type ProTool,
+  type ViewerMode,
+} from '../pro/proTypes';
 
 let clipSeq = 0;
 function nextClipId(): string {
@@ -25,6 +35,7 @@ export interface ProState {
   activeTool: ProTool;
   snapping: boolean; // прилипание (отключается клавишей N)
   selectedClipIds: string[];
+  viewerMode: ViewerMode; // режим оверлея во Viewer (Transform/Crop)
 
   // Раскладка панелей (resizable, Фаза 1).
   leftWidth: number;
@@ -38,6 +49,9 @@ export interface ProState {
   setTool: (tool: ProTool) => void;
   toggleSnapping: () => void;
   setSelection: (ids: string[]) => void;
+  setViewerMode: (mode: ViewerMode) => void;
+  updateClipTransform: (id: string, patch: Partial<ClipTransform>) => void;
+  updateClipCrop: (id: string, patch: Partial<ClipCrop>) => void;
   setLeftWidth: (w: number) => void;
   setTimelineHeight: (h: number) => void;
   resetDocument: () => void;
@@ -67,6 +81,7 @@ export const useProStore = create<ProState>()(
     activeTool: 'select',
     snapping: true,
     selectedClipIds: [],
+    viewerMode: 'none',
 
     leftWidth: 300,
     timelineHeight: 300,
@@ -98,6 +113,28 @@ export const useProStore = create<ProState>()(
     setSelection: (ids) =>
       set((s) => {
         s.selectedClipIds = ids;
+      }),
+    setViewerMode: (mode) =>
+      set((s) => {
+        s.viewerMode = mode;
+      }),
+    updateClipTransform: (id, patch) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        c.transform = { ...DEFAULT_TRANSFORM, ...c.transform, ...patch };
+      }),
+    updateClipCrop: (id, patch) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        const next = { ...DEFAULT_CROP, ...c.crop, ...patch };
+        // границы 0..0.9, чтобы кроп не схлопнулся
+        next.top = Math.min(0.9, Math.max(0, next.top));
+        next.bottom = Math.min(0.9, Math.max(0, next.bottom));
+        next.left = Math.min(0.9, Math.max(0, next.left));
+        next.right = Math.min(0.9, Math.max(0, next.right));
+        c.crop = next;
       }),
     setLeftWidth: (w) =>
       set((s) => {

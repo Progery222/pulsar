@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useProStore } from '../store/proStore';
 import Timeline, { zoomAtPlayhead } from './Timeline';
+import Viewer from './Viewer';
+import LeftPanel from './LeftPanel';
 import type { ProTool } from './proTypes';
 
 // Pulsar Pro — рабочее пространство мульти-трек монтажа (§2 ТЗ).
@@ -67,7 +69,7 @@ export default function ProEditor() {
       {/* Верхняя область: Media/Inspector (слева) + Viewer (центр). */}
       <div className="flex" style={{ flex: 1, minHeight: 0 }}>
         <div style={{ width: leftWidth, minWidth: 0, borderRight: '1px solid var(--border)' }}>
-          <MediaInspectorPanel />
+          <LeftPanel />
         </div>
         <div
           onMouseDown={onDragLeft}
@@ -75,7 +77,7 @@ export default function ProEditor() {
           title="Ширина панели"
         />
         <div style={{ flex: 1, minWidth: 0 }}>
-          <ViewerPanel />
+          <Viewer />
         </div>
       </div>
 
@@ -92,53 +94,6 @@ export default function ProEditor() {
       {/* Timeline (нижняя панель). */}
       <div style={{ height: timelineHeight, borderTop: '1px solid var(--border)' }}>
         <Timeline />
-      </div>
-    </div>
-  );
-}
-
-// ─── Зоны (Фаза 1: плейсхолдеры) ──────────────────────────────────────────
-
-function MediaInspectorPanel() {
-  return (
-    <Zone title="Media / Inspector">
-      <TabsStub tabs={['Media', 'Inspector']} />
-      <Placeholder text="Бин исходников проекта и параметры выделенного клипа (Transform, Crop, Effects, Audio)." />
-    </Zone>
-  );
-}
-
-function ViewerPanel() {
-  const isPlaying = useProStore((s) => s.isPlaying);
-  const setPlaying = useProStore((s) => s.setPlaying);
-  return (
-    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)' }}>
-      {/* Окно предпросмотра (Фаза 4 — WebGL-компоновщик). */}
-      <div className="flex flex-1 items-center justify-center" style={{ minHeight: 0, padding: 16 }}>
-        <div
-          className="flex items-center justify-center"
-          style={{
-            aspectRatio: '16 / 9',
-            maxWidth: '100%',
-            maxHeight: '100%',
-            width: '100%',
-            background: '#000',
-            borderRadius: 8,
-            color: 'var(--text-secondary)',
-            fontSize: 13,
-          }}
-        >
-          Viewer (WebGL)
-        </div>
-      </div>
-      {/* Кнопки управления воспроизведением (§2 ТЗ). */}
-      <div
-        className="flex items-center justify-center"
-        style={{ gap: 14, padding: '10px 0', borderTop: '1px solid var(--border)' }}
-      >
-        <TransportBtn label="⏮" title="В начало" />
-        <TransportBtn label={isPlaying ? '⏸' : '▶'} title="Play / Pause" onClick={() => setPlaying(!isPlaying)} primary />
-        <TransportBtn label="⏭" title="В конец" />
       </div>
     </div>
   );
@@ -181,53 +136,6 @@ function ProToolbar() {
 
 // ─── Вспомогательные примитивы ────────────────────────────────────────────
 
-function Zone({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-secondary)' }}>
-      <div
-        style={{ padding: '8px 12px', fontSize: 12, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)' }}
-      >
-        {title}
-      </div>
-      <div className="flex flex-1 flex-col" style={{ minHeight: 0, overflow: 'auto' }}>
-        {children}
-      </div>
-    </div>
-  );
-}
-
-function TabsStub({ tabs }: { tabs: string[] }) {
-  return (
-    <div className="flex" style={{ borderBottom: '1px solid var(--border)' }}>
-      {tabs.map((t, i) => (
-        <div
-          key={t}
-          style={{
-            padding: '8px 14px',
-            fontSize: 13,
-            color: i === 0 ? 'var(--text-primary)' : 'var(--text-secondary)',
-            borderBottom: i === 0 ? '2px solid var(--accent-green)' : '2px solid transparent',
-            cursor: 'pointer',
-          }}
-        >
-          {t}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function Placeholder({ text }: { text: string }) {
-  return (
-    <div
-      className="flex flex-1 items-center justify-center"
-      style={{ padding: 20, textAlign: 'center', fontSize: 12.5, color: 'var(--text-secondary)', lineHeight: 1.5 }}
-    >
-      {text}
-    </div>
-  );
-}
-
 function ToolBtn({
   children,
   active,
@@ -254,37 +162,6 @@ function ToolBtn({
       }}
     >
       {children}
-    </button>
-  );
-}
-
-function TransportBtn({
-  label,
-  title,
-  onClick,
-  primary,
-}: {
-  label: string;
-  title: string;
-  onClick?: () => void;
-  primary?: boolean;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      title={title}
-      style={{
-        width: primary ? 44 : 36,
-        height: 36,
-        borderRadius: 8,
-        fontSize: 16,
-        cursor: 'pointer',
-        color: primary ? 'var(--bg-primary)' : 'var(--text-primary)',
-        background: primary ? 'var(--accent-green)' : 'var(--bg-tertiary)',
-        border: '1px solid var(--border)',
-      }}
-    >
-      {label}
     </button>
   );
 }

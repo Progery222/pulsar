@@ -60,14 +60,22 @@ export interface ProDocument {
   tracks: ProTrack[];
   clips: ProClip[];
   fps: number; // для линейки HH:MM:SS:FF
+  width: number; // разрешение проекта (для Viewer/композиции)
+  height: number;
 }
 
 export type ProTool = 'select' | 'blade' | 'ripple';
+export type ViewerMode = 'none' | 'transform' | 'crop';
+
+export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
+export const DEFAULT_CROP: ClipCrop = { top: 0, bottom: 0, left: 0, right: 0 };
 
 // Пустой документ по умолчанию: 2 видео + 2 аудио дорожки, 30 fps.
 export function createEmptyProDocument(): ProDocument {
   return {
     fps: 30,
+    width: 1920,
+    height: 1080,
     tracks: [
       { id: 'V2', kind: 'video', name: 'V2', height: 64, muted: false, solo: false, locked: false, hidden: false },
       { id: 'V1', kind: 'video', name: 'V1', height: 64, muted: false, solo: false, locked: false, hidden: false },
