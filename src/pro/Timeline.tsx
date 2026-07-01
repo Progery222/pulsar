@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useProStore } from '../store/proStore';
 import { mediaUrl } from '../utils/media';
@@ -10,6 +10,13 @@ import { ADJUST_LABEL, type ProTrack } from './proTypes';
 const HEADER_W = 132; // ширина колонки заголовков дорожек
 const RULER_H = 30;
 const THUMB_W = 90;
+
+interface MenuItem {
+  label: string;
+  onClick: () => void;
+  danger?: boolean;
+}
+const MenuCtx = createContext<(x: number, y: number, items: MenuItem[]) => void>(() => {});
 
 function clamp(v: number, min: number, max: number) {
   return Math.min(max, Math.max(min, v));
@@ -160,6 +167,13 @@ export default function Timeline() {
     return null;
   };
 
+  // Позиция реза под курсором (для инструмента Blade).
+  const [bladeX, setBladeX] = useState<number | null>(null);
+
+  // Контекстное меню (ПКМ).
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const openMenu = useCallback((x: number, y: number, items: MenuItem[]) => setMenu({ x, y, items }), []);
+
   // Marquee-выделение (лассо, §3.3 ТЗ) — координаты относительно зоны дорожек.
   const [marquee, setMarquee] = useState<{ x0: number; y0: number; x1: number; y1: number } | null>(null);
   const onMarqueeDown = (e: React.PointerEvent) => {
@@ -233,7 +247,19 @@ export default function Timeline() {
   const playheadX = playhead * pxPerSec - scrollX;
   const contentEnd = doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
 
+  const onEmptyContext = (e: React.PointerEvent | React.MouseEvent) => {
+    e.preventDefault();
+    const st = useProStore.getState();
+    const t = timeAtClientX(e.clientX);
+    openMenu(e.clientX, e.clientY, [
+      { label: '＋ Видео-дорожка', onClick: () => { st.pushHistory(); st.addTrack('video'); } },
+      { label: '＋ Аудио-дорожка', onClick: () => { st.pushHistory(); st.addTrack('audio'); } },
+      { label: 'Вставить в плейхед', onClick: () => { st.pushHistory(); st.pasteClips(t); } },
+    ]);
+  };
+
   return (
+    <MenuCtx.Provider value={openMenu}>
     <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-secondary)', userSelect: 'none', WebkitUserSelect: 'none' }}>
       <ZoomBar contentEnd={contentEnd} />
       <div className="flex" style={{ flex: 1, minHeight: 0 }}>
@@ -268,6 +294,13 @@ export default function Timeline() {
           {/* Дорожки с клипами. */}
           <div
             onPointerDown={onMarqueeDown}
+            onContextMenu={onEmptyContext}
+            onPointerMove={(e) => {
+              if (activeTool !== 'blade') { if (bladeX !== null) setBladeX(null); return; }
+              const r = rightRef.current;
+              if (r) setBladeX(e.clientX - r.getBoundingClientRect().left);
+            }}
+            onPointerLeave={() => setBladeX(null)}
             style={{ position: 'absolute', top: RULER_H, left: 0, right: 0, bottom: 0, overflow: 'hidden', cursor: activeTool === 'blade' ? 'crosshair' : 'default' }}
           >
             <div style={{ transform: `translateY(${-clampedScrollY}px)`, position: 'relative' }}>
@@ -327,9 +360,39 @@ export default function Timeline() {
               <div style={{ position: 'absolute', top: 0, left: -5, width: 10, height: 10, background: 'var(--accent-green)', clipPath: 'polygon(0 0,100% 0,50% 100%)' }} />
             </div>
           )}
+
+          {/* Линия реза под курсором (инструмент Blade). */}
+          {activeTool === 'blade' && bladeX !== null && bladeX >= 0 && bladeX <= vp.w && (
+            <div style={{ position: 'absolute', top: RULER_H, bottom: 0, left: bladeX, width: 0, borderLeft: '1px dashed #ff5b5b', zIndex: 6, pointerEvents: 'none' }}>
+              <div style={{ position: 'absolute', top: 1, left: -7, fontSize: 12 }}>🔪</div>
+            </div>
+          )}
         </div>
       </div>
+      {menu && <ContextMenu x={menu.x} y={menu.y} items={menu.items} onClose={() => setMenu(null)} />}
     </div>
+    </MenuCtx.Provider>
+  );
+}
+
+function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  return (
+    <>
+      <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 2000 }} />
+      <div style={{ position: 'fixed', top: y, left: x, minWidth: 180, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, zIndex: 2001, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
+        {items.map((it, i) => (
+          <button
+            key={i}
+            onClick={() => { it.onClick(); onClose(); }}
+            style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', fontSize: 12.5, borderRadius: 6, border: 'none', background: 'transparent', color: it.danger ? 'var(--danger, #ff6b6b)' : 'var(--text-primary)', cursor: 'pointer' }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'var(--bg-tertiary)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            {it.label}
+          </button>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -405,6 +468,7 @@ function TrackHeader({ track }: { track: ProTrack }) {
   const addClip = useProStore((s) => s.addClip);
   const addAdjustmentClip = useProStore((s) => s.addAdjustmentClip);
   const removeTrack = useProStore((s) => s.removeTrack);
+  const openMenu = useContext(MenuCtx);
   const flag = (name: 'muted' | 'solo' | 'locked' | 'hidden') => {
     useProStore.getState().pushHistory();
     toggle(track.id, name);
@@ -413,6 +477,18 @@ function TrackHeader({ track }: { track: ProTrack }) {
     if (!window.confirm(`Удалить дорожку ${track.name} и её клипы?`)) return;
     useProStore.getState().pushHistory();
     removeTrack(track.id);
+  };
+  const onContext = (e: React.MouseEvent) => {
+    e.preventDefault();
+    const st = useProStore.getState();
+    openMenu(e.clientX, e.clientY, [
+      { label: '＋ Видео-дорожка', onClick: () => { st.pushHistory(); st.addTrack('video'); } },
+      { label: '＋ Аудио-дорожка', onClick: () => { st.pushHistory(); st.addTrack('audio'); } },
+      { label: track.muted ? 'Включить звук' : 'Заглушить (Mute)', onClick: () => flag('muted') },
+      { label: track.solo ? 'Solo выкл' : 'Solo', onClick: () => flag('solo') },
+      { label: track.locked ? 'Разблокировать' : 'Заблокировать (Lock)', onClick: () => flag('locked') },
+      { label: 'Удалить дорожку', danger: true, onClick: onDelete },
+    ]);
   };
 
   const onImport = async () => {
@@ -442,7 +518,7 @@ function TrackHeader({ track }: { track: ProTrack }) {
   };
 
   return (
-    <div style={{ height: track.height, borderBottom: '1px solid var(--border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, background: track.kind === 'audio' ? 'var(--bg-primary)' : 'var(--bg-secondary)' }}>
+    <div onContextMenu={onContext} style={{ height: track.height, borderBottom: '1px solid var(--border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, background: track.kind === 'audio' ? 'var(--bg-primary)' : 'var(--bg-secondary)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{track.name}</span>
         <button onClick={onImport} title={track.isAdjustment ? 'Добавить блок' : 'Импортировать медиа'} style={miniIcon}>＋</button>
@@ -473,6 +549,25 @@ interface LaneHelpers {
 function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { track: ProTrack; y: number; vpW: number; pxPerSec: number; scrollX: number } & LaneHelpers) {
   const clips = useProStore(useShallow((s) => s.doc.clips.filter((c) => c.trackId === track.id)));
   const selected = useProStore((s) => s.selectedClipIds);
+  const openMenu = useContext(MenuCtx);
+
+  const onClipContext = (e: React.MouseEvent, c: (typeof clips)[number]) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const st = useProStore.getState();
+    if (!st.selectedClipIds.includes(c.id)) st.setSelection([c.id]);
+    const ids = useProStore.getState().selectedClipIds;
+    const ph = st.playhead;
+    const canSplit = ph > c.timelineStart && ph < c.timelineStart + c.duration;
+    openMenu(e.clientX, e.clientY, [
+      ...(canSplit ? [{ label: 'Разрезать по плейхеду', onClick: () => { st.pushHistory(); st.splitClipAt(c.id, ph); } }] : []),
+      { label: 'Копировать', onClick: () => st.copyClips(ids) },
+      { label: 'Дублировать', onClick: () => { st.pushHistory(); st.duplicateClips(ids); } },
+      { label: c.locked ? 'Открепить' : 'Закрепить', onClick: () => { st.pushHistory(); st.toggleClipLock(c.id); } },
+      { label: 'Удалить', danger: true, onClick: () => { st.pushHistory(); st.removeClips(ids); } },
+      { label: 'Удалить со сдвигом (Ripple)', danger: true, onClick: () => { st.pushHistory(); st.rippleDeleteClips(ids); } },
+    ]);
+  };
 
   // Перемещение клипа (Move, §3.3): вдоль таймлайна + между дорожками, с прилипанием.
   const onBodyDown = (e: React.PointerEvent, c: (typeof clips)[number]) => {
@@ -620,6 +715,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
           <div
             key={c.id}
             onPointerDown={(e) => onBodyDown(e, c)}
+            onContextMenu={(e) => onClipContext(e, c)}
             style={{
               position: 'absolute',
               left: visL,
