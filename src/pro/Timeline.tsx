@@ -482,6 +482,7 @@ function TrackHeader({ track }: { track: ProTrack }) {
     e.preventDefault();
     const st = useProStore.getState();
     openMenu(e.clientX, e.clientY, [
+      { label: track.isAdjustment ? 'Добавить блок' : 'Импортировать медиа сюда', onClick: onImport },
       { label: '＋ Видео-дорожка', onClick: () => { st.pushHistory(); st.addTrack('video'); } },
       { label: '＋ Аудио-дорожка', onClick: () => { st.pushHistory(); st.addTrack('audio'); } },
       { label: track.muted ? 'Включить звук' : 'Заглушить (Mute)', onClick: () => flag('muted') },
@@ -523,10 +524,9 @@ function TrackHeader({ track }: { track: ProTrack }) {
 
   return (
     <div onContextMenu={onContext} style={{ height: track.height, borderBottom: '1px solid var(--border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, background: track.kind === 'audio' ? 'var(--bg-primary)' : 'var(--bg-secondary)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="ПКМ — меню дорожки">
         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{track.name}</span>
-        <button onClick={onImport} title={track.isAdjustment ? 'Добавить блок' : 'Импортировать медиа'} style={miniIcon}>＋</button>
-        <button onClick={onDelete} title="Удалить дорожку" style={{ ...miniIcon, marginLeft: 0 }}>✕</button>
+        <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>⋯</span>
       </div>
       <div style={{ display: 'flex', gap: 3 }}>
         <FlagBtn on={track.muted} onClick={() => flag('muted')} title="Mute">M</FlagBtn>

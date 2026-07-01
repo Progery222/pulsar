@@ -1,7 +1,7 @@
 // Утилиты для работы с медиафайлами в renderer.
 
-const VIDEO_EXTENSIONS = ['mp4', 'mov', 'avi'];
-const AUDIO_EXTENSIONS = ['mp3', 'wav', 'aac'];
+const VIDEO_EXTENSIONS = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'];
+const AUDIO_EXTENSIONS = ['mp3', 'wav', 'aac', 'm4a', 'ogg', 'flac', 'opus'];
 
 // Преобразование абсолютного пути в URL кастомной схемы media://.
 export function mediaUrl(absolutePath: string): string {

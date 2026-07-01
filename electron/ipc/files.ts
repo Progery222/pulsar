@@ -66,7 +66,7 @@ export function registerFileHandlers() {
   ipcMain.handle('dialog:selectVideos', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Видео', extensions: ['mp4', 'mov', 'avi'] }],
+      filters: [{ name: 'Видео', extensions: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v'] }],
     });
     return result.canceled ? [] : result.filePaths;
   });
@@ -75,7 +75,7 @@ export function registerFileHandlers() {
   ipcMain.handle('dialog:selectAudio', async () => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [{ name: 'Аудио', extensions: ['mp3', 'wav', 'aac'] }],
+      filters: [{ name: 'Аудио', extensions: ['mp3', 'wav', 'aac', 'm4a', 'ogg', 'flac', 'opus'] }],
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);
   });

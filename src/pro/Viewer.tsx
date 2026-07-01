@@ -263,10 +263,10 @@ export default function Viewer() {
         <audio ref={audioRef} style={{ display: 'none' }} />
       </div>
 
-      <div className="flex items-center justify-center" style={{ gap: 14, padding: '10px 0', borderTop: '1px solid var(--border)' }}>
-        <Transport label="⏮" title="В начало" onClick={() => setPlayhead(0)} />
-        <Transport label={isPlaying ? '⏸' : '▶'} title="Play / Pause (Space)" primary onClick={() => setPlaying(!isPlaying)} />
-        <Transport label="⏭" title="В конец" onClick={() => setPlayhead(maxEnd(useProStore.getState().doc))} />
+      <div className="flex items-center justify-center" style={{ gap: 12, padding: '10px 0', borderTop: '1px solid var(--border)' }}>
+        <Transport title="В начало" onClick={() => setPlayhead(0)} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="19 20 9 12 19 4" /><rect x="4" y="4" width="2.5" height="16" /></svg>} />
+        <Transport title="Play / Pause (Space)" primary onClick={() => setPlaying(!isPlaying)} icon={isPlaying ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.5" height="16" rx="1" /><rect x="13.5" y="4" width="4.5" height="16" rx="1" /></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 20 12 7 20" /></svg>} />
+        <Transport title="В конец" onClick={() => setPlayhead(maxEnd(useProStore.getState().doc))} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20" /><rect x="17.5" y="4" width="2.5" height="16" /></svg>} />
       </div>
 
       {exp && (
@@ -445,10 +445,28 @@ function ModeBtn({ active, onClick, children }: { active: boolean; onClick: () =
   );
 }
 
-function Transport({ label, title, onClick, primary }: { label: string; title: string; onClick?: () => void; primary?: boolean }) {
+function Transport({ icon, title, onClick, primary }: { icon: React.ReactNode; title: string; onClick?: () => void; primary?: boolean }) {
   return (
-    <button onClick={onClick} title={title} style={{ width: primary ? 44 : 36, height: 36, borderRadius: 8, fontSize: 16, cursor: 'pointer', color: primary ? 'var(--bg-primary)' : 'var(--text-primary)', background: primary ? 'var(--accent-green)' : 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
-      {label}
+    <button
+      onClick={onClick}
+      title={title}
+      style={{
+        width: primary ? 46 : 38,
+        height: 38,
+        borderRadius: primary ? '50%' : 9,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        cursor: 'pointer',
+        color: primary ? 'var(--bg-primary)' : 'var(--text-primary)',
+        background: primary ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+        border: primary ? 'none' : '1px solid var(--border)',
+        transition: 'filter 0.12s',
+      }}
+      onMouseEnter={(e) => (e.currentTarget.style.filter = 'brightness(1.15)')}
+      onMouseLeave={(e) => (e.currentTarget.style.filter = 'none')}
+    >
+      {icon}
     </button>
   );
 }
