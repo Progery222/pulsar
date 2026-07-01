@@ -755,7 +755,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     let moved = false;
     const move = (ev: PointerEvent) => {
       moved = true;
-      useProStore.getState().setClipTransition(c.id, Math.max(0.1, timeAt(ev.clientX) - c.timelineStart));
+      useProStore.getState().setClipTransition(c.id, Math.max(0.1, Math.abs(timeAt(ev.clientX) - c.timelineStart) * 2));
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -766,7 +766,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     window.addEventListener('pointerup', up);
   };
 
-  // Длина crossfade — тянем правый край блока перехода.
+  // Длина crossfade — симметрично от стыка (тянуть любой край в любую сторону = нахлёст).
   const onTransitionResize = (e: React.PointerEvent, c: (typeof clips)[number]) => {
     if (e.button !== 0) return;
     e.stopPropagation();
@@ -777,8 +777,8 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         useProStore.getState().pushHistory();
         pushed = true;
       }
-      const dur = timeAt(ev.clientX) - c.timelineStart;
-      useProStore.getState().setClipTransition(c.id, Math.max(0.1, dur));
+      const half = Math.abs(timeAt(ev.clientX) - c.timelineStart);
+      useProStore.getState().setClipTransition(c.id, Math.max(0.1, half * 2));
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -805,7 +805,6 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         const isSel = selected.includes(c.id);
         const trueLeft = clipStartX >= 0;
         const trueRight = clipEndX <= (vpW || clipEndX);
-        const hasPrevAdj = clips.some((o) => o.id !== c.id && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.02);
 
         return (
           <div
@@ -840,35 +839,30 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
               {c.duration.toFixed(1)}с
             </span>
             {c.locked && <span style={{ position: 'absolute', right: 4, top: 2, fontSize: 11, pointerEvents: 'none' }}>🔒</span>}
-            {c.transition && (
-              <div
-                style={{
-                  position: 'absolute',
-                  left: clipStartX - visL,
-                  top: 0,
-                  bottom: 0,
-                  width: c.transition.duration * pxPerSec,
-                  background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.28), rgba(204,255,0,0.28) 4px, transparent 4px, transparent 8px)',
-                  borderRight: '1px solid var(--accent-green)',
-                  pointerEvents: 'none',
-                  zIndex: 3,
-                }}
-              >
-                <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', pointerEvents: 'auto' }} title="Длина перехода" />
-              </div>
-            )}
-            {trueLeft && hasPrevAdj && !c.transition && (
-              <button
-                onPointerDown={(e) => onTransitionCreate(e, c)}
-                title="Переход (crossfade): тяни вправо — длина, клик — 0.5с"
-                style={{ position: 'absolute', left: 2, top: 2, width: 18, height: 18, borderRadius: '50%', background: 'rgba(13,13,13,0.7)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', fontSize: 11, lineHeight: 1, cursor: 'ew-resize', zIndex: 4, padding: 0 }}
-              >
-                ⇄
-              </button>
-            )}
             {trueLeft && <div onPointerDown={(e) => onGripDown(e, c, 'l')} style={gripStyle('l')} title="Подрезать слева" />}
             {trueRight && <div onPointerDown={(e) => onGripDown(e, c, 'r')} style={gripStyle('r')} title="Подрезать справа" />}
           </div>
+        );
+      })}
+
+      {/* Переходы по центру стыка (поверх клипов, нахлёст в обе стороны). */}
+      {clips.map((c) => {
+        const hasPrev = clips.some((o) => o.id !== c.id && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.02);
+        if (!hasPrev && !c.transition) return null;
+        const bx = c.timelineStart * pxPerSec - scrollX;
+        if (vpW > 0 && (bx < -60 || bx > vpW + 60)) return null;
+        if (c.transition) {
+          const w = c.transition.duration * pxPerSec;
+          return (
+            <div key={'tr' + c.id} style={{ position: 'absolute', left: bx - w / 2, top: 3, height: track.height - 6, width: w, background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.30), rgba(204,255,0,0.30) 4px, transparent 4px, transparent 8px)', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 5 }}>
+              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', left: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize' }} title="Длина перехода" />
+              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize' }} title="Длина перехода" />
+              <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTransition(c.id, null); }} title="Убрать переход" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0 }}>✕</button>
+            </div>
+          );
+        }
+        return (
+          <button key={'add' + c.id} onPointerDown={(e) => onTransitionCreate(e, c)} title="Переход (crossfade): тяни в стороны — нахлёст, клик — 0.5с" style={{ position: 'absolute', left: bx - 9, top: track.height / 2 - 9, width: 18, height: 18, borderRadius: '50%', background: 'rgba(13,13,13,0.7)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', fontSize: 11, lineHeight: 1, cursor: 'ew-resize', zIndex: 5, padding: 0 }}>⇄</button>
         );
       })}
     </div>

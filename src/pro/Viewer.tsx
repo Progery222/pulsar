@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { frameCorners } from './compositor';
-import { activeTexts } from './frame';
+import { activeTexts, buildFrame } from './frame';
 import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -171,32 +171,26 @@ export default function Viewer() {
     const el = videoRef.current;
     const el2 = videoRef2.current;
     if (!el) return;
-    const clip = topActiveClip(d, ph, 'video');
-    if (!clip) {
+    const items = buildFrame(d, ph); // общая логика с экспортом (центрированный crossfade)
+    const hideEl2 = () => { if (el2) { el2.style.opacity = '0'; if (!el2.paused) el2.pause(); curVideoSrc2.current = ''; } };
+    if (!items.length) {
       el.style.opacity = '0';
       if (!el.paused) el.pause();
       curVideoSrc.current = '';
-      if (el2) { el2.style.opacity = '0'; if (!el2.paused) el2.pause(); curVideoSrc2.current = ''; }
+      hideEl2();
       return;
     }
-    // Crossfade: во время перехода показываем уходящий клип на втором слое.
-    let f = 1;
-    let prev: ProClip | null = null;
-    if (clip.transition && ph < clip.timelineStart + clip.transition.duration) {
-      f = Math.max(0, Math.min(1, (ph - clip.timelineStart) / clip.transition.duration));
-      prev = findPrevAdjacent(d.clips, clip);
-    }
+    const top = items[items.length - 1]; // верхний (входящий)
     el.style.display = 'block';
-    el.style.opacity = String(prev ? f : 1);
-    syncOne(el, clip, curVideoSrc, clip.inPoint + (ph - clip.timelineStart), playing, proxy, proxyMap, d);
-    if (prev && el2) {
+    el.style.opacity = String(top.alpha);
+    syncOne(el, top.clip, curVideoSrc, top.sourceTime, playing, proxy, proxyMap, d);
+    const outItem = items.find((it) => it.out && it.clip.id !== top.clip.id); // уходящий слой
+    if (outItem && el2) {
       el2.style.display = 'block';
-      el2.style.opacity = String(1 - f);
-      syncOne(el2, prev, curVideoSrc2, prev.inPoint + prev.duration + (ph - clip.timelineStart), playing, proxy, proxyMap, d);
-    } else if (el2) {
-      el2.style.opacity = '0';
-      if (!el2.paused) el2.pause();
-      curVideoSrc2.current = '';
+      el2.style.opacity = String(outItem.alpha);
+      syncOne(el2, outItem.clip, curVideoSrc2, outItem.sourceTime, playing, proxy, proxyMap, d);
+    } else {
+      hideEl2();
     }
   }
 

@@ -14,21 +14,30 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
   const videoTracks = doc.tracks.filter((t) => t.kind === 'video' && !t.isAdjustment);
   const anySolo = videoTracks.some((t) => t.solo);
   const visible = videoTracks.filter((t) => !t.hidden && (!anySolo || t.solo));
-  const bottomUp = [...visible].reverse(); // doc: верхняя дорожка первой → рисуем с нижней
+  const bottomUp = [...visible].reverse();
   const out: DrawItem[] = [];
   for (const t of bottomUp) {
-    const active = doc.clips.filter((c) => c.trackId === t.id && !c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration);
-    for (const B of active) {
-      let alphaB = 1;
-      if (B.transition && ph < B.timelineStart + B.transition.duration) {
-        const d = B.transition.duration;
-        const f = (ph - B.timelineStart) / d;
-        alphaB = f;
-        const A = findPrevAdjacent(doc.clips, B);
-        if (A) out.push({ clip: A, sourceTime: A.inPoint + A.duration + (ph - B.timelineStart), alpha: 1 - f, out: true });
+    const map = new Map<string, DrawItem>();
+    // Обычные активные клипы.
+    for (const c of doc.clips) {
+      if (c.trackId === t.id && !c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration) {
+        map.set(c.id, { clip: c, sourceTime: c.inPoint + (ph - c.timelineStart), alpha: 1 });
       }
-      out.push({ clip: B, sourceTime: B.inPoint + (ph - B.timelineStart), alpha: alphaB });
     }
+    // Переход центрирован на стыке [start-d/2, start+d/2] — нахлёст в обе стороны.
+    for (const B of doc.clips) {
+      if (B.trackId !== t.id || B.text || !B.transition) continue;
+      const d = B.transition.duration;
+      const s = B.timelineStart - d / 2;
+      const e = B.timelineStart + d / 2;
+      if (ph < s || ph >= e) continue;
+      const f = Math.max(0, Math.min(1, (ph - s) / d));
+      map.set(B.id, { clip: B, sourceTime: B.inPoint + (ph - B.timelineStart), alpha: f });
+      const A = findPrevAdjacent(doc.clips, B);
+      if (A) map.set(A.id, { clip: A, sourceTime: A.inPoint + (ph - A.timelineStart), alpha: 1 - f, out: true });
+    }
+    const arr = [...map.values()].sort((a, b) => (a.out ? 0 : 1) - (b.out ? 0 : 1));
+    out.push(...arr);
   }
   return out;
 }
