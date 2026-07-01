@@ -92,6 +92,7 @@ export interface ProState {
   // Документ.
   addClip: (clip: Omit<ProClip, 'id'>) => string;
   addTrack: (kind: 'video' | 'audio') => string;
+  addLinkedAudio: (sourceFile: string, at: number, duration: number, sourceDuration?: number) => void;
   removeTrack: (trackId: string) => void;
   toggleTrackFlag: (trackId: string, flag: 'muted' | 'solo' | 'locked' | 'hidden') => void;
   moveClip: (id: string, trackId: string, timelineStart: number) => void;
@@ -275,6 +276,19 @@ export const useProStore = create<ProState>()(
       });
       return id;
     },
+    addLinkedAudio: (sourceFile, at, duration, sourceDuration) =>
+      set((s) => {
+        const a0 = Math.max(0, at);
+        const overlaps = (tid: string) => s.doc.clips.some((c) => c.trackId === tid && a0 < c.timelineStart + c.duration - 0.01 && a0 + duration > c.timelineStart + 0.01);
+        let tid = s.doc.tracks.find((t) => t.kind === 'audio' && !overlaps(t.id))?.id;
+        if (!tid) {
+          const num = s.doc.tracks.filter((t) => t.kind === 'audio').length + 1;
+          tid = `A${nextClipId()}`;
+          s.doc.tracks.push({ id: tid, kind: 'audio', name: `A${num}`, height: 56, muted: false, solo: false, locked: false, hidden: false });
+        }
+        s.doc.clips.push({ id: nextClipId(), trackId: tid, sourceFile, timelineStart: a0, duration, inPoint: 0, sourceDuration });
+      }),
+
     removeTrack: (trackId) =>
       set((s) => {
         s.doc.tracks = s.doc.tracks.filter((t) => t.id !== trackId);

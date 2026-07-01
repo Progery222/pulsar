@@ -280,12 +280,8 @@ export default function Timeline() {
     const dur = meta.duration || 3;
     st.pushHistory();
     st.addClip({ trackId, sourceFile: path, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: kind === 'video' ? meta.width || undefined : undefined, sourceH: kind === 'video' ? meta.height || undefined : undefined });
-    // Видео → звук отдельным клипом на аудио-дорожку.
-    if (kind === 'video') {
-      const cur = useProStore.getState();
-      const audioTrackId = cur.doc.tracks.find((t) => t.kind === 'audio')?.id ?? cur.addTrack('audio');
-      cur.addClip({ trackId: audioTrackId, sourceFile: path, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
-    }
+    // Видео → звук отдельным клипом на свободную аудио-дорожку (без нахлёста).
+    if (kind === 'video') useProStore.getState().addLinkedAudio(path, at, dur, dur);
   };
 
   const playheadX = playhead * pxPerSec - scrollX;
@@ -557,13 +553,12 @@ function TrackHeader({ track }: { track: ProTrack }) {
       if (!paths.length) return;
       const st = useProStore.getState();
       st.pushHistory();
-      const audioTrackId = st.doc.tracks.find((t) => t.kind === 'audio')?.id ?? st.addTrack('audio');
       let at = playhead;
       for (const p of paths) {
         const meta = await probeMeta(p, 'video');
         const dur = meta.duration || 3;
         addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined });
-        addClip({ trackId: audioTrackId, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
+        st.addLinkedAudio(p, at, dur, dur);
         at += dur;
       }
     } else {

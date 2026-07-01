@@ -33,11 +33,8 @@ async function addFileToProject(path: string) {
   const end = st.doc.clips.filter((c) => c.trackId === track.id).reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
   st.pushHistory();
   st.addClip({ trackId: track.id, sourceFile: path, timelineStart: end, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined });
-  // Видео — добавляем и связанное аудио на аудио-дорожку.
-  if (kind === 'video') {
-    const audioTrackId = st.doc.tracks.find((t) => t.kind === 'audio')?.id ?? st.addTrack('audio');
-    st.addClip({ trackId: audioTrackId, sourceFile: path, timelineStart: end, duration: dur, inPoint: 0, sourceDuration: dur });
-  }
+  // Видео — связанное аудио на свободную аудио-дорожку (без нахлёста).
+  if (kind === 'video') st.addLinkedAudio(path, end, dur, dur);
   showToast(`Добавлено на ${track.name}`);
 }
 
