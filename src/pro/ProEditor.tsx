@@ -92,79 +92,49 @@ export default function ProEditor() {
       const tag = (e.target as HTMLElement)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const st = useProStore.getState();
-      const key = e.key.toLowerCase();
-      if (e.ctrlKey && key === 'z') {
-        e.preventDefault();
-        if (e.shiftKey) st.redo();
-        else st.undo();
-        return;
-      }
-      if (e.ctrlKey && key === 'y') {
-        e.preventDefault();
-        st.redo();
-        return;
-      }
-      if (e.ctrlKey && key === 'c') {
-        st.copyClips(st.selectedClipIds);
-        return;
-      }
-      if (e.ctrlKey && key === 'v') {
-        e.preventDefault();
-        st.pushHistory();
-        st.pasteClips(st.playhead);
-        return;
-      }
-      if (e.ctrlKey && key === 'd') {
-        e.preventDefault();
-        if (st.selectedClipIds.length) {
+      const code = e.code; // независимо от раскладки клавиатуры (кириллица и т.п.)
+      // Комбинации с Ctrl/Cmd.
+      if (e.ctrlKey || e.metaKey) {
+        if (code === 'KeyZ') { e.preventDefault(); if (e.shiftKey) st.redo(); else st.undo(); return; }
+        if (code === 'KeyY') { e.preventDefault(); st.redo(); return; }
+        if (code === 'KeyC') { e.preventDefault(); st.copyClips(st.selectedClipIds); return; }
+        if (code === 'KeyX') {
+          e.preventDefault();
+          if (st.selectedClipIds.length) { st.copyClips(st.selectedClipIds); st.pushHistory(); st.removeClips(st.selectedClipIds); }
+          return;
+        }
+        if (code === 'KeyV') { e.preventDefault(); st.pushHistory(); st.pasteClips(st.playhead); return; }
+        if (code === 'KeyD') { e.preventDefault(); if (st.selectedClipIds.length) { st.pushHistory(); st.duplicateClips(st.selectedClipIds); } return; }
+        if (code === 'KeyA') { e.preventDefault(); st.selectAll(); return; }
+        if (code === 'KeyK') {
+          e.preventDefault();
+          const ph = st.playhead;
+          const targets = st.selectedClipIds.length ? st.doc.clips.filter((c) => st.selectedClipIds.includes(c.id)) : st.doc.clips.slice();
           st.pushHistory();
-          st.duplicateClips(st.selectedClipIds);
+          for (const c of targets) if (ph > c.timelineStart && ph < c.timelineStart + c.duration) st.splitClipAt(c.id, ph);
+          return;
         }
         return;
       }
-      if (e.ctrlKey && key === 'a') {
-        e.preventDefault();
-        st.selectAll();
-        return;
-      }
-      if (e.ctrlKey && key === 'k') {
-        // Разрезать по плейхеду (§3.3 ТЗ).
-        e.preventDefault();
-        const ph = st.playhead;
-        const targets = st.selectedClipIds.length ? st.doc.clips.filter((c) => st.selectedClipIds.includes(c.id)) : st.doc.clips.slice();
-        st.pushHistory();
-        for (const c of targets) if (ph > c.timelineStart && ph < c.timelineStart + c.duration) st.splitClipAt(c.id, ph);
-        return;
-      }
-      if (e.key === '+' || e.key === '=') {
-        e.preventDefault();
-        zoomAtPlayhead(st.pxPerSec * 1.3);
-      } else if (e.key === '-' || e.key === '_') {
-        e.preventDefault();
-        zoomAtPlayhead(st.pxPerSec / 1.3);
-      } else if (key === 'n') {
-        st.toggleSnapping();
-      } else if (key === '?' || (e.shiftKey && key === '/')) {
-        setShowHelp((v) => !v);
-      } else if (key === 'c' || key === 'b') {
-        st.setTool('blade');
-      } else if (key === 'v') {
-        st.setTool('select');
-      } else if (key === 'i') {
-        st.setExportIn(st.playhead); // начало области экспорта
-      } else if (key === 'o') {
-        st.setExportOut(st.playhead); // конец области экспорта
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+      // Без модификаторов.
+      if (code === 'Equal' || code === 'NumpadAdd') { e.preventDefault(); zoomAtPlayhead(st.pxPerSec * 1.3); }
+      else if (code === 'Minus' || code === 'NumpadSubtract') { e.preventDefault(); zoomAtPlayhead(st.pxPerSec / 1.3); }
+      else if (code === 'KeyN') st.toggleSnapping();
+      else if (e.shiftKey && code === 'Slash') setShowHelp((v) => !v);
+      else if (code === 'KeyC' || code === 'KeyB') st.setTool('blade');
+      else if (code === 'KeyV') st.setTool('select');
+      else if (code === 'KeyI') st.setExportIn(st.playhead);
+      else if (code === 'KeyO') st.setExportOut(st.playhead);
+      else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (!st.selectedClipIds.length) return;
         st.pushHistory();
-        // Ripple Delete: Shift+Delete или активный режим Ripple.
         if (e.shiftKey || st.activeTool === 'ripple') st.rippleDeleteClips(st.selectedClipIds);
-        else st.removeClips(st.selectedClipIds); // обычное удаление (оставляет gap)
+        else st.removeClips(st.selectedClipIds);
       } else if (e.key === 'Escape') {
         st.setTool('select');
         st.setSelection([]);
-      } else if (e.code === 'Space') {
+      } else if (code === 'Space') {
         e.preventDefault();
         st.setPlaying(!st.isPlaying);
       }
@@ -340,7 +310,7 @@ function HotkeysOverlay({ onClose }: { onClose: () => void }) {
     ['Ctrl+K', 'Разрезать по плейхеду'],
     ['Delete', 'Удалить (оставить пропуск)'],
     ['Shift+Delete', 'Удалить со сдвигом (Ripple)'],
-    ['Ctrl+C / V', 'Копировать / вставить (в плейхед)'],
+    ['Ctrl+C / X / V', 'Копировать / вырезать / вставить'],
     ['Ctrl+D', 'Дублировать'],
     ['Ctrl+A', 'Выделить всё'],
     ['Ctrl+Z / Ctrl+Shift+Z', 'Отменить / повторить'],
