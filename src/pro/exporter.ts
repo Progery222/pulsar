@@ -71,7 +71,8 @@ function seekTo(v: HTMLVideoElement, t: number): Promise<void> {
 }
 
 function canvasToBlob(c: HTMLCanvasElement): Promise<Blob> {
-  return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'));
+  // JPEG — быстрее и компактнее PNG для экспорта кадров.
+  return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/jpeg', 0.92));
 }
 
 export async function runProExport(doc: ProDocument, onProgress: Progress, settings: ExportSettings): Promise<{ ok: boolean; error?: string; outPath?: string }> {

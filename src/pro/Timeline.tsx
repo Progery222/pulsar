@@ -416,10 +416,15 @@ export default function Timeline() {
 }
 
 function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
+  // Прижимаем меню к экрану, чтобы пункты не уходили под низ/правый край.
+  const estH = items.length * 32 + 8;
+  const estW = 210;
+  const top = Math.max(8, Math.min(y, window.innerHeight - estH - 8));
+  const left = Math.max(8, Math.min(x, window.innerWidth - estW - 8));
   return (
     <>
       <div onClick={onClose} onContextMenu={(e) => { e.preventDefault(); onClose(); }} style={{ position: 'fixed', inset: 0, zIndex: 2000 }} />
-      <div style={{ position: 'fixed', top: y, left: x, minWidth: 180, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, zIndex: 2001, boxShadow: '0 6px 24px rgba(0,0,0,0.4)' }}>
+      <div style={{ position: 'fixed', top, left, minWidth: 190, maxWidth: estW, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 8, padding: 4, zIndex: 2001, boxShadow: '0 6px 24px rgba(0,0,0,0.4)', maxHeight: '90vh', overflow: 'auto' }}>
         {items.map((it, i) => (
           <button
             key={i}

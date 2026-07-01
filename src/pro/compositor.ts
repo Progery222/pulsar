@@ -38,19 +38,21 @@ export class VideoPool {
 }
 
 // Углы кадра клипа в координатах проекта (px). useCrop=false — полный кадр (для Transform-рамки).
-export function frameCorners(doc: ProDocument, clip: ProClip, useCrop: boolean): { pos: number[][]; uv: number[][] } {
+export function frameCorners(doc: ProDocument, clip: ProClip, useCrop: boolean, srcW?: number, srcH?: number): { pos: number[][]; uv: number[][] } {
   const W = doc.width;
   const H = doc.height;
   const cr: ClipCrop = useCrop ? { ...DEFAULT_CROP, ...clip.crop } : DEFAULT_CROP;
   // База — вписывание источника в кадр по аспекту (letterbox), не растягивание.
+  const sw = clip.sourceW || srcW;
+  const sh = clip.sourceH || srcH;
   let bx0 = 0;
   let by0 = 0;
   let bw = W;
   let bh = H;
-  if (clip.sourceW && clip.sourceH) {
-    const k = Math.min(W / clip.sourceW, H / clip.sourceH);
-    bw = clip.sourceW * k;
-    bh = clip.sourceH * k;
+  if (sw && sh) {
+    const k = Math.min(W / sw, H / sh);
+    bw = sw * k;
+    bh = sh * k;
     bx0 = (W - bw) / 2;
     by0 = (H - bh) / 2;
   }
@@ -333,7 +335,7 @@ export class Compositor {
       } catch {
         continue; // кадр ещё не готов
       }
-      const { pos, uv } = frameCorners(doc, clip, true);
+      const { pos, uv } = frameCorners(doc, clip, true, video.videoWidth, video.videoHeight);
       const W = doc.width;
       const H = doc.height;
       // NDC (origin top-left → flip Y). 2 треугольника: 0,1,2 и 0,2,3.

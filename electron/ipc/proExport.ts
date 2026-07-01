@@ -60,7 +60,7 @@ export function registerProExportHandlers() {
   ipcMain.handle('pro:writeFrame', async (_e, dir: string, index: number, data: ArrayBuffer) => {
     if (!isTempDir(dir)) return { error: 'bad dir' };
     const idx = Math.max(0, Math.floor(Number(index) || 0));
-    const name = `frame_${String(idx).padStart(6, '0')}.png`;
+    const name = `frame_${String(idx).padStart(6, '0')}.jpg`;
     await fs.promises.writeFile(path.join(dir, name), Buffer.from(data));
     return { ok: true };
   });
@@ -85,7 +85,7 @@ export function registerProExportHandlers() {
     if (!ffmpegBin) return { error: 'ffmpeg не найден' };
     const { dir, fps, audio, outPath } = opts;
     if (!isTempDir(dir)) return { error: 'bad dir' };
-    const args = ['-y', '-framerate', String(Number(fps) || 30), '-i', path.join(dir, 'frame_%06d.png')];
+    const args = ['-y', '-framerate', String(Number(fps) || 30), '-i', path.join(dir, 'frame_%06d.jpg')];
     for (const a of audio) args.push('-ss', String(Math.max(0, Number(a.inPoint) || 0)), '-t', String(Math.max(0.01, Number(a.duration) || 0.01)), '-i', a.path);
 
     if (audio.length) {
