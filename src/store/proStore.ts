@@ -5,6 +5,7 @@ import {
   DEFAULT_CROP,
   DEFAULT_TRANSFORM,
   findPrevAdjacent,
+  type AdjustFilter,
   type ClipCrop,
   type ClipTransform,
   type Mood,
@@ -18,6 +19,12 @@ let clipSeq = 0;
 function nextClipId(): string {
   clipSeq += 1;
   return `c${clipSeq}_${Math.random().toString(36).slice(2, 7)}`;
+}
+
+let adjSeq = 0;
+function nextAdjTrackId(): string {
+  adjSeq += 1;
+  return `ADJ${adjSeq}`;
 }
 
 // Стор профессионального мульти-трек монтажа (Pulsar Pro).
@@ -73,6 +80,10 @@ export interface ProState {
   setAutoCutMood: (mood: Mood) => void;
   // Заменить авто-клипы на дорожке, сохранив закреплённые (Locked, §5 ТЗ).
   autoCutReplace: (trackId: string, generated: Omit<ProClip, 'id'>[]) => void;
+  // Дорожка корректирующих слоёв (§5 ТЗ).
+  addAdjustmentTrack: () => string;
+  addAdjustmentClip: (trackId: string, start: number, duration: number, filter: AdjustFilter) => void;
+  updateClipAdjust: (id: string, patch: Partial<{ filter: AdjustFilter; intensity: number }>) => void;
 }
 
 const MIN_DUR = 0.05; // минимальная длина клипа (сек)
@@ -278,6 +289,33 @@ export const useProStore = create<ProState>()(
         // Убираем прежние авто-клипы дорожки, но НЕ трогаем закреплённые.
         s.doc.clips = s.doc.clips.filter((c) => c.trackId !== trackId || c.locked);
         for (const g of generated) s.doc.clips.push({ ...g, id: nextClipId() });
+      }),
+
+    addAdjustmentTrack: () => {
+      const id = nextAdjTrackId();
+      set((s) => {
+        // Корр. слой располагается над видео-дорожками (§5 ТЗ) — в начало списка.
+        s.doc.tracks.unshift({ id, kind: 'video', name: 'Adj', height: 40, muted: false, solo: false, locked: false, hidden: false, isAdjustment: true });
+      });
+      return id;
+    },
+    addAdjustmentClip: (trackId, start, duration, filter) =>
+      set((s) => {
+        s.doc.clips.push({
+          id: nextClipId(),
+          trackId,
+          sourceFile: '',
+          timelineStart: Math.max(0, start),
+          duration: Math.max(0.1, duration),
+          inPoint: 0,
+          adjust: { filter, intensity: 1 },
+        });
+      }),
+    updateClipAdjust: (id, patch) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c || !c.adjust) return;
+        c.adjust = { ...c.adjust, ...patch };
       }),
   }))
 );

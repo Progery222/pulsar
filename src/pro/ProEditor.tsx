@@ -164,6 +164,7 @@ function ProToolbar() {
   const toggleSnapping = useProStore((s) => s.toggleSnapping);
   const mood = useProStore((s) => s.autoCutMood);
   const setMood = useProStore((s) => s.setAutoCutMood);
+  const addAdjustmentTrack = useProStore((s) => s.addAdjustmentTrack);
   const [running, setRunning] = useState(false);
 
   const tools: { id: ProTool; label: string }[] = [
@@ -202,6 +203,9 @@ function ProToolbar() {
       </ToolBtn>
       <ToolBtn onClick={cycleMood} title="Плотность нарезки">
         Mood: {MOODS.find((m) => m.id === mood)?.label}
+      </ToolBtn>
+      <ToolBtn onClick={() => { addAdjustmentTrack(); showToast('Дорожка корр. слоёв добавлена (кнопка ＋ на ней)'); }} title="Дорожка корректирующих слоёв (фильтры)">
+        ＋Adjustment
       </ToolBtn>
       <div style={{ marginLeft: 'auto' }}>
         <ToolBtn active={snapping} onClick={toggleSnapping} title="Прилипание (N)">

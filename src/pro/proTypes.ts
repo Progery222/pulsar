@@ -42,6 +42,7 @@ export interface ProClip {
   effects?: ProEffectSlot[];
   locked?: boolean; // закреплён — Auto-Cut не перезаписывает (§5 ТЗ)
   transition?: { duration: number }; // crossfade у левого края с предыдущим клипом (§5 ТЗ)
+  adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
 }
 
 // Дорожка (§3.1 ТЗ). Видео (V1,V2…) сверху, аудио (A1,A2…) снизу.
@@ -54,6 +55,7 @@ export interface ProTrack {
   solo: boolean;
   locked: boolean;
   hidden: boolean; // toggle visibility (только видео)
+  isAdjustment?: boolean; // дорожка корректирующих слоёв (§5 ТЗ)
 }
 
 // Документ таймлайна.
@@ -68,6 +70,18 @@ export interface ProDocument {
 export type ProTool = 'select' | 'blade' | 'ripple';
 export type ViewerMode = 'none' | 'transform' | 'crop';
 export type Mood = 'mellow' | 'natural' | 'energetic';
+
+// Фильтры дорожки корректирующих слоёв (§5 ТЗ), реализуемые в WebGL.
+export type AdjustFilter = 'bw' | 'warm' | 'cool' | 'vibrant' | 'contrast';
+export const ADJUST_FILTERS: AdjustFilter[] = ['bw', 'warm', 'cool', 'vibrant', 'contrast'];
+export const ADJUST_LABEL: Record<AdjustFilter, string> = {
+  bw: 'Ч/Б',
+  warm: 'Тёплый',
+  cool: 'Холодный',
+  vibrant: 'Насыщенность',
+  contrast: 'Контраст',
+};
+export const ADJUST_CODE: Record<AdjustFilter, number> = { bw: 1, warm: 2, cool: 3, vibrant: 4, contrast: 5 };
 
 export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
 export const DEFAULT_CROP: ClipCrop = { top: 0, bottom: 0, left: 0, right: 0 };

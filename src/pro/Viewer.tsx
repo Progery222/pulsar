@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { Compositor, frameCorners, VideoPool } from './compositor';
-import { DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type ProClip, type ProDocument } from './proTypes';
+import { ADJUST_CODE, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4, §7 ТЗ): WebGL-компоновщик слоёв в реальном времени + оверлеи Transform/Crop.
 
@@ -17,7 +17,7 @@ interface DrawItem {
 
 // Кадр под плейхедом, снизу вверх (hidden/solo + crossfade-переходы, §5 ТЗ).
 function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
-  const videoTracks = doc.tracks.filter((t) => t.kind === 'video');
+  const videoTracks = doc.tracks.filter((t) => t.kind === 'video' && !t.isAdjustment);
   const anySolo = videoTracks.some((t) => t.solo);
   const visible = videoTracks.filter((t) => !t.hidden && (!anySolo || t.solo));
   const bottomUp = [...visible].reverse(); // doc: верхняя дорожка первой → рисуем с нижней
@@ -34,6 +34,21 @@ function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
         if (A) out.push({ clip: A, sourceTime: A.inPoint + A.duration + (ph - B.timelineStart), alpha: 1 - f });
       }
       out.push({ clip: B, sourceTime: B.inPoint + (ph - B.timelineStart), alpha: alphaB });
+    }
+  }
+  return out;
+}
+
+// Активные корр. слои под плейхедом, снизу вверх (§5 ТЗ).
+function activeAdjustments(doc: ProDocument, ph: number): { filter: number; intensity: number }[] {
+  const adjTracks = doc.tracks.filter((t) => t.isAdjustment && !t.hidden);
+  const bottomUp = [...adjTracks].reverse();
+  const out: { filter: number; intensity: number }[] = [];
+  for (const t of bottomUp) {
+    for (const c of doc.clips) {
+      if (c.trackId === t.id && c.adjust && ph >= c.timelineStart && ph < c.timelineStart + c.duration) {
+        out.push({ filter: ADJUST_CODE[c.adjust.filter], intensity: c.adjust.intensity });
+      }
     }
   }
   return out;
@@ -105,7 +120,7 @@ export default function Viewer() {
         drawList.push({ clip: it.clip, video: v, alpha: it.alpha });
       }
       pool.pauseExcept(activeSrc);
-      comp.render(d, drawList);
+      comp.render(d, drawList, activeAdjustments(d, ph));
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);

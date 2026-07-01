@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { mediaUrl } from '../utils/media';
-import type { ProTrack } from './proTypes';
+import { ADJUST_LABEL, type ProTrack } from './proTypes';
 
 // Ядро таймлайна Pulsar Pro (§3 ТЗ): дорожки, линейка HH:MM:SS:FF, playhead,
 // скраббинг, zoom/pan, клипы с миниатюрами/вейвформами, виртуализация.
@@ -343,9 +343,14 @@ function Ruler({ vpW, pxPerSec, scrollX, fps }: { vpW: number; pxPerSec: number;
 function TrackHeader({ track }: { track: ProTrack }) {
   const toggle = useProStore((s) => s.toggleTrackFlag);
   const addClip = useProStore((s) => s.addClip);
+  const addAdjustmentClip = useProStore((s) => s.addAdjustmentClip);
 
   const onImport = async () => {
     const playhead = useProStore.getState().playhead;
+    if (track.isAdjustment) {
+      addAdjustmentClip(track.id, playhead, 3, 'warm');
+      return;
+    }
     if (track.kind === 'video') {
       const paths = await window.electronAPI.selectVideos();
       let at = playhead;
@@ -537,7 +542,9 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
               cursor: 'grab',
             }}
           >
-            {track.kind === 'video' ? (
+            {track.isAdjustment ? (
+              <AdjustBlock label={c.adjust ? ADJUST_LABEL[c.adjust.filter] : 'Adj'} width={visW} height={track.height - 8} />
+            ) : track.kind === 'video' ? (
               <ClipThumbs src={c.sourceFile} inPoint={subInPoint} duration={subDuration} width={visW} height={track.height - 8} />
             ) : (
               <ClipWaveform src={c.sourceFile} inPoint={subInPoint} duration={subDuration} width={visW} height={track.height - 8} />
@@ -583,6 +590,15 @@ function gripStyle(side: 'l' | 'r'): React.CSSProperties {
     zIndex: 2,
     background: `linear-gradient(${side === 'l' ? 'to right' : 'to left'}, rgba(204,255,0,0.45), transparent)`,
   };
+}
+
+// Блок корректирующего слоя (фильтр) на таймлайне.
+function AdjustBlock({ label, width, height }: { label: string; width: number; height: number }) {
+  return (
+    <div style={{ width, height, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(180,120,255,0.28)', color: '#fff', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden' }}>
+      ✦ {label}
+    </div>
+  );
 }
 
 // Полоса миниатюр по видимой части клипа.

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useProStore } from '../store/proStore';
-import { DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type AdjustFilter } from './proTypes';
 import { fileName } from '../utils/media';
 
 // Левая панель (§2 ТЗ): Media (бин источников) / Inspector (параметры клипа).
@@ -45,8 +45,36 @@ function InspectorTab() {
   const updateCrop = useProStore((s) => s.updateClipCrop);
   const toggleLock = useProStore((s) => s.toggleClipLock);
   const setTransition = useProStore((s) => s.setClipTransition);
+  const updateAdjust = useProStore((s) => s.updateClipAdjust);
 
   if (!clip) return <Empty text="Выделите клип на таймлайне, чтобы редактировать его параметры." />;
+
+  // Клип корректирующего слоя — свой набор параметров.
+  if (clip.adjust) {
+    const a = clip.adjust;
+    return (
+      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Section title="Adjustment (корр. слой)">
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            <span>Фильтр</span>
+            <select
+              value={a.filter}
+              onChange={(e) => updateAdjust(clip.id, { filter: e.target.value as AdjustFilter })}
+              style={{ width: 130, padding: '4px 6px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}
+            >
+              {ADJUST_FILTERS.map((f) => (
+                <option key={f} value={f}>{ADJUST_LABEL[f]}</option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            <span>Интенсивность</span>
+            <input type="range" min={0} max={100} value={Math.round(a.intensity * 100)} onChange={(e) => updateAdjust(clip.id, { intensity: Number(e.target.value) / 100 })} style={{ width: 130 }} />
+          </label>
+        </Section>
+      </div>
+    );
+  }
 
   const t = { ...DEFAULT_TRANSFORM, ...clip.transform };
   const cr = { ...DEFAULT_CROP, ...clip.crop };
