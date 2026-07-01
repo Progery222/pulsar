@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useProStore } from '../store/proStore';
-import { DEFAULT_CROP, DEFAULT_TRANSFORM } from './proTypes';
+import { DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent } from './proTypes';
 import { fileName } from '../utils/media';
 
 // Левая панель (§2 ТЗ): Media (бин источников) / Inspector (параметры клипа).
@@ -39,10 +39,12 @@ function MediaTab() {
 
 function InspectorTab() {
   const selected = useProStore((s) => s.selectedClipIds);
-  const clip = useProStore((s) => s.doc.clips.find((c) => selected.includes(c.id)) ?? null);
+  const clips = useProStore((s) => s.doc.clips);
+  const clip = clips.find((c) => selected.includes(c.id)) ?? null;
   const updateTransform = useProStore((s) => s.updateClipTransform);
   const updateCrop = useProStore((s) => s.updateClipCrop);
   const toggleLock = useProStore((s) => s.toggleClipLock);
+  const setTransition = useProStore((s) => s.setClipTransition);
 
   if (!clip) return <Empty text="Выделите клип на таймлайне, чтобы редактировать его параметры." />;
 
@@ -80,6 +82,15 @@ function InspectorTab() {
         <Row><NumField label="Left %" value={Math.round(cr.left * 100)} step={1} onChange={(v) => updateCrop(clip.id, { left: v / 100 })} /></Row>
         <Row><NumField label="Right %" value={Math.round(cr.right * 100)} step={1} onChange={(v) => updateCrop(clip.id, { right: v / 100 })} /></Row>
         <ResetBtn onClick={() => updateCrop(clip.id, DEFAULT_CROP)} />
+      </Section>
+      <Section title="Transition (crossfade)">
+        {findPrevAdjacent(clips, clip) ? (
+          <Row>
+            <NumField label="Crossfade с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTransition(clip.id, v > 0 ? v : null)} />
+          </Row>
+        ) : (
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Нужен смежный клип слева на той же дорожке.</div>
+        )}
       </Section>
     </div>
   );

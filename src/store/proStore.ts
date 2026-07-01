@@ -4,6 +4,7 @@ import {
   createEmptyProDocument,
   DEFAULT_CROP,
   DEFAULT_TRANSFORM,
+  findPrevAdjacent,
   type ClipCrop,
   type ClipTransform,
   type Mood,
@@ -68,6 +69,7 @@ export interface ProState {
   removeClips: (ids: string[]) => void;
   rippleDeleteClips: (ids: string[]) => void;
   toggleClipLock: (id: string) => void;
+  setClipTransition: (id: string, duration: number | null) => void;
   setAutoCutMood: (mood: Mood) => void;
   // Заменить авто-клипы на дорожке, сохранив закреплённые (Locked, §5 ТЗ).
   autoCutReplace: (trackId: string, generated: Omit<ProClip, 'id'>[]) => void;
@@ -253,6 +255,19 @@ export const useProStore = create<ProState>()(
       set((s) => {
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (c) c.locked = !c.locked;
+      }),
+    setClipTransition: (id, duration) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        if (duration === null || duration <= 0) {
+          delete c.transition;
+          return;
+        }
+        const prev = findPrevAdjacent(s.doc.clips, c);
+        if (!prev) return; // crossfade нужен предыдущий смежный клип
+        const max = Math.min(c.duration, prev.duration, 5);
+        c.transition = { duration: Math.min(Math.max(0.1, duration), max) };
       }),
     setAutoCutMood: (mood) =>
       set((s) => {

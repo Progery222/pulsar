@@ -483,6 +483,23 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     window.addEventListener('pointerup', up);
   };
 
+  // Длина crossfade — тянем правый край блока перехода.
+  const onTransitionResize = (e: React.PointerEvent, c: (typeof clips)[number]) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const move = (ev: PointerEvent) => {
+      const dur = timeAt(ev.clientX) - c.timelineStart;
+      useProStore.getState().setClipTransition(c.id, Math.max(0.1, dur));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   return (
     <div style={{ position: 'absolute', top: y, left: 0, right: 0, height: track.height, borderBottom: '1px solid var(--border)' }}>
       {clips.map((c) => {
@@ -529,6 +546,23 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
               {c.duration.toFixed(1)}с
             </span>
             {c.locked && <span style={{ position: 'absolute', right: 4, top: 2, fontSize: 11, pointerEvents: 'none' }}>🔒</span>}
+            {c.transition && (
+              <div
+                style={{
+                  position: 'absolute',
+                  left: clipStartX - visL,
+                  top: 0,
+                  bottom: 0,
+                  width: c.transition.duration * pxPerSec,
+                  background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.28), rgba(204,255,0,0.28) 4px, transparent 4px, transparent 8px)',
+                  borderRight: '1px solid var(--accent-green)',
+                  pointerEvents: 'none',
+                  zIndex: 3,
+                }}
+              >
+                <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', pointerEvents: 'auto' }} title="Длина перехода" />
+              </div>
+            )}
             {trueLeft && <div onPointerDown={(e) => onGripDown(e, c, 'l')} style={gripStyle('l')} title="Подрезать слева" />}
             {trueRight && <div onPointerDown={(e) => onGripDown(e, c, 'r')} style={gripStyle('r')} title="Подрезать справа" />}
           </div>

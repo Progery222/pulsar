@@ -41,6 +41,7 @@ export interface ProClip {
   crop?: ClipCrop;
   effects?: ProEffectSlot[];
   locked?: boolean; // закреплён — Auto-Cut не перезаписывает (§5 ТЗ)
+  transition?: { duration: number }; // crossfade у левого края с предыдущим клипом (§5 ТЗ)
 }
 
 // Дорожка (§3.1 ТЗ). Видео (V1,V2…) сверху, аудио (A1,A2…) снизу.
@@ -70,6 +71,14 @@ export type Mood = 'mellow' | 'natural' | 'energetic';
 
 export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
 export const DEFAULT_CROP: ClipCrop = { top: 0, bottom: 0, left: 0, right: 0 };
+
+// Предыдущий клип, вплотную примыкающий слева к данному (для crossfade).
+export function findPrevAdjacent(clips: ProClip[], clip: ProClip): ProClip | null {
+  const cands = clips
+    .filter((c) => c.trackId === clip.trackId && c.id !== clip.id && Math.abs(c.timelineStart + c.duration - clip.timelineStart) < 0.02)
+    .sort((a, b) => b.timelineStart - a.timelineStart);
+  return cands[0] ?? null;
+}
 
 // Пустой документ по умолчанию: 2 видео + 2 аудио дорожки, 30 fps.
 export function createEmptyProDocument(): ProDocument {

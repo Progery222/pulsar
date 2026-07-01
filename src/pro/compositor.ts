@@ -80,7 +80,8 @@ const FRAG = `
 precision mediump float;
 varying vec2 vUv;
 uniform sampler2D uTex;
-void main(){ gl_FragColor = texture2D(uTex, vUv); }
+uniform float uAlpha;
+void main(){ vec4 c = texture2D(uTex, vUv); gl_FragColor = vec4(c.rgb, c.a * uAlpha); }
 `;
 
 function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLShader {
@@ -95,6 +96,7 @@ export class Compositor {
   private prog: WebGLProgram;
   private aPos: number;
   private aUv: number;
+  private uAlpha: WebGLUniformLocation | null;
   private posBuf: WebGLBuffer;
   private uvBuf: WebGLBuffer;
   private texCache = new WeakMap<HTMLVideoElement, WebGLTexture>();
@@ -110,6 +112,7 @@ export class Compositor {
     this.prog = prog;
     this.aPos = gl.getAttribLocation(prog, 'aPos');
     this.aUv = gl.getAttribLocation(prog, 'aUv');
+    this.uAlpha = gl.getUniformLocation(prog, 'uAlpha');
     this.posBuf = gl.createBuffer()!;
     this.uvBuf = gl.createBuffer()!;
     gl.enable(gl.BLEND);
@@ -131,8 +134,8 @@ export class Compositor {
     return tex;
   }
 
-  // drawList — снизу вверх (нижние дорожки первыми).
-  render(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement }[]) {
+  // drawList — снизу вверх (нижние дорожки первыми). alpha — для crossfade.
+  render(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number }[]) {
     const gl = this.gl;
     if (gl.canvas.width !== doc.width || gl.canvas.height !== doc.height) {
       (gl.canvas as HTMLCanvasElement).width = doc.width;
@@ -143,8 +146,9 @@ export class Compositor {
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.useProgram(this.prog);
 
-    for (const { clip, video } of drawList) {
+    for (const { clip, video, alpha } of drawList) {
       if (video.readyState < 2 || !video.videoWidth) continue;
+      gl.uniform1f(this.uAlpha, alpha ?? 1);
       const tex = this.texture(video);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);

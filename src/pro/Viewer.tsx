@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { Compositor, frameCorners, VideoPool } from './compositor';
-import { DEFAULT_CROP, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
+import { DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4, §7 ТЗ): WebGL-компоновщик слоёв в реальном времени + оверлеи Transform/Crop.
 
@@ -9,19 +9,34 @@ function clamp(v: number, a: number, b: number) {
   return Math.min(b, Math.max(a, v));
 }
 
-// Активные видео-клипы под плейхедом, снизу вверх (с учётом hidden/solo).
-function activeVideoClips(doc: ProDocument, ph: number): ProClip[] {
+interface DrawItem {
+  clip: ProClip;
+  sourceTime: number; // тайм внутри исходника
+  alpha: number; // для crossfade
+}
+
+// Кадр под плейхедом, снизу вверх (hidden/solo + crossfade-переходы, §5 ТЗ).
+function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
   const videoTracks = doc.tracks.filter((t) => t.kind === 'video');
   const anySolo = videoTracks.some((t) => t.solo);
   const visible = videoTracks.filter((t) => !t.hidden && (!anySolo || t.solo));
   const bottomUp = [...visible].reverse(); // doc: верхняя дорожка первой → рисуем с нижней
-  const list: ProClip[] = [];
+  const out: DrawItem[] = [];
   for (const t of bottomUp) {
-    for (const c of doc.clips) {
-      if (c.trackId === t.id && ph >= c.timelineStart && ph < c.timelineStart + c.duration) list.push(c);
+    const active = doc.clips.filter((c) => c.trackId === t.id && ph >= c.timelineStart && ph < c.timelineStart + c.duration);
+    for (const B of active) {
+      let alphaB = 1;
+      if (B.transition && ph < B.timelineStart + B.transition.duration) {
+        const d = B.transition.duration;
+        const f = (ph - B.timelineStart) / d; // 0..1
+        alphaB = f;
+        const A = findPrevAdjacent(doc.clips, B);
+        if (A) out.push({ clip: A, sourceTime: A.inPoint + A.duration + (ph - B.timelineStart), alpha: 1 - f });
+      }
+      out.push({ clip: B, sourceTime: B.inPoint + (ph - B.timelineStart), alpha: alphaB });
     }
   }
-  return list;
+  return out;
 }
 
 export default function Viewer() {
@@ -73,13 +88,13 @@ export default function Viewer() {
         }
         st.setPlayhead(ph);
       }
-      const clips = activeVideoClips(d, ph);
+      const items = buildFrame(d, ph);
       const activeSrc = new Set<string>();
-      const drawList: { clip: ProClip; video: HTMLVideoElement }[] = [];
-      for (const c of clips) {
-        const v = pool.get(c.sourceFile);
-        activeSrc.add(c.sourceFile);
-        const srcTime = c.inPoint + (ph - c.timelineStart);
+      const drawList: { clip: ProClip; video: HTMLVideoElement; alpha: number }[] = [];
+      for (const it of items) {
+        const v = pool.get(it.clip.sourceFile);
+        activeSrc.add(it.clip.sourceFile);
+        const srcTime = Math.max(0, it.sourceTime);
         if (st.isPlaying) {
           if (v.paused) v.play().catch(() => {});
           if (Math.abs(v.currentTime - srcTime) > 0.25) v.currentTime = srcTime;
@@ -87,7 +102,7 @@ export default function Viewer() {
           if (!v.paused) v.pause();
           if (Math.abs(v.currentTime - srcTime) > 0.04) v.currentTime = srcTime;
         }
-        drawList.push({ clip: c, video: v });
+        drawList.push({ clip: it.clip, video: v, alpha: it.alpha });
       }
       pool.pauseExcept(activeSrc);
       comp.render(d, drawList);
