@@ -5,6 +5,7 @@ import Timeline, { zoomAtPlayhead } from './Timeline';
 import Viewer from './Viewer';
 import LeftPanel from './LeftPanel';
 import { buildAutoCut } from './autoCut';
+import { loadDoc, saveDoc } from './persistence';
 import type { Mood, ProTool } from './proTypes';
 
 const MOODS: { id: Mood; label: string }[] = [
@@ -134,6 +135,28 @@ export default function ProEditor() {
     }
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // Загрузка сохранённого проекта + автосейв в IndexedDB (§6 ТЗ).
+  useEffect(() => {
+    let alive = true;
+    loadDoc().then((d) => {
+      if (alive && d && Array.isArray(d.tracks) && (d.tracks.length || d.clips?.length)) {
+        useProStore.getState().loadDocument(d);
+      }
+    });
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const unsub = useProStore.subscribe((state, prev) => {
+      if (state.doc !== prev.doc) {
+        clearTimeout(timer);
+        timer = setTimeout(() => saveDoc(useProStore.getState().doc).catch(() => {}), 500);
+      }
+    });
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+      unsub();
+    };
   }, []);
 
   return (

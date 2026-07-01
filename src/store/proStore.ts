@@ -93,6 +93,8 @@ export interface ProState {
   pushHistory: () => void;
   undo: () => void;
   redo: () => void;
+  // Загрузка сохранённого документа (автосейв, §6 ТЗ).
+  loadDocument: (doc: ProDocument) => void;
 }
 
 const MIN_DUR = 0.05; // минимальная длина клипа (сек)
@@ -348,6 +350,21 @@ export const useProStore = create<ProState>()(
       set((s) => {
         s.doc = next;
         s.selectedClipIds = [];
+      });
+    },
+    loadDocument: (doc) => {
+      past.length = 0;
+      future.length = 0;
+      set((s) => {
+        s.doc = {
+          fps: doc.fps || 30,
+          width: doc.width || 1920,
+          height: doc.height || 1080,
+          tracks: doc.tracks ?? [],
+          clips: doc.clips ?? [],
+        };
+        s.selectedClipIds = [];
+        s.playhead = 0;
       });
     },
   }))
