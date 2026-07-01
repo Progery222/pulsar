@@ -73,6 +73,7 @@ export default function ProEditor() {
   const timelineHeight = useProStore((s) => s.timelineHeight);
   const setLeftWidth = useProStore((s) => s.setLeftWidth);
   const setTimelineHeight = useProStore((s) => s.setTimelineHeight);
+  const [showHelp, setShowHelp] = useState(false);
 
   // Вертикальный разделитель левой панели.
   const onDragLeft = useDrag((dx) => setLeftWidth(useProStore.getState().leftWidth + dx));
@@ -97,6 +98,29 @@ export default function ProEditor() {
         st.redo();
         return;
       }
+      if (e.ctrlKey && key === 'c') {
+        st.copyClips(st.selectedClipIds);
+        return;
+      }
+      if (e.ctrlKey && key === 'v') {
+        e.preventDefault();
+        st.pushHistory();
+        st.pasteClips(st.playhead);
+        return;
+      }
+      if (e.ctrlKey && key === 'd') {
+        e.preventDefault();
+        if (st.selectedClipIds.length) {
+          st.pushHistory();
+          st.duplicateClips(st.selectedClipIds);
+        }
+        return;
+      }
+      if (e.ctrlKey && key === 'a') {
+        e.preventDefault();
+        st.selectAll();
+        return;
+      }
       if (e.ctrlKey && key === 'k') {
         // Разрезать по плейхеду (§3.3 ТЗ).
         e.preventDefault();
@@ -114,6 +138,8 @@ export default function ProEditor() {
         zoomAtPlayhead(st.pxPerSec / 1.3);
       } else if (key === 'n') {
         st.toggleSnapping();
+      } else if (key === '?' || (e.shiftKey && key === '/')) {
+        setShowHelp((v) => !v);
       } else if (key === 'c' || key === 'b') {
         st.setTool('blade');
       } else if (key === 'v') {
@@ -193,6 +219,44 @@ export default function ProEditor() {
       {/* Timeline (нижняя панель). */}
       <div style={{ height: timelineHeight, borderTop: '1px solid var(--border)' }}>
         <Timeline />
+      </div>
+
+      <button onClick={() => setShowHelp(true)} title="Горячие клавиши (?)" style={{ position: 'absolute', top: 14, right: 14, width: 30, height: 30, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: 'pointer', zIndex: 1001 }}>?</button>
+      {showHelp && <HotkeysOverlay onClose={() => setShowHelp(false)} />}
+    </div>
+  );
+}
+
+function HotkeysOverlay({ onClose }: { onClose: () => void }) {
+  const rows: [string, string][] = [
+    ['Пробел', 'Плей / пауза'],
+    ['V', 'Курсор (выделение/перемещение)'],
+    ['C / B', 'Лезвие (разрез)'],
+    ['Ctrl+K', 'Разрезать по плейхеду'],
+    ['Delete', 'Удалить (оставить пропуск)'],
+    ['Shift+Delete', 'Удалить со сдвигом (Ripple)'],
+    ['Ctrl+C / V', 'Копировать / вставить (в плейхед)'],
+    ['Ctrl+D', 'Дублировать'],
+    ['Ctrl+A', 'Выделить всё'],
+    ['Ctrl+Z / Ctrl+Shift+Z', 'Отменить / повторить'],
+    ['N', 'Прилипание вкл/выкл'],
+    ['I / O', 'Начало / конец области экспорта'],
+    ['+ / −', 'Масштаб таймлайна'],
+    ['Alt+колесо', 'Масштаб у плейхеда'],
+    ['Средняя кнопка', 'Панорамирование'],
+  ];
+  return (
+    <div onClick={onClose} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1002 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 20, width: 'min(460px, 92vw)', maxHeight: '80vh', overflow: 'auto' }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 12 }}>Горячие клавиши</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {rows.map(([k, v]) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5 }}>
+              <span style={{ color: 'var(--accent-green)', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' }}>{k}</span>
+              <span style={{ color: 'var(--text-secondary)', textAlign: 'right' }}>{v}</span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

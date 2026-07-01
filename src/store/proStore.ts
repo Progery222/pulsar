@@ -49,6 +49,7 @@ export interface ProState {
   activeTool: ProTool;
   snapping: boolean; // прилипание (отключается клавишей N)
   selectedClipIds: string[];
+  clipboard: ProClip[]; // буфер копирования клипов
   viewerMode: ViewerMode; // режим оверлея во Viewer (Transform/Crop)
   autoCutMood: Mood; // настроение авто-нарезки (§5 ТЗ)
   exportIn: number | null; // область экспорта (§7): in/out маркеры (сек)
@@ -91,6 +92,10 @@ export interface ProState {
   splitClipAt: (id: string, atTime: number) => void;
   removeClips: (ids: string[]) => void;
   rippleDeleteClips: (ids: string[]) => void;
+  copyClips: (ids: string[]) => void;
+  pasteClips: (atTime: number) => void;
+  duplicateClips: (ids: string[]) => void;
+  selectAll: () => void;
   toggleClipLock: (id: string) => void;
   setClipTransition: (id: string, duration: number | null) => void;
   setAutoCutMood: (mood: Mood) => void;
@@ -124,6 +129,7 @@ export const useProStore = create<ProState>()(
     activeTool: 'select',
     snapping: true,
     selectedClipIds: [],
+    clipboard: [],
     viewerMode: 'none',
     autoCutMood: 'natural',
     exportIn: null,
@@ -332,6 +338,42 @@ export const useProStore = create<ProState>()(
         s.selectedClipIds = s.selectedClipIds.filter((id) => !ids.includes(id));
       }),
 
+    copyClips: (ids) =>
+      set((s) => {
+        s.clipboard = s.doc.clips.filter((c) => ids.includes(c.id)).map((c) => ({ ...c }));
+      }),
+    pasteClips: (atTime) =>
+      set((s) => {
+        if (!s.clipboard.length) return;
+        const minStart = Math.min(...s.clipboard.map((c) => c.timelineStart));
+        const newIds: string[] = [];
+        for (const c of s.clipboard) {
+          if (!s.doc.tracks.some((t) => t.id === c.trackId)) continue; // дорожки нет — пропускаем
+          const id = nextClipId();
+          s.doc.clips.push({ ...c, id, locked: false, timelineStart: Math.max(0, atTime + (c.timelineStart - minStart)) });
+          newIds.push(id);
+        }
+        s.selectedClipIds = newIds;
+      }),
+    duplicateClips: (ids) =>
+      set((s) => {
+        const sel = s.doc.clips.filter((c) => ids.includes(c.id));
+        if (!sel.length) return;
+        const minStart = Math.min(...sel.map((c) => c.timelineStart));
+        const maxEnd = Math.max(...sel.map((c) => c.timelineStart + c.duration));
+        const offset = maxEnd - minStart;
+        const newIds: string[] = [];
+        for (const c of sel) {
+          const id = nextClipId();
+          s.doc.clips.push({ ...c, id, locked: false, timelineStart: c.timelineStart + offset });
+          newIds.push(id);
+        }
+        s.selectedClipIds = newIds;
+      }),
+    selectAll: () =>
+      set((s) => {
+        s.selectedClipIds = s.doc.clips.map((c) => c.id);
+      }),
     toggleClipLock: (id) =>
       set((s) => {
         const c = s.doc.clips.find((cl) => cl.id === id);
