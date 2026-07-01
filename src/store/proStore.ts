@@ -59,6 +59,11 @@ export interface ProState {
   leftWidth: number;
   timelineHeight: number;
 
+  // Текущий проект (§6 ТЗ).
+  projectId: string | null;
+  projectName: string;
+  setProject: (id: string, name: string) => void;
+
   // Proxy для превью (§7 ТЗ).
   useProxy: boolean;
   proxyMap: Record<string, string>;
@@ -137,6 +142,14 @@ export const useProStore = create<ProState>()(
 
     leftWidth: 300,
     timelineHeight: 300,
+
+    projectId: null,
+    projectName: 'Проект',
+    setProject: (id, name) =>
+      set((s) => {
+        s.projectId = id;
+        s.projectName = name;
+      }),
 
     useProxy: false,
     proxyMap: {},

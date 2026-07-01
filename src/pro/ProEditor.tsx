@@ -5,8 +5,8 @@ import Timeline, { zoomAtPlayhead } from './Timeline';
 import Viewer from './Viewer';
 import LeftPanel from './LeftPanel';
 import { buildAutoCut } from './autoCut';
-import { loadDoc, saveDoc } from './persistence';
-import type { Mood } from './proTypes';
+import { deleteProject, getCurrentId, listProjects, loadProject, migrateLegacy, newProjectId, saveProject, setCurrentId } from './persistence';
+import { createEmptyProDocument, type Mood } from './proTypes';
 
 const MOODS: { id: Mood; label: string }[] = [
   { id: 'mellow', label: 'Спокойный' },
@@ -167,19 +167,39 @@ export default function ProEditor() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Загрузка сохранённого проекта + автосейв в IndexedDB (§6 ТЗ).
+  // Загрузка текущего проекта + автосейв в IndexedDB (§6 ТЗ).
   useEffect(() => {
     let alive = true;
-    loadDoc().then((d) => {
-      if (alive && d && Array.isArray(d.tracks) && (d.tracks.length || d.clips?.length)) {
-        useProStore.getState().loadDocument(d);
+    (async () => {
+      await migrateLegacy();
+      let id = await getCurrentId();
+      const list = await listProjects();
+      if (!id || !list.some((p) => p.id === id)) id = list[0]?.id ?? null;
+      if (!alive) return;
+      if (id) {
+        const p = await loadProject(id);
+        if (!alive) return;
+        if (p) {
+          useProStore.getState().loadDocument(p.doc);
+          useProStore.getState().setProject(id, p.name);
+          await setCurrentId(id);
+          return;
+        }
       }
-    });
+      // Первый запуск — создаём проект.
+      const nid = newProjectId();
+      useProStore.getState().setProject(nid, 'Проект 1');
+      await saveProject(nid, 'Проект 1', useProStore.getState().doc);
+      await setCurrentId(nid);
+    })();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const unsub = useProStore.subscribe((state, prev) => {
-      if (state.doc !== prev.doc) {
+      if (state.doc !== prev.doc || state.projectName !== prev.projectName) {
         clearTimeout(timer);
-        timer = setTimeout(() => saveDoc(useProStore.getState().doc).catch(() => {}), 500);
+        timer = setTimeout(() => {
+          const st = useProStore.getState();
+          if (st.projectId) saveProject(st.projectId, st.projectName, st.doc).catch(() => {});
+        }, 500);
       }
     });
     return () => {
@@ -221,8 +241,87 @@ export default function ProEditor() {
         <Timeline />
       </div>
 
+      <ProjectsMenu />
       <button onClick={() => setShowHelp(true)} title="Горячие клавиши (?)" style={{ position: 'absolute', top: 14, right: 14, width: 30, height: 30, borderRadius: '50%', border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: 'pointer', zIndex: 1001 }}>?</button>
       {showHelp && <HotkeysOverlay onClose={() => setShowHelp(false)} />}
+    </div>
+  );
+}
+
+function ProjectsMenu() {
+  const projectName = useProStore((s) => s.projectName);
+  const [open, setOpen] = useState(false);
+  const [list, setList] = useState<{ id: string; name: string; updatedAt: number }[]>([]);
+  const refresh = () => listProjects().then(setList);
+  useEffect(() => {
+    if (open) refresh();
+  }, [open]);
+
+  const saveCurrent = async () => {
+    const st = useProStore.getState();
+    if (st.projectId) await saveProject(st.projectId, st.projectName, st.doc);
+  };
+  const switchTo = async (id: string) => {
+    await saveCurrent();
+    const p = await loadProject(id);
+    if (p) {
+      useProStore.getState().loadDocument(p.doc);
+      useProStore.getState().setProject(id, p.name);
+      await setCurrentId(id);
+    }
+    setOpen(false);
+  };
+  const create = async () => {
+    await saveCurrent();
+    const name = window.prompt('Название проекта', 'Новый проект') || 'Новый проект';
+    const id = newProjectId();
+    useProStore.getState().loadDocument(createEmptyProDocument());
+    useProStore.getState().setProject(id, name);
+    await saveProject(id, name, useProStore.getState().doc);
+    await setCurrentId(id);
+    setOpen(false);
+  };
+  const rename = async () => {
+    const st = useProStore.getState();
+    if (!st.projectId) return;
+    const name = window.prompt('Новое название', st.projectName);
+    if (!name) return;
+    useProStore.getState().setProject(st.projectId, name);
+    await saveProject(st.projectId, name, st.doc);
+    refresh();
+  };
+  const del = async (id: string) => {
+    if (!window.confirm('Удалить проект?')) return;
+    await deleteProject(id);
+    if (id === useProStore.getState().projectId) {
+      const rest = await listProjects();
+      if (rest[0]) await switchTo(rest[0].id);
+      else await create();
+    } else refresh();
+  };
+
+  return (
+    <div style={{ position: 'absolute', top: 12, right: 52, zIndex: 1001 }}>
+      <button onClick={() => setOpen((o) => !o)} title="Проекты" style={{ height: 30, padding: '0 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        🗂 {projectName} ▾
+      </button>
+      {open && (
+        <>
+          <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 1001 }} />
+          <div style={{ position: 'absolute', top: 34, right: 0, width: 260, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: 8, zIndex: 1002, maxHeight: '60vh', overflow: 'auto' }}>
+            {list.map((p) => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 6, fontSize: 12.5, color: 'var(--text-primary)' }}>
+                <button onClick={() => switchTo(p.id)} style={{ flex: 1, textAlign: 'left', background: 'transparent', border: 'none', color: p.id === useProStore.getState().projectId ? 'var(--accent-green)' : 'var(--text-primary)', cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.name}</button>
+                <button onClick={() => del(p.id)} title="Удалить" style={{ width: 22, height: 20, borderRadius: 4, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0 }}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+              <button onClick={create} style={{ flex: 1, padding: '5px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}>＋ Новый</button>
+              <button onClick={rename} style={{ flex: 1, padding: '5px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}>Переименовать</button>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }
