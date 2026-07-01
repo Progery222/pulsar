@@ -1,5 +1,5 @@
 import { mediaUrl } from '../utils/media';
-import { DEFAULT_CROP, DEFAULT_TRANSFORM, type ClipCrop, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
+import { DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TRANSFORM, type ClipColor, type ClipCrop, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
 
 // WebGL-компоновщик слоёв Viewer (§7 ТЗ, real-time preview) + пул видео.
 
@@ -95,7 +95,28 @@ precision mediump float;
 varying vec2 vUv;
 uniform sampler2D uTex;
 uniform float uAlpha;
-void main(){ vec4 c = texture2D(uTex, vUv); gl_FragColor = vec4(c.rgb, c.a * uAlpha); }
+uniform float uBr, uCon, uSat, uTemp, uHue;
+vec3 hueRot(vec3 c, float deg){
+  float a = radians(deg); float s = sin(a); float co = cos(a);
+  mat3 m = mat3(
+    0.299+0.701*co+0.168*s, 0.587-0.587*co+0.330*s, 0.114-0.114*co-0.497*s,
+    0.299-0.299*co-0.328*s, 0.587+0.413*co+0.035*s, 0.114-0.114*co+0.292*s,
+    0.299-0.300*co+1.250*s, 0.587-0.588*co-1.050*s, 0.114+0.886*co-0.203*s
+  );
+  return c * m;
+}
+void main(){
+  vec4 t = texture2D(uTex, vUv);
+  vec3 col = t.rgb;
+  col *= (1.0 + uBr);
+  col = (col - 0.5) * (1.0 + uCon) + 0.5;
+  float g = dot(col, vec3(0.299, 0.587, 0.114));
+  col = mix(vec3(g), col, 1.0 + uSat);
+  col.r += uTemp; col.b -= uTemp;
+  if (abs(uHue) > 0.001) col = hueRot(col, uHue);
+  col = clamp(col, 0.0, 1.0);
+  gl_FragColor = vec4(col, t.a * uAlpha);
+}
 `;
 
 // Постобработка корр. слоя (§5 ТЗ): фильтр применяется к готовой композиции.
@@ -143,6 +164,7 @@ export class Compositor {
   private aPos: number;
   private aUv: number;
   private uAlpha: WebGLUniformLocation | null;
+  private uColor: (WebGLUniformLocation | null)[] = [];
   private fprog: WebGLProgram;
   private faPos: number;
   private faUv: number;
@@ -169,6 +191,7 @@ export class Compositor {
     this.aPos = gl.getAttribLocation(prog, 'aPos');
     this.aUv = gl.getAttribLocation(prog, 'aUv');
     this.uAlpha = gl.getUniformLocation(prog, 'uAlpha');
+    this.uColor = ['uBr', 'uCon', 'uSat', 'uTemp', 'uHue'].map((n) => gl.getUniformLocation(prog, n));
     const fprog = gl.createProgram()!;
     gl.attachShader(fprog, compile(gl, gl.VERTEX_SHADER, VERT));
     gl.attachShader(fprog, compile(gl, gl.FRAGMENT_SHADER, FILTER_FRAG));
@@ -241,7 +264,7 @@ export class Compositor {
   // drawList — снизу вверх. adjustments — фильтры корр. слоёв (постобработка).
   render(
     doc: ProDocument,
-    drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number }[],
+    drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor }[],
     adjustments: { filter: number; intensity: number }[] = []
   ) {
     const gl = this.gl;
@@ -282,15 +305,21 @@ export class Compositor {
     gl.enable(gl.BLEND);
   }
 
-  private drawClips(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number }[]) {
+  private drawClips(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor }[]) {
     const gl = this.gl;
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
     gl.useProgram(this.prog);
-    for (const { clip, video, alpha } of drawList) {
+    for (const { clip, video, alpha, color } of drawList) {
       if (video.readyState < 2 || !video.videoWidth) continue;
       gl.uniform1f(this.uAlpha, alpha ?? 1);
+      const cc = { ...DEFAULT_COLOR, ...color };
+      gl.uniform1f(this.uColor[0], cc.brightness / 100);
+      gl.uniform1f(this.uColor[1], cc.contrast / 100);
+      gl.uniform1f(this.uColor[2], cc.saturation / 100);
+      gl.uniform1f(this.uColor[3], cc.temperature / 300);
+      gl.uniform1f(this.uColor[4], cc.hue);
       const tex = this.texture(video);
       gl.bindTexture(gl.TEXTURE_2D, tex);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
