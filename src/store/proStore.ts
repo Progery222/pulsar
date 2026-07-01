@@ -250,7 +250,8 @@ export const useProStore = create<ProState>()(
         if (!c) return;
         const localSec = Math.max(0, s.playhead - c.timelineStart);
         const cur = transformAt(c, localSec);
-        if (!c.keyframes) c.keyframes = {};
+        // Старый формат ключей (массив) — сбрасываем в объект по параметрам.
+        if (!c.keyframes || Array.isArray(c.keyframes)) c.keyframes = {};
         if (!c.keyframes[param]) c.keyframes[param] = [];
         upsertKf(c.keyframes[param]!, localSec, cur[param]);
       }),
@@ -643,6 +644,10 @@ export const useProStore = create<ProState>()(
       for (const t of doc.tracks ?? []) {
         const m = /^ADJ(\d+)$/.exec(t.id);
         if (m) adjSeq = Math.max(adjSeq, Number(m[1]));
+      }
+      // Миграция: старый формат ключей (массив снимков) несовместим — убираем.
+      for (const c of doc.clips ?? []) {
+        if (Array.isArray(c.keyframes)) delete c.keyframes;
       }
       set((s) => {
         s.doc = {
