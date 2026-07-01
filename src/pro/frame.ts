@@ -17,7 +17,7 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
   const bottomUp = [...visible].reverse(); // doc: верхняя дорожка первой → рисуем с нижней
   const out: DrawItem[] = [];
   for (const t of bottomUp) {
-    const active = doc.clips.filter((c) => c.trackId === t.id && ph >= c.timelineStart && ph < c.timelineStart + c.duration);
+    const active = doc.clips.filter((c) => c.trackId === t.id && !c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration);
     for (const B of active) {
       let alphaB = 1;
       if (B.transition && ph < B.timelineStart + B.transition.duration) {
@@ -28,6 +28,18 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
         if (A) out.push({ clip: A, sourceTime: A.inPoint + A.duration + (ph - B.timelineStart), alpha: 1 - f, out: true });
       }
       out.push({ clip: B, sourceTime: B.inPoint + (ph - B.timelineStart), alpha: alphaB });
+    }
+  }
+  return out;
+}
+
+// Активные текстовые клипы под плейхедом (снизу вверх), для оверлея и экспорта.
+export function activeTexts(doc: ProDocument, ph: number): ProClip[] {
+  const videoTracks = doc.tracks.filter((t) => t.kind === 'video' && !t.isAdjustment && !t.hidden);
+  const out: ProClip[] = [];
+  for (const t of [...videoTracks].reverse()) {
+    for (const c of doc.clips) {
+      if (c.trackId === t.id && c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration) out.push(c);
     }
   }
   return out;

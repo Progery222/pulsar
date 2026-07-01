@@ -776,7 +776,9 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
               cursor: 'grab',
             }}
           >
-            {track.isAdjustment ? (
+            {c.text ? (
+              <div style={{ width: visW, height: track.height - 8, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', background: 'rgba(255,200,60,0.28)', color: '#fff', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden' }}>T {c.text.content}</div>
+            ) : track.isAdjustment ? (
               <AdjustBlock label={c.adjust ? ADJUST_LABEL[c.adjust.filter] : 'Adj'} width={visW} height={track.height - 8} />
             ) : track.kind === 'video' ? (
               <ClipThumbs src={c.sourceFile} inPoint={subInPoint} duration={subDuration} width={visW} height={track.height - 8} />

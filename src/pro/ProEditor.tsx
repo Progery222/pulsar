@@ -403,6 +403,16 @@ function ProToolbar() {
       <ToolBtn onClick={() => { useProStore.getState().pushHistory(); addAdjustmentTrack(); showToast('Дорожка корр. слоёв добавлена (кнопка ＋ на ней)'); }} title="Дорожка корректирующих слоёв (фильтры)">
         ＋Adjustment
       </ToolBtn>
+      <ToolBtn onClick={() => {
+        const st = useProStore.getState();
+        const vt = st.doc.tracks.find((t) => t.kind === 'video' && !t.isAdjustment);
+        if (!vt) { showToast('Нет видео-дорожки'); return; }
+        st.pushHistory();
+        st.addTextClip(vt.id, st.playhead, 3);
+        showToast('Текст добавлен — отредактируйте в Inspector');
+      }} title="Добавить текст/титр">
+        ＋Текст
+      </ToolBtn>
       <div style={{ marginLeft: 'auto' }}>
         <ToolBtn active={snapping} onClick={toggleSnapping} title="Прилипание (N)">
           Snap

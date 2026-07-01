@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { frameCorners } from './compositor';
+import { activeTexts } from './frame';
 import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { colorToCss, DEFAULT_CROP, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -37,7 +38,7 @@ function topActiveClip(doc: ProDocument, ph: number, kind: 'video' | 'audio'): P
     if (kind === 'audio' && t.muted) continue;
     if (anySolo && !t.solo) continue;
     for (const c of doc.clips) {
-      if (c.trackId === t.id && ph >= c.timelineStart && ph < c.timelineStart + c.duration) return c;
+      if (c.trackId === t.id && !c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration) return c;
     }
   }
   return null;
@@ -52,6 +53,7 @@ export default function Viewer() {
   const setPlayhead = useProStore((s) => s.setPlayhead);
   const useProxy = useProStore((s) => s.useProxy);
   const setResolution = useProStore((s) => s.setResolution);
+  const playhead = useProStore((s) => s.playhead); // для реактивного текстового оверлея
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -255,6 +257,14 @@ export default function Viewer() {
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transformOrigin: 'center center', background: '#000' }}
             />
           </div>
+          {activeTexts(doc, playhead).map((c) => {
+            const tt = { ...DEFAULT_TEXT, ...c.text };
+            return (
+              <div key={c.id} style={{ position: 'absolute', left: `${tt.x * 100}%`, top: `${tt.y * 100}%`, transform: 'translate(-50%,-50%)', color: tt.color, fontSize: (dispH * tt.size) / 100, fontWeight: 700, textAlign: 'center', lineHeight: 1.15, textShadow: '0 2px 6px rgba(0,0,0,0.75)', whiteSpace: 'pre-wrap', pointerEvents: 'none', maxWidth: '96%', ...(tt.bg ? { background: 'rgba(0,0,0,0.45)', padding: '2px 10px', borderRadius: 6 } : {}) }}>
+                {tt.content}
+              </div>
+            );
+          })}
           {viewerMode === 'transform' && <TransformOverlay doc={doc} scale={scale} />}
           {viewerMode === 'crop' && <CropOverlay doc={doc} scale={scale} />}
           {!doc.clips.length && (

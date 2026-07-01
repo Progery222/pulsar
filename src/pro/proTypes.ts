@@ -47,7 +47,19 @@ export interface ProClip {
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа
   color?: ClipColor; // цветокоррекция видео-клипа
+  text?: ClipText; // текстовый/титровый клип (sourceFile пустой)
 }
+
+// Текстовый клип (титры). x,y — доля кадра (центр текста), size — % высоты кадра.
+export interface ClipText {
+  content: string;
+  size: number;
+  color: string;
+  x: number;
+  y: number;
+  bg: boolean; // подложка-плашка под текстом
+}
+export const DEFAULT_TEXT: ClipText = { content: 'Заголовок', size: 8, color: '#ffffff', x: 0.5, y: 0.85, bg: false };
 
 // Цветокоррекция (значения -100..100, hue -180..180; 0 = нейтрально).
 export interface ClipColor {

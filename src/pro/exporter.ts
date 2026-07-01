@@ -1,7 +1,32 @@
 import { Compositor, VideoPool } from './compositor';
-import { buildFrame, activeAdjustments } from './frame';
+import { buildFrame, activeAdjustments, activeTexts } from './frame';
 import { useProStore } from '../store/proStore';
-import { DEFAULT_AUDIO, type ProDocument } from './proTypes';
+import { DEFAULT_AUDIO, DEFAULT_TEXT, type ProClip, type ProDocument } from './proTypes';
+
+function drawTexts(ctx: CanvasRenderingContext2D, doc: ProDocument, texts: ProClip[]) {
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const c of texts) {
+    const tt = { ...DEFAULT_TEXT, ...c.text };
+    const fs = (doc.height * tt.size) / 100;
+    ctx.font = `700 ${fs}px sans-serif`;
+    const x = tt.x * doc.width;
+    const y = tt.y * doc.height;
+    const lines = tt.content.split('\n');
+    if (tt.bg) {
+      const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
+      ctx.fillStyle = 'rgba(0,0,0,0.45)';
+      ctx.fillRect(x - w / 2 - 12, y - (lines.length * fs * 1.15) / 2 - 4, w + 24, lines.length * fs * 1.15 + 8);
+    }
+    ctx.fillStyle = tt.color;
+    ctx.shadowColor = 'rgba(0,0,0,0.75)';
+    ctx.shadowBlur = 6;
+    ctx.shadowOffsetY = 2;
+    lines.forEach((ln, i) => ctx.fillText(ln, x, y + (i - (lines.length - 1) / 2) * fs * 1.15));
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+  }
+}
 
 // Экспорт Pulsar Pro: покадровый рендер тем же WebGL-компоновщиком (превью == экспорт),
 // кадры пишутся в temp через IPC, затем FFmpeg собирает mp4 + мукс аудио.
@@ -68,6 +93,11 @@ export async function runProExport(doc: ProDocument, onProgress: Progress, setti
   canvas.height = doc.height;
   const comp = new Compositor(canvas, { preserveDrawingBuffer: true });
   const pool = new VideoPool();
+  // 2D-канвас для наложения текста поверх кадра.
+  const canvas2d = document.createElement('canvas');
+  canvas2d.width = doc.width;
+  canvas2d.height = doc.height;
+  const ctx2d = canvas2d.getContext('2d');
 
   try {
     // Предзагрузка видео-источников.
@@ -91,7 +121,15 @@ export async function runProExport(doc: ProDocument, onProgress: Progress, setti
         drawList.push({ clip: it.clip, video: v, alpha: it.alpha, color: it.clip.color });
       }
       comp.render(doc, drawList, activeAdjustments(doc, t));
-      const blob = await canvasToBlob(canvas);
+      const texts = activeTexts(doc, t);
+      let outCanvas = canvas;
+      if (texts.length && ctx2d) {
+        ctx2d.clearRect(0, 0, doc.width, doc.height);
+        ctx2d.drawImage(canvas, 0, 0);
+        drawTexts(ctx2d, doc, texts);
+        outCanvas = canvas2d;
+      }
+      const blob = await canvasToBlob(outCanvas);
       const buf = await blob.arrayBuffer();
       await window.electronAPI.proWriteFrame(dir, i, buf);
       onProgress('capture', i + 1, total);

@@ -5,6 +5,7 @@ import {
   DEFAULT_AUDIO,
   DEFAULT_COLOR,
   DEFAULT_CROP,
+  DEFAULT_TEXT,
   DEFAULT_TRANSFORM,
   findPrevAdjacent,
   type AdjustFilter,
@@ -117,6 +118,8 @@ export interface ProState {
   updateClipAdjust: (id: string, patch: Partial<{ filter: AdjustFilter; intensity: number }>) => void;
   updateClipAudio: (id: string, patch: Partial<import('../pro/proTypes').ClipAudio>) => void;
   updateClipColor: (id: string, patch: Partial<import('../pro/proTypes').ClipColor>) => void;
+  addTextClip: (trackId: string, start: number, duration: number) => void;
+  updateClipText: (id: string, patch: Partial<import('../pro/proTypes').ClipText>) => void;
   // История (§6 ТЗ). pushHistory вызывается в начале дискретного действия/жеста.
   pushHistory: () => void;
   undo: () => void;
@@ -485,6 +488,16 @@ export const useProStore = create<ProState>()(
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
         c.color = { ...DEFAULT_COLOR, ...c.color, ...patch };
+      }),
+    addTextClip: (trackId, start, duration) =>
+      set((s) => {
+        s.doc.clips.push({ id: nextClipId(), trackId, sourceFile: '', timelineStart: Math.max(0, start), duration: Math.max(0.2, duration), inPoint: 0, text: { ...DEFAULT_TEXT } });
+      }),
+    updateClipText: (id, patch) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        c.text = { ...DEFAULT_TEXT, ...c.text, ...patch };
       }),
 
     pushHistory: () => {

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, type AdjustFilter } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, type AdjustFilter } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -161,6 +161,7 @@ function InspectorTab() {
   const updateAdjust = useProStore((s) => s.updateClipAdjust);
   const updateAudio = useProStore((s) => s.updateClipAudio);
   const updateColor = useProStore((s) => s.updateClipColor);
+  const updateText = useProStore((s) => s.updateClipText);
   const tracks = useProStore((s) => s.doc.tracks);
   const push = useProStore((s) => s.pushHistory);
 
@@ -173,6 +174,7 @@ function InspectorTab() {
   const adj = (p: Parameters<typeof updateAdjust>[1]) => { push(); updateAdjust(id, p); };
   const au = (p: Parameters<typeof updateAudio>[1]) => { push(); updateAudio(id, p); };
   const col = (p: Parameters<typeof updateColor>[1]) => { push(); updateColor(id, p); };
+  const txt = (p: Parameters<typeof updateText>[1]) => { push(); updateText(id, p); };
   const setTr = (v: number | null) => { push(); setTransition(id, v); };
   const lock = () => { push(); toggleLock(id); };
   const track = tracks.find((t) => t.id === clip.trackId);
@@ -227,6 +229,33 @@ function InspectorTab() {
           <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
             <span>Интенсивность</span>
             <input type="range" min={0} max={100} value={Math.round(a.intensity * 100)} onChange={(e) => adj({ intensity: Number(e.target.value) / 100 })} style={{ width: 130 }} />
+          </label>
+        </Section>
+      </div>
+    );
+  }
+
+  // Текстовый клип — редактор титра.
+  if (clip.text) {
+    const tt = { ...DEFAULT_TEXT, ...clip.text };
+    return (
+      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <Section title="Текст / титр">
+          <textarea
+            value={tt.content}
+            onChange={(e) => txt({ content: e.target.value })}
+            rows={2}
+            style={{ width: '100%', padding: '6px 8px', fontSize: 13, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', resize: 'vertical' }}
+          />
+          <Row><NumField label="Размер %" value={tt.size} step={0.5} onChange={(v) => txt({ size: Math.max(1, v) })} /></Row>
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            <span>Цвет</span>
+            <input type="color" value={tt.color} onChange={(e) => txt({ color: e.target.value })} style={{ width: 44, height: 24, background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
+          </label>
+          <Row><NumField label="X %" value={Math.round(tt.x * 100)} step={1} onChange={(v) => txt({ x: v / 100 })} /></Row>
+          <Row><NumField label="Y %" value={Math.round(tt.y * 100)} step={1} onChange={(v) => txt({ y: v / 100 })} /></Row>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            <input type="checkbox" checked={tt.bg} onChange={(e) => txt({ bg: e.target.checked })} /> Плашка-подложка
           </label>
         </Section>
       </div>
