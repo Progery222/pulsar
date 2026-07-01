@@ -3,6 +3,7 @@ import { immer } from 'zustand/middleware/immer';
 import {
   createEmptyProDocument,
   DEFAULT_AUDIO,
+  DEFAULT_COLOR,
   DEFAULT_CROP,
   DEFAULT_TRANSFORM,
   findPrevAdjacent,
@@ -115,6 +116,7 @@ export interface ProState {
   addAdjustmentClip: (trackId: string, start: number, duration: number, filter: AdjustFilter) => void;
   updateClipAdjust: (id: string, patch: Partial<{ filter: AdjustFilter; intensity: number }>) => void;
   updateClipAudio: (id: string, patch: Partial<import('../pro/proTypes').ClipAudio>) => void;
+  updateClipColor: (id: string, patch: Partial<import('../pro/proTypes').ClipColor>) => void;
   // История (§6 ТЗ). pushHistory вызывается в начале дискретного действия/жеста.
   pushHistory: () => void;
   undo: () => void;
@@ -477,6 +479,12 @@ export const useProStore = create<ProState>()(
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
         c.audio = { ...DEFAULT_AUDIO, ...c.audio, ...patch };
+      }),
+    updateClipColor: (id, patch) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        c.color = { ...DEFAULT_COLOR, ...c.color, ...patch };
       }),
 
     pushHistory: () => {

@@ -46,6 +46,31 @@ export interface ProClip {
   transition?: { duration: number }; // crossfade у левого края с предыдущим клипом (§5 ТЗ)
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа
+  color?: ClipColor; // цветокоррекция видео-клипа
+}
+
+// Цветокоррекция (значения -100..100, hue -180..180; 0 = нейтрально).
+export interface ClipColor {
+  brightness: number;
+  contrast: number;
+  saturation: number;
+  temperature: number;
+  hue: number;
+}
+export const DEFAULT_COLOR: ClipColor = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, hue: 0 };
+
+// CSS-фильтр для превью из цветокора.
+export function colorToCss(c?: Partial<ClipColor>): string {
+  const v = { ...DEFAULT_COLOR, ...c };
+  const parts = [
+    `brightness(${(1 + v.brightness / 100).toFixed(3)})`,
+    `contrast(${(1 + v.contrast / 100).toFixed(3)})`,
+    `saturate(${(1 + v.saturation / 100).toFixed(3)})`,
+  ];
+  if (v.hue) parts.push(`hue-rotate(${v.hue}deg)`);
+  if (v.temperature > 0) parts.push(`sepia(${(v.temperature / 200).toFixed(3)})`);
+  else if (v.temperature < 0) parts.push(`hue-rotate(${(v.temperature * 0.4).toFixed(1)}deg)`, `saturate(${(1 - v.temperature / 400).toFixed(3)})`);
+  return parts.join(' ');
 }
 
 // Параметры аудио (громкость/питч/фейды).

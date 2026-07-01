@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type AdjustFilter } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type AdjustFilter } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -160,6 +160,7 @@ function InspectorTab() {
   const setTransition = useProStore((s) => s.setClipTransition);
   const updateAdjust = useProStore((s) => s.updateClipAdjust);
   const updateAudio = useProStore((s) => s.updateClipAudio);
+  const updateColor = useProStore((s) => s.updateClipColor);
   const tracks = useProStore((s) => s.doc.tracks);
   const push = useProStore((s) => s.pushHistory);
 
@@ -171,6 +172,7 @@ function InspectorTab() {
   const cx = (p: Parameters<typeof updateCrop>[1]) => { push(); updateCrop(id, p); };
   const adj = (p: Parameters<typeof updateAdjust>[1]) => { push(); updateAdjust(id, p); };
   const au = (p: Parameters<typeof updateAudio>[1]) => { push(); updateAudio(id, p); };
+  const col = (p: Parameters<typeof updateColor>[1]) => { push(); updateColor(id, p); };
   const setTr = (v: number | null) => { push(); setTransition(id, v); };
   const lock = () => { push(); toggleLock(id); };
   const track = tracks.find((t) => t.id === clip.trackId);
@@ -265,6 +267,18 @@ function InspectorTab() {
         <Row><NumField label="Left %" value={Math.round(cr.left * 100)} step={1} onChange={(v) => cx({ left: v / 100 })} /></Row>
         <Row><NumField label="Right %" value={Math.round(cr.right * 100)} step={1} onChange={(v) => cx({ right: v / 100 })} /></Row>
         <ResetBtn onClick={() => cx(DEFAULT_CROP)} />
+      </Section>
+      <Section title="Цвет">
+        {(() => { const cc = { ...DEFAULT_COLOR, ...clip.color }; return (
+          <>
+            <Row><NumField label="Яркость" value={cc.brightness} step={1} onChange={(v) => col({ brightness: v })} /></Row>
+            <Row><NumField label="Контраст" value={cc.contrast} step={1} onChange={(v) => col({ contrast: v })} /></Row>
+            <Row><NumField label="Насыщенность" value={cc.saturation} step={1} onChange={(v) => col({ saturation: v })} /></Row>
+            <Row><NumField label="Температура" value={cc.temperature} step={1} onChange={(v) => col({ temperature: v })} /></Row>
+            <Row><NumField label="Оттенок°" value={cc.hue} step={1} onChange={(v) => col({ hue: v })} /></Row>
+            <ResetBtn onClick={() => col(DEFAULT_COLOR)} />
+          </>
+        ); })()}
       </Section>
       <Section title="Transition (crossfade)">
         {findPrevAdjacent(clips, clip) ? (

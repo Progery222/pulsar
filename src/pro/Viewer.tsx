@@ -4,7 +4,7 @@ import { frameCorners } from './compositor';
 import { runProExport } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { DEFAULT_CROP, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, DEFAULT_CROP, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -174,6 +174,7 @@ export default function Viewer() {
     const dispScale = el.offsetWidth / (d.width || 1) || 1;
     el.style.transform = `translate(${t.x * dispScale}px, ${t.y * dispScale}px) rotate(${t.rotation}deg) scale(${t.scale})`;
     el.style.clipPath = `inset(${cr.top * 100}% ${cr.right * 100}% ${cr.bottom * 100}% ${cr.left * 100}%)`;
+    el.style.filter = colorToCss(clip.color);
   }
 
   function syncAudio(d: ProDocument, ph: number, playing: boolean) {
