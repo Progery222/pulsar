@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
 import Timeline, { zoomAtPlayhead } from './Timeline';
@@ -84,7 +84,30 @@ async function runAutoCut(): Promise<void> {
 // Pulsar Pro — рабочее пространство мульти-трек монтажа (§2 ТЗ).
 // Фаза 1: каркас 4 зон + resizable-разделители. Наполнение зон — след. фазы.
 
-export default function ProEditor() {
+class ProErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state = { error: null as Error | null };
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: unknown) {
+    console.error('[Pulsar Pro] render crash:', error, info);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ position: 'fixed', inset: 0, background: 'var(--bg-primary)', color: '#fff', padding: 24, overflow: 'auto', zIndex: 5000 }}>
+          <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8, color: '#ff6b6b' }}>Ошибка Pulsar Pro</div>
+          <div style={{ fontSize: 13, marginBottom: 8 }}>{String(this.state.error.message || this.state.error)}</div>
+          <pre style={{ fontSize: 11, color: 'var(--text-secondary)', whiteSpace: 'pre-wrap' }}>{this.state.error.stack}</pre>
+          <button onClick={() => this.setState({ error: null })} style={{ marginTop: 12, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: '#fff', cursor: 'pointer' }}>Сбросить</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function ProEditor() {
   const leftWidth = useProStore((s) => s.leftWidth);
   const timelineHeight = useProStore((s) => s.timelineHeight);
   const setLeftWidth = useProStore((s) => s.setLeftWidth);
@@ -344,6 +367,14 @@ function HotkeysOverlay({ onClose }: { onClose: () => void }) {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function ProEditorRoot() {
+  return (
+    <ProErrorBoundary>
+      <ProEditor />
+    </ProErrorBoundary>
   );
 }
 
