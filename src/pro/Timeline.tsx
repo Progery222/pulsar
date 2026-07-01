@@ -344,15 +344,22 @@ function TrackHeader({ track }: { track: ProTrack }) {
   const toggle = useProStore((s) => s.toggleTrackFlag);
   const addClip = useProStore((s) => s.addClip);
   const addAdjustmentClip = useProStore((s) => s.addAdjustmentClip);
+  const flag = (name: 'muted' | 'solo' | 'locked' | 'hidden') => {
+    useProStore.getState().pushHistory();
+    toggle(track.id, name);
+  };
 
   const onImport = async () => {
     const playhead = useProStore.getState().playhead;
     if (track.isAdjustment) {
+      useProStore.getState().pushHistory();
       addAdjustmentClip(track.id, playhead, 3, 'warm');
       return;
     }
     if (track.kind === 'video') {
       const paths = await window.electronAPI.selectVideos();
+      if (!paths.length) return;
+      useProStore.getState().pushHistory();
       let at = playhead;
       for (const p of paths) {
         const dur = (await probeDuration(p, 'video')) || 3;
@@ -362,6 +369,7 @@ function TrackHeader({ track }: { track: ProTrack }) {
     } else {
       const p = await window.electronAPI.selectAudio();
       if (!p) return;
+      useProStore.getState().pushHistory();
       const dur = (await probeDuration(p, 'audio')) || 3;
       addClip({ trackId: track.id, sourceFile: p, timelineStart: playhead, duration: dur, inPoint: 0, sourceDuration: dur });
     }
@@ -374,11 +382,11 @@ function TrackHeader({ track }: { track: ProTrack }) {
         <button onClick={onImport} title="Импортировать медиа" style={miniIcon}>＋</button>
       </div>
       <div style={{ display: 'flex', gap: 3 }}>
-        <FlagBtn on={track.muted} onClick={() => toggle(track.id, 'muted')} title="Mute">M</FlagBtn>
-        <FlagBtn on={track.solo} onClick={() => toggle(track.id, 'solo')} title="Solo">S</FlagBtn>
-        <FlagBtn on={track.locked} onClick={() => toggle(track.id, 'locked')} title="Lock">L</FlagBtn>
+        <FlagBtn on={track.muted} onClick={() => flag('muted')} title="Mute">M</FlagBtn>
+        <FlagBtn on={track.solo} onClick={() => flag('solo')} title="Solo">S</FlagBtn>
+        <FlagBtn on={track.locked} onClick={() => flag('locked')} title="Lock">L</FlagBtn>
         {track.kind === 'video' && (
-          <FlagBtn on={track.hidden} onClick={() => toggle(track.id, 'hidden')} title="Скрыть видео">
+          <FlagBtn on={track.hidden} onClick={() => flag('hidden')} title="Скрыть видео">
             👁
           </FlagBtn>
         )}
@@ -405,6 +413,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     e.stopPropagation();
     const st = useProStore.getState();
     if (st.activeTool === 'blade') {
+      st.pushHistory();
       st.splitClipAt(c.id, timeAt(e.clientX));
       return;
     }
@@ -421,8 +430,13 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const origPrimary = c.timelineStart;
     const dur = c.duration;
     const exclude = new Set(movingIds);
+    let pushed = false;
 
     const move = (ev: PointerEvent) => {
+      if (!pushed) {
+        useProStore.getState().pushHistory();
+        pushed = true;
+      }
       const dt = timeAt(ev.clientX) - startTime;
       const raw = origPrimary + dt;
       const snapStart = snap(raw, exclude);
@@ -463,7 +477,12 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const startTime = timeAt(e.clientX);
     const orig = { start: c.timelineStart, inPoint: c.inPoint, duration: c.duration, srcDur: c.sourceDuration };
     const exclude = new Set([c.id]);
+    let pushed = false;
     const move = (ev: PointerEvent) => {
+      if (!pushed) {
+        useProStore.getState().pushHistory();
+        pushed = true;
+      }
       const dt = timeAt(ev.clientX) - startTime;
       const cur = useProStore.getState();
       if (side === 'l') {
@@ -493,7 +512,12 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     if (e.button !== 0) return;
     e.stopPropagation();
     e.preventDefault();
+    let pushed = false;
     const move = (ev: PointerEvent) => {
+      if (!pushed) {
+        useProStore.getState().pushHistory();
+        pushed = true;
+      }
       const dur = timeAt(ev.clientX) - c.timelineStart;
       useProStore.getState().setClipTransition(c.id, Math.max(0.1, dur));
     };

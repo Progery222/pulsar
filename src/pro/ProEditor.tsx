@@ -59,6 +59,7 @@ async function runAutoCut(): Promise<void> {
     audioDuration: audioClip.duration,
     locked,
   });
+  useProStore.getState().pushHistory();
   useProStore.getState().autoCutReplace(target, gen);
   showToast(`Auto-Cut: ${gen.length} клипов на ${target}`);
 }
@@ -84,11 +85,23 @@ export default function ProEditor() {
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
       const st = useProStore.getState();
       const key = e.key.toLowerCase();
+      if (e.ctrlKey && key === 'z') {
+        e.preventDefault();
+        if (e.shiftKey) st.redo();
+        else st.undo();
+        return;
+      }
+      if (e.ctrlKey && key === 'y') {
+        e.preventDefault();
+        st.redo();
+        return;
+      }
       if (e.ctrlKey && key === 'k') {
         // Разрезать по плейхеду (§3.3 ТЗ).
         e.preventDefault();
         const ph = st.playhead;
         const targets = st.selectedClipIds.length ? st.doc.clips.filter((c) => st.selectedClipIds.includes(c.id)) : st.doc.clips.slice();
+        st.pushHistory();
         for (const c of targets) if (ph > c.timelineStart && ph < c.timelineStart + c.duration) st.splitClipAt(c.id, ph);
         return;
       }
@@ -107,6 +120,7 @@ export default function ProEditor() {
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (!st.selectedClipIds.length) return;
+        st.pushHistory();
         // Ripple Delete: Shift+Delete или активный режим Ripple.
         if (e.shiftKey || st.activeTool === 'ripple') st.rippleDeleteClips(st.selectedClipIds);
         else st.removeClips(st.selectedClipIds); // обычное удаление (оставляет gap)
@@ -204,7 +218,7 @@ function ProToolbar() {
       <ToolBtn onClick={cycleMood} title="Плотность нарезки">
         Mood: {MOODS.find((m) => m.id === mood)?.label}
       </ToolBtn>
-      <ToolBtn onClick={() => { addAdjustmentTrack(); showToast('Дорожка корр. слоёв добавлена (кнопка ＋ на ней)'); }} title="Дорожка корректирующих слоёв (фильтры)">
+      <ToolBtn onClick={() => { useProStore.getState().pushHistory(); addAdjustmentTrack(); showToast('Дорожка корр. слоёв добавлена (кнопка ＋ на ней)'); }} title="Дорожка корректирующих слоёв (фильтры)">
         ＋Adjustment
       </ToolBtn>
       <div style={{ marginLeft: 'auto' }}>

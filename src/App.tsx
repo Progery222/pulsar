@@ -51,6 +51,8 @@ function App() {
   useEffect(() => {
     initHistory();
     function onKey(e: KeyboardEvent) {
+      // В режиме Pulsar Pro хоткеи обрабатывает ProEditor.
+      if (useUIStore.getState().appMode === 'pro') return;
       const tag = (e.target as HTMLElement)?.tagName;
       const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
       const screen = useProjectStore.getState().currentScreen;

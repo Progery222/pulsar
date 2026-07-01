@@ -27,6 +27,11 @@ function nextAdjTrackId(): string {
   return `ADJ${adjSeq}`;
 }
 
+// История (§6 ТЗ): стек снапшотов doc. Immer не мутирует старые doc — храним ссылки.
+const HISTORY_LIMIT = 60;
+const past: ProDocument[] = [];
+const future: ProDocument[] = [];
+
 // Стор профессионального мульти-трек монтажа (Pulsar Pro).
 // Отдельно от projectStore (beat-sync). Immer-middleware для мутаций
 // вложенного дерева tracks/clips. Undo/Redo (стек патчей) — Фаза 6.
@@ -84,12 +89,16 @@ export interface ProState {
   addAdjustmentTrack: () => string;
   addAdjustmentClip: (trackId: string, start: number, duration: number, filter: AdjustFilter) => void;
   updateClipAdjust: (id: string, patch: Partial<{ filter: AdjustFilter; intensity: number }>) => void;
+  // История (§6 ТЗ). pushHistory вызывается в начале дискретного действия/жеста.
+  pushHistory: () => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 const MIN_DUR = 0.05; // минимальная длина клипа (сек)
 
 export const useProStore = create<ProState>()(
-  immer((set) => ({
+  immer((set, get) => ({
     doc: createEmptyProDocument(),
 
     playhead: 0,
@@ -317,5 +326,29 @@ export const useProStore = create<ProState>()(
         if (!c || !c.adjust) return;
         c.adjust = { ...c.adjust, ...patch };
       }),
+
+    pushHistory: () => {
+      past.push(get().doc);
+      if (past.length > HISTORY_LIMIT) past.shift();
+      future.length = 0;
+    },
+    undo: () => {
+      if (!past.length) return;
+      future.push(get().doc);
+      const prev = past.pop()!;
+      set((s) => {
+        s.doc = prev;
+        s.selectedClipIds = [];
+      });
+    },
+    redo: () => {
+      if (!future.length) return;
+      past.push(get().doc);
+      const next = future.pop()!;
+      set((s) => {
+        s.doc = next;
+        s.selectedClipIds = [];
+      });
+    },
   }))
 );

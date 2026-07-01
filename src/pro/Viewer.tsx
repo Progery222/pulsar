@@ -209,6 +209,7 @@ function TransformOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
   const drag = (onMove: (ev: PointerEvent) => void) => (e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    useProStore.getState().pushHistory();
     const up = () => {
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', up);
@@ -298,6 +299,7 @@ function CropOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
   const dragEdge = (side: 'top' | 'bottom' | 'left' | 'right') => (e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
+    useProStore.getState().pushHistory();
     const move = (ev: PointerEvent) => {
       const { fx, fy } = projFrac(ev.clientX, ev.clientY);
       const st = useProStore.getState();
