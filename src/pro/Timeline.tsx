@@ -269,7 +269,7 @@ export default function Timeline() {
     const kind = isVideoFile(path) ? 'video' : isAudioFile(path) ? 'audio' : null;
     if (!kind) return;
     // Дорожка под курсором; если её нет/не тот тип (напр. перенос выше всех) — создаём новую.
-    let trackId = trackAtClientY(e.clientY);
+    let trackId = trackAtClientY(e.clientY) ?? '';
     const track = st.doc.tracks.find((t) => t.id === trackId);
     if (!track || track.kind !== kind || track.isAdjustment) trackId = st.addTrack(kind);
     const at = Math.max(0, snapTime(timeAtClientX(e.clientX), new Set()));
