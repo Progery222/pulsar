@@ -106,6 +106,54 @@ export function registerFileHandlers() {
     return { ok: true };
   });
 
+  // Пики аудиодорожки для вейвформ на таймлайне (Pulsar Pro §3.3). Кэш JSON по src.
+  // Декодируем в моно PCM 8кГц, считаем ~60 пиков/сек (0..1) на всю длину файла.
+  ipcMain.handle('media:waveform', async (_event, src: string) => {
+    if (!ffmpegBin || !src) return null;
+    const dir = path.join(app.getPath('userData'), 'waveforms');
+    fs.mkdirSync(dir, { recursive: true });
+    const key = crypto.createHash('md5').update(src).digest('hex');
+    const out = path.join(dir, `${key}.json`);
+    if (fs.existsSync(out)) {
+      try {
+        return JSON.parse(fs.readFileSync(out, 'utf8')) as { peaks: number[]; duration: number };
+      } catch {
+        /* битый кэш — перегенерим */
+      }
+    }
+    const SR = 8000;
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve) => {
+      const ch = spawn(ffmpegBin, ['-i', src, '-ac', '1', '-ar', String(SR), '-f', 's16le', '-'], { windowsHide: true });
+      ch.stdout.on('data', (d: Buffer) => chunks.push(d));
+      ch.on('close', () => resolve());
+      ch.on('error', () => resolve());
+    });
+    const buf = Buffer.concat(chunks);
+    const total = Math.floor(buf.length / 2);
+    if (total === 0) return null;
+    const duration = total / SR;
+    const targetPeaks = Math.min(200000, Math.max(1, Math.ceil(duration * 60)));
+    const bucket = Math.max(1, Math.floor(total / targetPeaks));
+    const peaks: number[] = [];
+    for (let i = 0; i < total; i += bucket) {
+      let peak = 0;
+      const end = Math.min(total, i + bucket);
+      for (let j = i; j < end; j++) {
+        const v = Math.abs(buf.readInt16LE(j * 2));
+        if (v > peak) peak = v;
+      }
+      peaks.push(peak / 32768);
+    }
+    const result = { peaks, duration };
+    try {
+      fs.writeFileSync(out, JSON.stringify(result));
+    } catch {
+      /* не критично */
+    }
+    return result;
+  });
+
   // Миниатюра кадра видео (для таймлайна/очереди). Кэшируется по src+time.
   ipcMain.handle('media:thumb', async (_event, src: string, time: number) => {
     if (!ffmpegBin || !src) return null;

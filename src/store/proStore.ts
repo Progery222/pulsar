@@ -1,6 +1,12 @@
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
-import { createEmptyProDocument, type ProDocument, type ProTool } from '../pro/proTypes';
+import { createEmptyProDocument, type ProClip, type ProDocument, type ProTool } from '../pro/proTypes';
+
+let clipSeq = 0;
+function nextClipId(): string {
+  clipSeq += 1;
+  return `c${clipSeq}_${Math.random().toString(36).slice(2, 7)}`;
+}
 
 // Стор профессионального мульти-трек монтажа (Pulsar Pro).
 // Отдельно от projectStore (beat-sync). Immer-middleware для мутаций
@@ -35,6 +41,10 @@ export interface ProState {
   setLeftWidth: (w: number) => void;
   setTimelineHeight: (h: number) => void;
   resetDocument: () => void;
+
+  // Документ.
+  addClip: (clip: Omit<ProClip, 'id'>) => string;
+  toggleTrackFlag: (trackId: string, flag: 'muted' | 'solo' | 'locked' | 'hidden') => void;
 }
 
 export const useProStore = create<ProState>()(
@@ -95,6 +105,19 @@ export const useProStore = create<ProState>()(
         s.playhead = 0;
         s.scrollX = 0;
         s.selectedClipIds = [];
+      }),
+
+    addClip: (clip) => {
+      const id = nextClipId();
+      set((s) => {
+        s.doc.clips.push({ ...clip, id });
+      });
+      return id;
+    },
+    toggleTrackFlag: (trackId, flag) =>
+      set((s) => {
+        const t = s.doc.tracks.find((tr) => tr.id === trackId);
+        if (t) t[flag] = !t[flag];
       }),
   }))
 );

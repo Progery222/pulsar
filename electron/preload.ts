@@ -40,6 +40,10 @@ const electronAPI = {
   thumb: (src: string, time: number): Promise<string | null> =>
     ipcRenderer.invoke('media:thumb', src, time),
 
+  // Пики аудиодорожки для вейвформ (Pulsar Pro). Кэш в main.
+  waveform: (src: string): Promise<{ peaks: number[]; duration: number } | null> =>
+    ipcRenderer.invoke('media:waveform', src),
+
   // Показать файл в проводнике с выделением.
   showItemInFolder: (filePath: string): Promise<{ ok: true }> =>
     ipcRenderer.invoke('shell:showItem', filePath),

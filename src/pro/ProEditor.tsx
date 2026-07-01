@@ -1,6 +1,6 @@
-import { useCallback, useRef } from 'react';
-import { useUIStore } from '../store/uiStore';
+import { useCallback, useEffect, useRef } from 'react';
 import { useProStore } from '../store/proStore';
+import Timeline, { zoomAtPlayhead } from './Timeline';
 import type { ProTool } from './proTypes';
 
 // Pulsar Pro — рабочее пространство мульти-трек монтажа (§2 ТЗ).
@@ -16,6 +16,29 @@ export default function ProEditor() {
   const onDragLeft = useDrag((dx) => setLeftWidth(useProStore.getState().leftWidth + dx));
   // Горизонтальный разделитель таймлайна (тянем вверх — таймлайн выше).
   const onDragTimeline = useDrag((_dx, dy) => setTimelineHeight(useProStore.getState().timelineHeight - dy));
+
+  // Хоткеи Pro-режима (§3.2 ТЗ): zoom +/-, snapping N, play Space.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const st = useProStore.getState();
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        zoomAtPlayhead(st.pxPerSec * 1.3);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        zoomAtPlayhead(st.pxPerSec / 1.3);
+      } else if (e.key.toLowerCase() === 'n') {
+        st.toggleSnapping();
+      } else if (e.code === 'Space') {
+        e.preventDefault();
+        st.setPlaying(!st.isPlaying);
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   return (
     <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)', overflow: 'hidden' }}>
@@ -46,7 +69,7 @@ export default function ProEditor() {
 
       {/* Timeline (нижняя панель). */}
       <div style={{ height: timelineHeight, borderTop: '1px solid var(--border)' }}>
-        <TimelinePanel />
+        <Timeline />
       </div>
     </div>
   );
@@ -131,14 +154,6 @@ function ProToolbar() {
         </ToolBtn>
       </div>
     </div>
-  );
-}
-
-function TimelinePanel() {
-  return (
-    <Zone title="Timeline">
-      <Placeholder text="Многодорожечная зона: Track Header, Time Ruler (HH:MM:SS:FF), клипы, zoom. Фаза 2." />
-    </Zone>
   );
 }
 
