@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
 import {
   createEmptyProDocument,
+  DEFAULT_AUDIO,
   DEFAULT_CROP,
   DEFAULT_TRANSFORM,
   findPrevAdjacent,
@@ -113,6 +114,7 @@ export interface ProState {
   addAdjustmentTrack: () => string;
   addAdjustmentClip: (trackId: string, start: number, duration: number, filter: AdjustFilter) => void;
   updateClipAdjust: (id: string, patch: Partial<{ filter: AdjustFilter; intensity: number }>) => void;
+  updateClipAudio: (id: string, patch: Partial<import('../pro/proTypes').ClipAudio>) => void;
   // История (§6 ТЗ). pushHistory вызывается в начале дискретного действия/жеста.
   pushHistory: () => void;
   undo: () => void;
@@ -469,6 +471,12 @@ export const useProStore = create<ProState>()(
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c || !c.adjust) return;
         c.adjust = { ...c.adjust, ...patch };
+      }),
+    updateClipAudio: (id, patch) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        c.audio = { ...DEFAULT_AUDIO, ...c.audio, ...patch };
       }),
 
     pushHistory: () => {

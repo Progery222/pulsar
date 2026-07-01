@@ -45,7 +45,17 @@ export interface ProClip {
   locked?: boolean; // закреплён — Auto-Cut не перезаписывает (§5 ТЗ)
   transition?: { duration: number }; // crossfade у левого края с предыдущим клипом (§5 ТЗ)
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
+  audio?: ClipAudio; // параметры аудио-клипа
 }
+
+// Параметры аудио (громкость/питч/фейды).
+export interface ClipAudio {
+  volumeDb: number; // усиление, дБ (0 = без изменений)
+  pitch: number; // сдвиг тона, полутоны
+  fadeIn: number; // фейд в начале, сек
+  fadeOut: number; // фейд в конце, сек
+}
+export const DEFAULT_AUDIO: ClipAudio = { volumeDb: 0, pitch: 0, fadeIn: 0, fadeOut: 0 };
 
 // Дорожка (§3.1 ТЗ). Видео (V1,V2…) сверху, аудио (A1,A2…) снизу.
 export interface ProTrack {

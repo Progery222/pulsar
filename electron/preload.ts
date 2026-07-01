@@ -52,7 +52,7 @@ const electronAPI = {
   proEncode: (opts: {
     dir: string;
     fps: number;
-    audio: { path: string; inPoint: number; duration: number; delayMs: number; volume: number }[];
+    audio: { path: string; inPoint: number; duration: number; delayMs: number; volumeDb: number; pitch: number; fadeIn: number; fadeOut: number }[];
     outPath: string;
   }): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('pro:encode', opts),
   proMakeProxy: (src: string): Promise<string | null> => ipcRenderer.invoke('pro:makeProxy', src),

@@ -1,7 +1,7 @@
 import { Compositor, VideoPool } from './compositor';
 import { buildFrame, activeAdjustments } from './frame';
 import { useProStore } from '../store/proStore';
-import type { ProDocument } from './proTypes';
+import { DEFAULT_AUDIO, type ProDocument } from './proTypes';
 
 // Экспорт Pulsar Pro: покадровый рендер тем же WebGL-компоновщиком (превью == экспорт),
 // кадры пишутся в temp через IPC, затем FFmpeg собирает mp4 + мукс аудио.
@@ -91,7 +91,7 @@ export async function runProExport(doc: ProDocument, onProgress: Progress): Prom
 
     // Аудио-дорожки с учётом mute/solo.
     const anySolo = doc.tracks.some((tr) => tr.kind === 'audio' && tr.solo);
-    const audio: { path: string; inPoint: number; duration: number; delayMs: number; volume: number }[] = [];
+    const audio: { path: string; inPoint: number; duration: number; delayMs: number; volumeDb: number; pitch: number; fadeIn: number; fadeOut: number }[] = [];
     for (const c of doc.clips) {
       const tr = doc.tracks.find((t) => t.id === c.trackId);
       if (!tr || tr.kind !== 'audio' || !c.sourceFile || tr.muted || (anySolo && !tr.solo)) continue;
@@ -99,7 +99,8 @@ export async function runProExport(doc: ProDocument, onProgress: Progress): Prom
       const s0 = Math.max(c.timelineStart, startT);
       const e0 = Math.min(c.timelineStart + c.duration, endT);
       if (e0 <= s0) continue;
-      audio.push({ path: c.sourceFile, inPoint: c.inPoint + (s0 - c.timelineStart), duration: e0 - s0, delayMs: (s0 - startT) * 1000, volume: 1 });
+      const a = { ...DEFAULT_AUDIO, ...c.audio };
+      audio.push({ path: c.sourceFile, inPoint: c.inPoint + (s0 - c.timelineStart), duration: e0 - s0, delayMs: (s0 - startT) * 1000, volumeDb: a.volumeDb, pitch: a.pitch, fadeIn: a.fadeIn, fadeOut: a.fadeOut });
     }
 
     onProgress('encode', total, total);

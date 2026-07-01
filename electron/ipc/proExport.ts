@@ -22,7 +22,10 @@ interface AudioInput {
   inPoint: number;
   duration: number;
   delayMs: number;
-  volume: number;
+  volumeDb: number;
+  pitch: number;
+  fadeIn: number;
+  fadeOut: number;
 }
 interface EncodeOpts {
   dir: string;
@@ -84,8 +87,19 @@ export function registerProExportHandlers() {
     if (audio.length) {
       const parts = audio.map((a, i) => {
         const d = Math.max(0, Math.round(Number(a.delayMs) || 0));
-        const vol = Number.isFinite(Number(a.volume)) ? Number(a.volume) : 1;
-        return `[${i + 1}:a]adelay=${d}|${d},volume=${vol}[a${i}]`;
+        const vol = Math.pow(10, (Number(a.volumeDb) || 0) / 20);
+        const chain: string[] = [];
+        // Питч: смещение тона без изменения темпа (asetrate → aresample → atempo).
+        const pitch = Number(a.pitch) || 0;
+        if (pitch) {
+          const r = Math.min(2, Math.max(0.5, Math.pow(2, pitch / 12)));
+          chain.push(`asetrate=44100*${r}`, `aresample=44100`, `atempo=${(1 / r).toFixed(4)}`);
+        }
+        if (Number(a.fadeIn) > 0) chain.push(`afade=t=in:st=0:d=${Number(a.fadeIn)}`);
+        if (Number(a.fadeOut) > 0) chain.push(`afade=t=out:st=${Math.max(0, Number(a.duration) - Number(a.fadeOut)).toFixed(3)}:d=${Number(a.fadeOut)}`);
+        chain.push(`volume=${vol.toFixed(3)}`);
+        chain.push(`adelay=${d}|${d}`);
+        return `[${i + 1}:a]${chain.join(',')}[a${i}]`;
       });
       const mix = audio.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${audio.length}:normalize=0[aout]`;
       args.push('-filter_complex', parts.join(';') + ';' + mix, '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k');

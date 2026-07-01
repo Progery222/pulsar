@@ -189,6 +189,7 @@ export default function Viewer() {
       curAudioSrc.current = clip.sourceFile;
       el.src = mediaUrl(clip.sourceFile);
     }
+    el.volume = Math.min(1, Math.pow(10, (clip.audio?.volumeDb ?? 0) / 20));
     const srcTime = Math.max(0, clip.inPoint + (ph - clip.timelineStart));
     if (playing) {
       if (el.paused) el.play().catch(() => {});

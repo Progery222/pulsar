@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type AdjustFilter } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type AdjustFilter } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -159,6 +159,8 @@ function InspectorTab() {
   const toggleLock = useProStore((s) => s.toggleClipLock);
   const setTransition = useProStore((s) => s.setClipTransition);
   const updateAdjust = useProStore((s) => s.updateClipAdjust);
+  const updateAudio = useProStore((s) => s.updateClipAudio);
+  const tracks = useProStore((s) => s.doc.tracks);
   const push = useProStore((s) => s.pushHistory);
 
   if (!clip) return <Empty text="Выделите клип на таймлайне, чтобы редактировать его параметры." />;
@@ -168,8 +170,39 @@ function InspectorTab() {
   const tx = (p: Parameters<typeof updateTransform>[1]) => { push(); updateTransform(id, p); };
   const cx = (p: Parameters<typeof updateCrop>[1]) => { push(); updateCrop(id, p); };
   const adj = (p: Parameters<typeof updateAdjust>[1]) => { push(); updateAdjust(id, p); };
+  const au = (p: Parameters<typeof updateAudio>[1]) => { push(); updateAudio(id, p); };
   const setTr = (v: number | null) => { push(); setTransition(id, v); };
   const lock = () => { push(); toggleLock(id); };
+  const track = tracks.find((t) => t.id === clip.trackId);
+
+  // Аудио-клип — свой набор параметров.
+  if (track?.kind === 'audio' && !clip.adjust) {
+    const a = { ...DEFAULT_AUDIO, ...clip.audio };
+    return (
+      <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <button onClick={lock} title="Закрепить клип" style={{ alignSelf: 'flex-start', fontSize: 12, padding: '4px 12px', borderRadius: 6, cursor: 'pointer', color: clip.locked ? 'var(--bg-primary)' : 'var(--text-primary)', background: clip.locked ? 'var(--accent-green)' : 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+          {clip.locked ? '🔒 Закреплён' : '🔓 Закрепить'}
+        </button>
+        <Section title="Аудио">
+          <Row><NumField label="Громкость дБ" value={a.volumeDb} step={0.5} onChange={(v) => au({ volumeDb: v })} /></Row>
+          <Row><NumField label="Питч (полутона)" value={a.pitch} step={0.5} onChange={(v) => au({ pitch: v })} /></Row>
+          <Row><NumField label="Fade in, с" value={a.fadeIn} step={0.1} onChange={(v) => au({ fadeIn: Math.max(0, v) })} /></Row>
+          <Row><NumField label="Fade out, с" value={a.fadeOut} step={0.1} onChange={(v) => au({ fadeOut: Math.max(0, v) })} /></Row>
+          <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+            <button onClick={() => au({ pitch: 0.4, volumeDb: a.volumeDb - 0.3 })} title="Небольшой сдвиг тона/громкости для обхода аудио-фингерпринта" style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>Anti-Shazam</button>
+            <button onClick={() => au(DEFAULT_AUDIO)} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>Сбросить</button>
+          </div>
+        </Section>
+        <Section title="Transition (crossfade)">
+          {findPrevAdjacent(clips, clip) ? (
+            <Row><NumField label="Crossfade с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTr(v > 0 ? v : null)} /></Row>
+          ) : (
+            <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Нужен смежный клип слева.</div>
+          )}
+        </Section>
+      </div>
+    );
+  }
 
   // Клип корректирующего слоя — свой набор параметров.
   if (clip.adjust) {
