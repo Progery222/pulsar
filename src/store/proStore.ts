@@ -79,6 +79,8 @@ export interface ProState {
 
   // Документ.
   addClip: (clip: Omit<ProClip, 'id'>) => string;
+  addTrack: (kind: 'video' | 'audio') => void;
+  removeTrack: (trackId: string) => void;
   toggleTrackFlag: (trackId: string, flag: 'muted' | 'solo' | 'locked' | 'hidden') => void;
   moveClip: (id: string, trackId: string, timelineStart: number) => void;
   moveClipsBy: (ids: string[], dt: number) => void;
@@ -207,6 +209,34 @@ export const useProStore = create<ProState>()(
       });
       return id;
     },
+    addTrack: (kind) =>
+      set((s) => {
+        const num = s.doc.tracks.filter((t) => t.kind === kind && !t.isAdjustment).length + 1;
+        const track = {
+          id: `${kind === 'video' ? 'V' : 'A'}${num}_${nextClipId()}`,
+          kind,
+          name: `${kind === 'video' ? 'V' : 'A'}${num}`,
+          height: kind === 'video' ? 64 : 56,
+          muted: false,
+          solo: false,
+          locked: false,
+          hidden: false,
+        };
+        if (kind === 'video') {
+          // Видео — над аудио: перед первой аудио-дорожкой.
+          const firstAudio = s.doc.tracks.findIndex((t) => t.kind === 'audio');
+          if (firstAudio === -1) s.doc.tracks.push(track);
+          else s.doc.tracks.splice(firstAudio, 0, track);
+        } else {
+          s.doc.tracks.push(track);
+        }
+      }),
+    removeTrack: (trackId) =>
+      set((s) => {
+        s.doc.tracks = s.doc.tracks.filter((t) => t.id !== trackId);
+        s.doc.clips = s.doc.clips.filter((c) => c.trackId !== trackId);
+        s.selectedClipIds = [];
+      }),
     toggleTrackFlag: (trackId, flag) =>
       set((s) => {
         const t = s.doc.tracks.find((tr) => tr.id === trackId);

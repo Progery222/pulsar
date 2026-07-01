@@ -168,14 +168,31 @@ function Row({ children }: { children: React.ReactNode }) {
 }
 
 function NumField({ label, value, step, onChange }: { label: string; value: number; step: number; onChange: (v: number) => void }) {
+  // Скраб: тянуть за подпись мышью. Колёсико над полем — ±шаг.
+  const onScrubDown = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const startX = e.clientX;
+    const startVal = value;
+    const move = (ev: PointerEvent) => {
+      const delta = Math.round((ev.clientX - startX) / 3) * step;
+      onChange(Number((startVal + delta).toFixed(4)));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
   return (
     <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
-      <span>{label}</span>
+      <span onPointerDown={onScrubDown} style={{ cursor: 'ew-resize', userSelect: 'none', flex: 1 }} title="Тянуть — менять значение">{label}</span>
       <input
         type="number"
         value={value}
         step={step}
         onChange={(e) => onChange(Number(e.target.value))}
+        onWheel={(e) => { e.preventDefault(); onChange(Number((value + (e.deltaY < 0 ? step : -step)).toFixed(4))); }}
         style={{ width: 88, padding: '4px 6px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}
       />
     </label>

@@ -237,7 +237,10 @@ export default function Timeline() {
       <div className="flex" style={{ flex: 1, minHeight: 0 }}>
         {/* Колонка заголовков дорожек. */}
         <div style={{ width: HEADER_W, flex: '0 0 auto', borderRight: '1px solid var(--border)', overflow: 'hidden', position: 'relative' }}>
-          <div style={{ height: RULER_H, borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)' }} />
+          <div style={{ height: RULER_H, borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px' }}>
+            <button onClick={() => { useProStore.getState().pushHistory(); useProStore.getState().addTrack('video'); }} title="Добавить видео-дорожку" style={addTrackBtn}>＋V</button>
+            <button onClick={() => { useProStore.getState().pushHistory(); useProStore.getState().addTrack('audio'); }} title="Добавить аудио-дорожку" style={addTrackBtn}>＋A</button>
+          </div>
           <div style={{ transform: `translateY(${-clampedScrollY}px)` }}>
             {laneOffsets.map(({ track }) => (
               <TrackHeader key={track.id} track={track} />
@@ -346,9 +349,15 @@ function TrackHeader({ track }: { track: ProTrack }) {
   const toggle = useProStore((s) => s.toggleTrackFlag);
   const addClip = useProStore((s) => s.addClip);
   const addAdjustmentClip = useProStore((s) => s.addAdjustmentClip);
+  const removeTrack = useProStore((s) => s.removeTrack);
   const flag = (name: 'muted' | 'solo' | 'locked' | 'hidden') => {
     useProStore.getState().pushHistory();
     toggle(track.id, name);
+  };
+  const onDelete = () => {
+    if (!window.confirm(`Удалить дорожку ${track.name} и её клипы?`)) return;
+    useProStore.getState().pushHistory();
+    removeTrack(track.id);
   };
 
   const onImport = async () => {
@@ -379,9 +388,10 @@ function TrackHeader({ track }: { track: ProTrack }) {
 
   return (
     <div style={{ height: track.height, borderBottom: '1px solid var(--border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, background: track.kind === 'audio' ? 'var(--bg-primary)' : 'var(--bg-secondary)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)' }}>{track.name}</span>
-        <button onClick={onImport} title="Импортировать медиа" style={miniIcon}>＋</button>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{track.name}</span>
+        <button onClick={onImport} title={track.isAdjustment ? 'Добавить блок' : 'Импортировать медиа'} style={miniIcon}>＋</button>
+        <button onClick={onDelete} title="Удалить дорожку" style={{ ...miniIcon, marginLeft: 0 }}>✕</button>
       </div>
       <div style={{ display: 'flex', gap: 3 }}>
         <FlagBtn on={track.muted} onClick={() => flag('muted')} title="Mute">M</FlagBtn>
@@ -735,6 +745,18 @@ const miniIcon: React.CSSProperties = {
   fontSize: 13,
   lineHeight: 1,
   cursor: 'pointer',
+};
+
+const addTrackBtn: React.CSSProperties = {
+  flex: 1,
+  height: 20,
+  borderRadius: 5,
+  border: '1px solid var(--border)',
+  background: 'var(--bg-secondary)',
+  color: 'var(--text-primary)',
+  fontSize: 11,
+  cursor: 'pointer',
+  padding: 0,
 };
 
 const zoomBtn: React.CSSProperties = {
