@@ -71,6 +71,7 @@ export interface ProState {
   toggleSnapping: () => void;
   setSelection: (ids: string[]) => void;
   setViewerMode: (mode: ViewerMode) => void;
+  setResolution: (width: number, height: number) => void;
   updateClipTransform: (id: string, patch: Partial<ClipTransform>) => void;
   updateClipCrop: (id: string, patch: Partial<ClipCrop>) => void;
   setLeftWidth: (w: number) => void;
@@ -167,6 +168,11 @@ export const useProStore = create<ProState>()(
     setViewerMode: (mode) =>
       set((s) => {
         s.viewerMode = mode;
+      }),
+    setResolution: (width, height) =>
+      set((s) => {
+        s.doc.width = Math.max(16, Math.round(width));
+        s.doc.height = Math.max(16, Math.round(height));
       }),
     updateClipTransform: (id, patch) =>
       set((s) => {

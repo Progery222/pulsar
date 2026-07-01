@@ -13,6 +13,16 @@ function clamp(v: number, a: number, b: number) {
   return Math.min(b, Math.max(a, v));
 }
 
+// Пресеты разрешения секвенции.
+const RES_PRESETS = [
+  { label: '16:9 · 1920×1080', value: '1920x1080' },
+  { label: '9:16 · 1080×1920', value: '1080x1920' },
+  { label: '1:1 · 1080×1080', value: '1080x1080' },
+  { label: '4:5 · 1080×1350', value: '1080x1350' },
+  { label: '16:9 · 1280×720', value: '1280x720' },
+  { label: '4K · 3840×2160', value: '3840x2160' },
+];
+
 function maxEnd(doc: ProDocument): number {
   return doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
 }
@@ -41,6 +51,7 @@ export default function Viewer() {
   const setPlaying = useProStore((s) => s.setPlaying);
   const setPlayhead = useProStore((s) => s.setPlayhead);
   const useProxy = useProStore((s) => s.useProxy);
+  const setResolution = useProStore((s) => s.setResolution);
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -211,17 +222,36 @@ export default function Viewer() {
         >
           {exp ? 'Экспорт…' : 'Экспорт ⬇'}
         </button>
-        <span style={{ fontSize: 11, color: 'var(--text-secondary)', alignSelf: 'center' }}>{doc.width}×{doc.height}</span>
+        <select
+          value={`${doc.width}x${doc.height}`}
+          onChange={(e) => {
+            const [w, h] = e.target.value.split('x').map(Number);
+            useProStore.getState().pushHistory();
+            setResolution(w, h);
+          }}
+          title="Разрешение секвенции"
+          style={{ fontSize: 11.5, padding: '3px 6px', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', alignSelf: 'center' }}
+        >
+          {RES_PRESETS.map((p) => (
+            <option key={p.value} value={p.value}>{p.label}</option>
+          ))}
+          {!RES_PRESETS.some((p) => p.value === `${doc.width}x${doc.height}`) && (
+            <option value={`${doc.width}x${doc.height}`}>{doc.width}×{doc.height}</option>
+          )}
+        </select>
       </div>
 
       <div ref={wrapRef} className="flex flex-1 items-center justify-center" style={{ position: 'relative', minHeight: 0, overflow: 'hidden', padding: 12 }}>
         <div style={{ position: 'relative', width: dispW, height: dispH, background: '#000' }}>
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block', transformOrigin: 'center center', background: '#000' }}
-          />
+          {/* Клиппинг видео к рамке кадра — превью не «едет» при трансформации. */}
+          <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+            <video
+              ref={videoRef}
+              muted
+              playsInline
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block', transformOrigin: 'center center', background: '#000' }}
+            />
+          </div>
           {viewerMode === 'transform' && <TransformOverlay doc={doc} scale={scale} />}
           {viewerMode === 'crop' && <CropOverlay doc={doc} scale={scale} />}
           {!doc.clips.length && (

@@ -235,6 +235,7 @@ export default function Timeline() {
     <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-secondary)', userSelect: 'none', WebkitUserSelect: 'none' }}>
       <ZoomBar contentEnd={contentEnd} />
       <div className="flex" style={{ flex: 1, minHeight: 0 }}>
+        <ToolColumn />
         {/* Колонка заголовков дорожек. */}
         <div style={{ width: HEADER_W, flex: '0 0 auto', borderRight: '1px solid var(--border)', overflow: 'hidden', position: 'relative' }}>
           <div style={{ height: RULER_H, borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px' }}>
@@ -312,6 +313,44 @@ export default function Timeline() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Колонка инструментов (§2 ТЗ) ───────────────────────────────────────────
+
+function ToolColumn() {
+  const activeTool = useProStore((s) => s.activeTool);
+  const setTool = useProStore((s) => s.setTool);
+  const I = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
+  const tools = [
+    { id: 'select' as const, title: 'Курсор — выделение/перемещение (V)', icon: <svg {...I}><path d="M3 3l7 18 2.5-7.5L20 11z" /></svg> },
+    { id: 'blade' as const, title: 'Лезвие — разрезать клип (C/B)', icon: <svg {...I}><path d="M4 4l10 10" /><circle cx="17" cy="17" r="3" /><path d="M14 14l6-6" /></svg> },
+    { id: 'ripple' as const, title: 'Ripple — удаление со сдвигом', icon: <svg {...I}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></svg> },
+  ];
+  return (
+    <div style={{ width: 40, flex: '0 0 auto', borderRight: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: 8 }}>
+      {tools.map((t) => (
+        <button
+          key={t.id}
+          onClick={() => setTool(t.id)}
+          title={t.title}
+          style={{
+            width: 30,
+            height: 30,
+            borderRadius: 7,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            color: activeTool === t.id ? 'var(--bg-primary)' : 'var(--text-primary)',
+            background: activeTool === t.id ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+            border: '1px solid var(--border)',
+          }}
+        >
+          {t.icon}
+        </button>
+      ))}
     </div>
   );
 }

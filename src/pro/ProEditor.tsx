@@ -6,7 +6,7 @@ import Viewer from './Viewer';
 import LeftPanel from './LeftPanel';
 import { buildAutoCut } from './autoCut';
 import { loadDoc, saveDoc } from './persistence';
-import type { Mood, ProTool } from './proTypes';
+import type { Mood } from './proTypes';
 
 const MOODS: { id: Mood; label: string }[] = [
   { id: 'mellow', label: 'Спокойный' },
@@ -195,20 +195,12 @@ export default function ProEditor() {
 }
 
 function ProToolbar() {
-  const activeTool = useProStore((s) => s.activeTool);
-  const setTool = useProStore((s) => s.setTool);
   const snapping = useProStore((s) => s.snapping);
   const toggleSnapping = useProStore((s) => s.toggleSnapping);
   const mood = useProStore((s) => s.autoCutMood);
   const setMood = useProStore((s) => s.setAutoCutMood);
   const addAdjustmentTrack = useProStore((s) => s.addAdjustmentTrack);
   const [running, setRunning] = useState(false);
-
-  const tools: { id: ProTool; label: string }[] = [
-    { id: 'select', label: 'Selection' },
-    { id: 'blade', label: 'Blade' },
-    { id: 'ripple', label: 'Ripple' },
-  ];
 
   const onAutoCut = async () => {
     if (running) return;
@@ -229,12 +221,6 @@ function ProToolbar() {
       className="flex items-center"
       style={{ gap: 8, padding: '6px 12px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}
     >
-      {tools.map((t) => (
-        <ToolBtn key={t.id} active={activeTool === t.id} onClick={() => setTool(t.id)}>
-          {t.label}
-        </ToolBtn>
-      ))}
-      <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 6px' }} />
       <ToolBtn onClick={onAutoCut} title="Разложить видео по битам аудио">
         {running ? 'Анализ…' : 'Auto-Cut'}
       </ToolBtn>
