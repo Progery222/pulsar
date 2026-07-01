@@ -372,6 +372,15 @@ export const useProStore = create<ProState>()(
     loadDocument: (doc) => {
       past.length = 0;
       future.length = 0;
+      // Восстанавливаем счётчики id, иначе новые клипы/дорожки коллизируют с загруженными.
+      for (const c of doc.clips ?? []) {
+        const m = /^c(\d+)_/.exec(c.id);
+        if (m) clipSeq = Math.max(clipSeq, Number(m[1]));
+      }
+      for (const t of doc.tracks ?? []) {
+        const m = /^ADJ(\d+)$/.exec(t.id);
+        if (m) adjSeq = Math.max(adjSeq, Number(m[1]));
+      }
       set((s) => {
         s.doc = {
           fps: doc.fps || 30,

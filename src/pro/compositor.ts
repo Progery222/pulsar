@@ -111,7 +111,17 @@ function compile(gl: WebGLRenderingContext, type: number, src: string): WebGLSha
   const sh = gl.createShader(type)!;
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
+  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
+    console.error('[Pulsar Pro] shader compile error:', gl.getShaderInfoLog(sh));
+  }
   return sh;
+}
+
+function link(gl: WebGLRenderingContext, prog: WebGLProgram) {
+  gl.linkProgram(prog);
+  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+    console.error('[Pulsar Pro] program link error:', gl.getProgramInfoLog(prog));
+  }
 }
 
 export class Compositor {
@@ -140,7 +150,7 @@ export class Compositor {
     const prog = gl.createProgram()!;
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
     gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog);
+    link(gl, prog);
     this.prog = prog;
     this.aPos = gl.getAttribLocation(prog, 'aPos');
     this.aUv = gl.getAttribLocation(prog, 'aUv');
@@ -148,7 +158,7 @@ export class Compositor {
     const fprog = gl.createProgram()!;
     gl.attachShader(fprog, compile(gl, gl.VERTEX_SHADER, VERT));
     gl.attachShader(fprog, compile(gl, gl.FRAGMENT_SHADER, FILTER_FRAG));
-    gl.linkProgram(fprog);
+    link(gl, fprog);
     this.fprog = fprog;
     this.faPos = gl.getAttribLocation(fprog, 'aPos');
     this.faUv = gl.getAttribLocation(fprog, 'aUv');

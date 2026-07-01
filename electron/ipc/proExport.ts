@@ -8,6 +8,15 @@ import path from 'node:path';
 
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 
+// Разрешаем работать только внутри системной temp-папки (кадры экспорта).
+function isTempDir(dir: string): boolean {
+  try {
+    return path.resolve(dir).startsWith(path.resolve(os.tmpdir()));
+  } catch {
+    return false;
+  }
+}
+
 interface AudioInput {
   path: string;
   inPoint: number;
@@ -40,9 +49,11 @@ export function registerProExportHandlers() {
     return dir;
   });
 
-  // Запись одного кадра PNG.
+  // Запись одного кадра PNG (только внутрь temp-папки).
   ipcMain.handle('pro:writeFrame', async (_e, dir: string, index: number, data: ArrayBuffer) => {
-    const name = `frame_${String(index).padStart(6, '0')}.png`;
+    if (!isTempDir(dir)) return { error: 'bad dir' };
+    const idx = Math.max(0, Math.floor(Number(index) || 0));
+    const name = `frame_${String(idx).padStart(6, '0')}.png`;
     await fs.promises.writeFile(path.join(dir, name), Buffer.from(data));
     return { ok: true };
   });
@@ -66,13 +77,15 @@ export function registerProExportHandlers() {
   ipcMain.handle('pro:encode', async (_e, opts: EncodeOpts) => {
     if (!ffmpegBin) return { error: 'ffmpeg не найден' };
     const { dir, fps, audio, outPath } = opts;
-    const args = ['-y', '-framerate', String(fps), '-i', path.join(dir, 'frame_%06d.png')];
-    for (const a of audio) args.push('-ss', String(Math.max(0, a.inPoint)), '-t', String(Math.max(0.01, a.duration)), '-i', a.path);
+    if (!isTempDir(dir)) return { error: 'bad dir' };
+    const args = ['-y', '-framerate', String(Number(fps) || 30), '-i', path.join(dir, 'frame_%06d.png')];
+    for (const a of audio) args.push('-ss', String(Math.max(0, Number(a.inPoint) || 0)), '-t', String(Math.max(0.01, Number(a.duration) || 0.01)), '-i', a.path);
 
     if (audio.length) {
       const parts = audio.map((a, i) => {
-        const d = Math.max(0, Math.round(a.delayMs));
-        return `[${i + 1}:a]adelay=${d}|${d},volume=${a.volume}[a${i}]`;
+        const d = Math.max(0, Math.round(Number(a.delayMs) || 0));
+        const vol = Number.isFinite(Number(a.volume)) ? Number(a.volume) : 1;
+        return `[${i + 1}:a]adelay=${d}|${d},volume=${vol}[a${i}]`;
       });
       const mix = audio.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${audio.length}:normalize=0[aout]`;
       args.push('-filter_complex', parts.join(';') + ';' + mix, '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k');

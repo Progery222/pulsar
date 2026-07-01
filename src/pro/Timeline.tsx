@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useProStore } from '../store/proStore';
 import { mediaUrl } from '../utils/media';
 import { ADJUST_LABEL, type ProTrack } from './proTypes';
@@ -404,7 +405,7 @@ interface LaneHelpers {
 }
 
 function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { track: ProTrack; y: number; vpW: number; pxPerSec: number; scrollX: number } & LaneHelpers) {
-  const clips = useProStore((s) => s.doc.clips.filter((c) => c.trackId === track.id));
+  const clips = useProStore(useShallow((s) => s.doc.clips.filter((c) => c.trackId === track.id)));
   const selected = useProStore((s) => s.selectedClipIds);
 
   // Перемещение клипа (Move, §3.3): вдоль таймлайна + между дорожками, с прилипанием.

@@ -48,10 +48,14 @@ export default function Viewer() {
   const poolRef = useRef<VideoPool | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [exp, setExp] = useState<{ phase: string; cur: number; total: number } | null>(null);
+  const exportingRef = useRef(false);
 
   const onExport = async () => {
     if (exp) return;
     setExp({ phase: 'capture', cur: 0, total: 1 });
+    // Останавливаем живую петлю превью, чтобы не конкурировать за декодер видео.
+    useProStore.getState().setPlaying(false);
+    exportingRef.current = true;
     try {
       const res = await runProExport(useProStore.getState().doc, (phase, cur, total) => setExp({ phase, cur, total }));
       if (res.ok) showToast('Экспорт готов: ' + (res.outPath ?? ''));
@@ -59,6 +63,7 @@ export default function Viewer() {
     } catch {
       showToast('Ошибка экспорта');
     } finally {
+      exportingRef.current = false;
       setExp(null);
     }
   };
@@ -86,6 +91,11 @@ export default function Viewer() {
     const loop = (ts: number) => {
       const dt = (ts - last) / 1000;
       last = ts;
+      if (exportingRef.current) {
+        // Во время экспорта живой рендер приостановлен (декодер занят экспортом).
+        raf = requestAnimationFrame(loop);
+        return;
+      }
       const st = useProStore.getState();
       let ph = st.playhead;
       const d = st.doc;
