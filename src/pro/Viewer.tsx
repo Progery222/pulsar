@@ -5,7 +5,7 @@ import { activeTexts } from './frame';
 import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -58,8 +58,10 @@ export default function Viewer() {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const videoRef2 = useRef<HTMLVideoElement>(null); // уходящий слой при crossfade
   const audioRef = useRef<HTMLAudioElement>(null);
   const curVideoSrc = useRef('');
+  const curVideoSrc2 = useRef('');
   const curAudioSrc = useRef('');
   const exportingRef = useRef(false);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -149,36 +151,53 @@ export default function Viewer() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
+  function applyVisual(el: HTMLVideoElement, clip: ProClip, d: ProDocument) {
+    const t = { ...DEFAULT_TRANSFORM, ...clip.transform };
+    const cr = { ...DEFAULT_CROP, ...clip.crop };
+    const s = el.offsetWidth / (d.width || 1) || 1;
+    el.style.transform = `translate(${t.x * s}px, ${t.y * s}px) rotate(${t.rotation}deg) scale(${t.scale})`;
+    el.style.clipPath = `inset(${cr.top * 100}% ${cr.right * 100}% ${cr.bottom * 100}% ${cr.left * 100}%)`;
+    el.style.filter = colorToCss(clip.color);
+  }
+  function syncOne(el: HTMLVideoElement, clip: ProClip, srcRef: React.MutableRefObject<string>, srcTime: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>, d: ProDocument) {
+    const base = proxy && proxyMap[clip.sourceFile] ? proxyMap[clip.sourceFile] : clip.sourceFile;
+    if (srcRef.current !== base) { srcRef.current = base; el.src = mediaUrl(base); }
+    const st = Math.max(0, srcTime);
+    if (playing) { if (el.paused) el.play().catch(() => {}); if (Math.abs(el.currentTime - st) > 0.3) el.currentTime = st; }
+    else { if (!el.paused) el.pause(); if (Math.abs(el.currentTime - st) > 0.05) el.currentTime = st; }
+    applyVisual(el, clip, d);
+  }
   function syncVideo(d: ProDocument, ph: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>) {
     const el = videoRef.current;
+    const el2 = videoRef2.current;
     if (!el) return;
     const clip = topActiveClip(d, ph, 'video');
     if (!clip) {
       el.style.opacity = '0';
       if (!el.paused) el.pause();
       curVideoSrc.current = '';
+      if (el2) { el2.style.opacity = '0'; if (!el2.paused) el2.pause(); curVideoSrc2.current = ''; }
       return;
     }
-    el.style.opacity = '1';
-    const base = proxy && proxyMap[clip.sourceFile] ? proxyMap[clip.sourceFile] : clip.sourceFile;
-    if (curVideoSrc.current !== base) {
-      curVideoSrc.current = base;
-      el.src = mediaUrl(base);
+    // Crossfade: во время перехода показываем уходящий клип на втором слое.
+    let f = 1;
+    let prev: ProClip | null = null;
+    if (clip.transition && ph < clip.timelineStart + clip.transition.duration) {
+      f = Math.max(0, Math.min(1, (ph - clip.timelineStart) / clip.transition.duration));
+      prev = findPrevAdjacent(d.clips, clip);
     }
-    const srcTime = Math.max(0, clip.inPoint + (ph - clip.timelineStart));
-    if (playing) {
-      if (el.paused) el.play().catch(() => {});
-      if (Math.abs(el.currentTime - srcTime) > 0.3) el.currentTime = srcTime;
-    } else {
-      if (!el.paused) el.pause();
-      if (Math.abs(el.currentTime - srcTime) > 0.05) el.currentTime = srcTime;
+    el.style.display = 'block';
+    el.style.opacity = String(prev ? f : 1);
+    syncOne(el, clip, curVideoSrc, clip.inPoint + (ph - clip.timelineStart), playing, proxy, proxyMap, d);
+    if (prev && el2) {
+      el2.style.display = 'block';
+      el2.style.opacity = String(1 - f);
+      syncOne(el2, prev, curVideoSrc2, prev.inPoint + prev.duration + (ph - clip.timelineStart), playing, proxy, proxyMap, d);
+    } else if (el2) {
+      el2.style.opacity = '0';
+      if (!el2.paused) el2.pause();
+      curVideoSrc2.current = '';
     }
-    const t = { ...DEFAULT_TRANSFORM, ...clip.transform };
-    const cr = { ...DEFAULT_CROP, ...clip.crop };
-    const dispScale = el.offsetWidth / (d.width || 1) || 1;
-    el.style.transform = `translate(${t.x * dispScale}px, ${t.y * dispScale}px) rotate(${t.rotation}deg) scale(${t.scale})`;
-    el.style.clipPath = `inset(${cr.top * 100}% ${cr.right * 100}% ${cr.bottom * 100}% ${cr.left * 100}%)`;
-    el.style.filter = colorToCss(clip.color);
   }
 
   function syncAudio(d: ProDocument, ph: number, playing: boolean) {
@@ -272,6 +291,12 @@ export default function Viewer() {
         <div style={{ position: 'relative', width: dispW, height: dispH, background: '#000' }}>
           {/* Клиппинг видео к рамке кадра — превью не «едет» при трансформации. */}
           <div style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}>
+            <video
+              ref={videoRef2}
+              muted
+              playsInline
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'none', transformOrigin: 'center center' }}
+            />
             <video
               ref={videoRef}
               muted
