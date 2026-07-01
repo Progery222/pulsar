@@ -1,7 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useProStore } from '../store/proStore';
-import { mediaUrl } from '../utils/media';
+import { isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 import { ADJUST_LABEL, type ProTrack } from './proTypes';
 
 // Ядро таймлайна Pulsar Pro (§3 ТЗ): дорожки, линейка HH:MM:SS:FF, playhead,
@@ -260,6 +260,28 @@ export default function Timeline() {
     window.addEventListener('pointerup', up);
   };
 
+  // Приём файла, перетащенного из Media, на таймлайн.
+  const onDrop = async (e: React.DragEvent) => {
+    const path = e.dataTransfer.getData('application/x-pulsar-path');
+    if (!path) return;
+    e.preventDefault();
+    const st = useProStore.getState();
+    const kind = isVideoFile(path) ? 'video' : isAudioFile(path) ? 'audio' : null;
+    if (!kind) return;
+    let trackId = trackAtClientY(e.clientY);
+    let track = st.doc.tracks.find((t) => t.id === trackId);
+    if (!track || track.kind !== kind || track.isAdjustment) {
+      track = st.doc.tracks.find((t) => t.kind === kind && !t.isAdjustment);
+      trackId = track?.id ?? null;
+    }
+    if (!trackId) trackId = st.addTrack(kind);
+    const at = Math.max(0, snapTime(timeAtClientX(e.clientX), new Set()));
+    const meta = await probeMeta(path, kind);
+    const dur = meta.duration || 3;
+    st.pushHistory();
+    st.addClip({ trackId, sourceFile: path, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: kind === 'video' ? meta.width || undefined : undefined, sourceH: kind === 'video' ? meta.height || undefined : undefined });
+  };
+
   const playheadX = playhead * pxPerSec - scrollX;
   const contentEnd = doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
 
@@ -297,6 +319,8 @@ export default function Timeline() {
         <div
           ref={rightRef}
           onPointerDown={onAreaPointerDown}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-pulsar-path')) e.preventDefault(); }}
+          onDrop={onDrop}
           style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden', background: 'var(--bg-primary)' }}
         >
           {/* Линейка времени. */}
