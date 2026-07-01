@@ -38,7 +38,10 @@ async function runAutoCut(): Promise<void> {
     showToast('Импортируйте видео на дорожку V (кнопка ＋)');
     return;
   }
-  const target = (videoTracks.find((t) => t.id === 'V1') ?? videoTracks[videoTracks.length - 1])?.id;
+  // Целевая дорожка — где уже лежит видео (перекладываем её), иначе V1.
+  const counts = videoTracks.map((t) => ({ id: t.id, n: doc.clips.filter((c) => c.trackId === t.id && !c.text).length }));
+  counts.sort((a, b) => b.n - a.n);
+  const target = counts[0] && counts[0].n > 0 ? counts[0].id : (videoTracks.find((t) => t.id === 'V1') ?? videoTracks[videoTracks.length - 1])?.id;
   if (!target) {
     showToast('Нет видео-дорожки');
     return;

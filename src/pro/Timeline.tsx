@@ -155,6 +155,22 @@ export default function Timeline() {
     return best;
   };
 
+  // Магнит плейхеда к краям клипов и нулю (при включённом snap).
+  const snapPlayheadTime = (t: number): number => {
+    const st = useProStore.getState();
+    if (!st.snapping) return t;
+    const thresh = 8 / st.pxPerSec;
+    let best = t;
+    let bd = thresh;
+    const points = [0];
+    for (const c of st.doc.clips) points.push(c.timelineStart, c.timelineStart + c.duration);
+    for (const p of points) {
+      const d = Math.abs(p - t);
+      if (d < bd) { bd = d; best = p; }
+    }
+    return best;
+  };
+
   // Дорожка под курсором (для перемещения между дорожками).
   const trackAtClientY = (clientY: number): string | null => {
     const el = rightRef.current;
@@ -214,8 +230,8 @@ export default function Timeline() {
   };
   const onRulerDown = (e: React.PointerEvent) => {
     scrubbing.current = true;
-    setPlayhead(timeAtClientX(e.clientX));
-    const move = (ev: PointerEvent) => scrubbing.current && setPlayhead(timeAtClientX(ev.clientX));
+    setPlayhead(snapPlayheadTime(timeAtClientX(e.clientX)));
+    const move = (ev: PointerEvent) => scrubbing.current && setPlayhead(snapPlayheadTime(timeAtClientX(ev.clientX)));
     const up = () => {
       scrubbing.current = false;
       window.removeEventListener('pointermove', move);
@@ -644,6 +660,8 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      // Клик без движения по одному из выделенных — оставить выделенным только его.
+      if (!moved && !multi && movingIds.length > 1) useProStore.getState().setSelection([c.id]);
       // Ctrl+перетаскивание одного клипа — вставка: раздвигаем клипы на дорожке.
       if (insertMode && moved && movingIds.length === 1) {
         const cur = useProStore.getState();
