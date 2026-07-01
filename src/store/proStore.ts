@@ -269,9 +269,9 @@ export const useProStore = create<ProState>()(
           hidden: false,
         };
         if (kind === 'video') {
-          const firstAudio = s.doc.tracks.findIndex((t) => t.kind === 'audio');
-          if (firstAudio === -1) s.doc.tracks.push(track);
-          else s.doc.tracks.splice(firstAudio, 0, track);
+          // Новая видео-дорожка — сверху видео-стека (под Adjustment-дорожками).
+          const idx = s.doc.tracks.findIndex((t) => !(t.kind === 'video' && t.isAdjustment));
+          s.doc.tracks.splice(idx === -1 ? s.doc.tracks.length : idx, 0, track);
         } else {
           s.doc.tracks.push(track);
         }

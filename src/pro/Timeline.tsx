@@ -268,13 +268,10 @@ export default function Timeline() {
     const st = useProStore.getState();
     const kind = isVideoFile(path) ? 'video' : isAudioFile(path) ? 'audio' : null;
     if (!kind) return;
+    // Дорожка под курсором; если её нет/не тот тип (напр. перенос выше всех) — создаём новую.
     let trackId = trackAtClientY(e.clientY);
-    let track = st.doc.tracks.find((t) => t.id === trackId);
-    if (!track || track.kind !== kind || track.isAdjustment) {
-      track = st.doc.tracks.find((t) => t.kind === kind && !t.isAdjustment);
-      trackId = track?.id ?? null;
-    }
-    if (!trackId) trackId = st.addTrack(kind);
+    const track = st.doc.tracks.find((t) => t.id === trackId);
+    if (!track || track.kind !== kind || track.isAdjustment) trackId = st.addTrack(kind);
     const at = Math.max(0, snapTime(timeAtClientX(e.clientX), new Set()));
     const meta = await probeMeta(path, kind);
     const dur = meta.duration || 3;
