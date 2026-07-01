@@ -43,6 +43,7 @@ export interface ProClip {
   crop?: ClipCrop;
   effects?: ProEffectSlot[];
   locked?: boolean; // закреплён — Auto-Cut не перезаписывает (§5 ТЗ)
+  linkId?: string; // связка видео+аудио одного источника (двигаются вместе)
   transition?: { duration: number; kind?: TransitionKind }; // переход у стыка с предыдущим клипом (§5 ТЗ)
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа

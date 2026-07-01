@@ -74,8 +74,13 @@ export function buildAutoCut(input: AutoCutInput): Omit<ProClip, 'id'>[] {
 
     const srcDur = pick.duration > 0 ? pick.duration : 0;
     let inPoint = head.get(pick.path) ?? 0;
-    if (srcDur > 0 && inPoint + segLen > srcDur) inPoint = 0;
-    head.set(pick.path, inPoint + segLen);
+    if (srcDur > 0) {
+      if (inPoint + segLen > srcDur) inPoint = 0;
+      head.set(pick.path, inPoint + segLen);
+    } else {
+      // Длина источника неизвестна — не уходим за конец (иначе чёрные кадры).
+      inPoint = 0;
+    }
 
     out.push({
       trackId,

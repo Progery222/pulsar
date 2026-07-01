@@ -279,9 +279,9 @@ export default function Timeline() {
     const meta = await probeMeta(path, kind);
     const dur = meta.duration || 3;
     st.pushHistory();
-    st.addClip({ trackId, sourceFile: path, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: kind === 'video' ? meta.width || undefined : undefined, sourceH: kind === 'video' ? meta.height || undefined : undefined });
-    // Видео → звук отдельным клипом на свободную аудио-дорожку (без нахлёста).
-    if (kind === 'video') useProStore.getState().addLinkedAudio(path, at, dur, dur);
+    const linkId = kind === 'video' ? 'lk' + Math.random().toString(36).slice(2, 8) : undefined;
+    st.addClip({ trackId, sourceFile: path, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: kind === 'video' ? meta.width || undefined : undefined, sourceH: kind === 'video' ? meta.height || undefined : undefined, linkId });
+    if (kind === 'video') useProStore.getState().addLinkedAudio(path, at, dur, dur, linkId);
   };
 
   const playheadX = playhead * pxPerSec - scrollX;
@@ -580,8 +580,9 @@ function TrackHeader({ track }: { track: ProTrack }) {
       for (const p of paths) {
         const meta = await probeMeta(p, 'video');
         const dur = meta.duration || 3;
-        addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined });
-        st.addLinkedAudio(p, at, dur, dur);
+        const linkId = 'lk' + Math.random().toString(36).slice(2, 8);
+        addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined, linkId });
+        st.addLinkedAudio(p, at, dur, dur, linkId);
         at += dur;
       }
     } else {
@@ -641,6 +642,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         ? [{ label: 'Склеить со следующим', onClick: () => { st.pushHistory(); st.mergeWithNext(c.id); } }]
         : []),
       ...(c.transition ? [{ label: 'Убрать переход', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, null); } }] : []),
+      ...(c.linkId ? [{ label: 'Разделить видео/аудио', onClick: () => { st.pushHistory(); st.unlinkClip(c.id); } }] : []),
       { label: 'Копировать (Ctrl+C)', onClick: () => st.copyClips(ids) },
       { label: 'Дублировать (Ctrl+D)', onClick: () => { st.pushHistory(); st.duplicateClips(ids); } },
       ...(isVideo
@@ -675,7 +677,13 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     else if (!sel.includes(c.id)) sel = [c.id];
     st.setSelection(sel);
 
-    const movingIds = sel;
+    // Связанные (видео+аудио одного источника) двигаются вместе.
+    const linked = new Set(sel);
+    for (const id of sel) {
+      const c0 = st.doc.clips.find((x) => x.id === id);
+      if (c0?.linkId) for (const x of st.doc.clips) if (x.linkId === c0.linkId) linked.add(x.id);
+    }
+    const movingIds = [...linked];
     const startTime = timeAt(e.clientX);
     const origStart = new Map(st.doc.clips.filter((cl) => movingIds.includes(cl.id)).map((cl) => [cl.id, cl.timelineStart]));
     const minOrig = Math.min(...origStart.values());

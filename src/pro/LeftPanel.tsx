@@ -32,9 +32,10 @@ async function addFileToProject(path: string) {
   const dur = meta.duration || 3;
   const end = st.doc.clips.filter((c) => c.trackId === track.id).reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
   st.pushHistory();
-  st.addClip({ trackId: track.id, sourceFile: path, timelineStart: end, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined });
-  // Видео — связанное аудио на свободную аудио-дорожку (без нахлёста).
-  if (kind === 'video') st.addLinkedAudio(path, end, dur, dur);
+  const linkId = kind === 'video' ? 'lk' + Math.random().toString(36).slice(2, 8) : undefined;
+  st.addClip({ trackId: track.id, sourceFile: path, timelineStart: end, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined, linkId });
+  // Видео — связанное аудио на свободную аудио-дорожку (двигается вместе).
+  if (kind === 'video') st.addLinkedAudio(path, end, dur, dur, linkId);
   showToast(`Добавлено на ${track.name}`);
 }
 

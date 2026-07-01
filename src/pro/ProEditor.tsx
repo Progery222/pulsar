@@ -30,9 +30,9 @@ async function runAutoCut(): Promise<void> {
   const pool: { path: string; duration: number }[] = [];
   const videoTrackIds = new Set(videoTracks.map((t) => t.id));
   for (const c of doc.clips) {
-    if (videoTrackIds.has(c.trackId) && !seen.has(c.sourceFile)) {
+    if (videoTrackIds.has(c.trackId) && !c.text && c.sourceFile && !seen.has(c.sourceFile)) {
       seen.add(c.sourceFile);
-      pool.push({ path: c.sourceFile, duration: c.sourceDuration ?? 0 });
+      pool.push({ path: c.sourceFile, duration: c.sourceDuration ?? c.duration ?? 0 });
     }
   }
   if (!pool.length) {
@@ -71,9 +71,14 @@ async function runAutoCut(): Promise<void> {
     audioDuration: audioClip.duration,
     locked,
   });
+  if (!gen.length) {
+    showToast('Auto-Cut: нечего раскладывать');
+    return;
+  }
   useProStore.getState().pushHistory();
   useProStore.getState().autoCutReplace(target, gen);
-  showToast(`Auto-Cut: ${gen.length} клипов на ${target}`);
+  useProStore.getState().setPlayhead(gen[0].timelineStart);
+  showToast(`Auto-Cut: ${gen.length} клипов`);
 }
 
 // Pulsar Pro — рабочее пространство мульти-трек монтажа (§2 ТЗ).
