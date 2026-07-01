@@ -32,15 +32,17 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
       const e = B.timelineStart + d / 2;
       if (ph < s || ph >= e) continue;
       const f = Math.max(0, Math.min(1, (ph - s) / d));
-      // Входящий B: до своего начала — замороженный первый кадр (без чёрного).
+      const kind = B.transition.kind || 'dissolve';
+      // Через чёрный: сначала уходящий гаснет в чёрный, затем входящий проявляется.
+      const inA = kind === 'fadeblack' ? Math.max(0, 2 * f - 1) : f;
+      const outA = kind === 'fadeblack' ? Math.max(0, 1 - 2 * f) : 1 - f;
       const bTime = ph >= B.timelineStart ? B.inPoint + (ph - B.timelineStart) : B.inPoint;
-      map.set(B.id, { clip: B, sourceTime: bTime, alpha: f });
+      map.set(B.id, { clip: B, sourceTime: bTime, alpha: inA });
       const A = findPrevAdjacent(doc.clips, B);
       if (A) {
         const aEnd = A.timelineStart + A.duration;
-        // Уходящий A: после своего конца — замороженный последний кадр (без чёрного).
         const aTime = ph < aEnd ? A.inPoint + (ph - A.timelineStart) : Math.max(0, A.inPoint + A.duration - 0.05);
-        map.set(A.id, { clip: A, sourceTime: aTime, alpha: 1 - f, out: true });
+        map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true });
       }
     }
     const arr = [...map.values()].sort((a, b) => (a.out ? 0 : 1) - (b.out ? 0 : 1));

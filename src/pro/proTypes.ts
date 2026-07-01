@@ -43,13 +43,17 @@ export interface ProClip {
   crop?: ClipCrop;
   effects?: ProEffectSlot[];
   locked?: boolean; // закреплён — Auto-Cut не перезаписывает (§5 ТЗ)
-  transition?: { duration: number }; // crossfade у левого края с предыдущим клипом (§5 ТЗ)
+  transition?: { duration: number; kind?: TransitionKind }; // переход у стыка с предыдущим клипом (§5 ТЗ)
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа
   color?: ClipColor; // цветокоррекция видео-клипа
   text?: ClipText; // текстовый/титровый клип (sourceFile пустой)
   blend?: BlendMode; // режим наложения на нижние слои (виден в экспорте)
 }
+
+export type TransitionKind = 'dissolve' | 'fadeblack';
+export const TRANSITION_KINDS: TransitionKind[] = ['dissolve', 'fadeblack'];
+export const TRANSITION_LABEL: Record<TransitionKind, string> = { dissolve: 'Растворение', fadeblack: 'Через чёрный' };
 
 export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply';
 export const BLEND_MODES: BlendMode[] = ['normal', 'add', 'screen', 'multiply'];

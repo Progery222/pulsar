@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, type AdjustFilter, type BlendMode } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type TransitionKind } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -210,6 +210,7 @@ function InspectorTab() {
   const updateColor = useProStore((s) => s.updateClipColor);
   const updateText = useProStore((s) => s.updateClipText);
   const setBlend = useProStore((s) => s.setClipBlend);
+  const setTransitionKind = useProStore((s) => s.setTransitionKind);
   const tracks = useProStore((s) => s.doc.tracks);
   const push = useProStore((s) => s.pushHistory);
 
@@ -245,9 +246,12 @@ function InspectorTab() {
             <button onClick={() => au(DEFAULT_AUDIO)} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>Сбросить</button>
           </div>
         </Section>
-        <Section title="Transition (crossfade)">
+        <Section title="Переход">
           {findPrevAdjacent(clips, clip) ? (
-            <Row><NumField label="Crossfade с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTr(v > 0 ? v : null)} /></Row>
+            <>
+              <Row><NumField label="Длина, с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTr(v > 0 ? v : null)} /></Row>
+              {clip.transition && <TransKindSelect id={id} value={clip.transition.kind ?? 'dissolve'} onPick={(k) => { push(); setTransitionKind(id, k); }} />}
+            </>
           ) : (
             <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Нужен смежный клип слева.</div>
           )}
@@ -374,10 +378,11 @@ function InspectorTab() {
           </select>
         </label>
       </Section>
-      <Section title="Transition (crossfade)">
+      <Section title="Переход">
+        {findPrevAdjacent(clips, clip) && clip.transition && <TransKindSelect id={id} value={clip.transition.kind ?? 'dissolve'} onPick={(k) => { push(); setTransitionKind(id, k); }} />}
         {findPrevAdjacent(clips, clip) ? (
           <Row>
-            <NumField label="Crossfade с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTr(v > 0 ? v : null)} />
+            <NumField label="Длина, с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTr(v > 0 ? v : null)} />
           </Row>
         ) : (
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Нужен смежный клип слева на той же дорожке.</div>
@@ -458,6 +463,17 @@ function ResetBtn({ onClick }: { onClick: () => void }) {
     <button onClick={onClick} style={{ marginTop: 4, alignSelf: 'flex-start', fontSize: 11.5, color: 'var(--text-secondary)', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, padding: '3px 10px', cursor: 'pointer' }}>
       Сбросить
     </button>
+  );
+}
+
+function TransKindSelect({ value, onPick }: { id: string; value: TransitionKind; onPick: (k: TransitionKind) => void }) {
+  return (
+    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+      <span>Тип</span>
+      <select value={value} onChange={(e) => onPick(e.target.value as TransitionKind)} style={{ width: 130, padding: '4px 6px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}>
+        {TRANSITION_KINDS.map((k) => <option key={k} value={k}>{TRANSITION_LABEL[k]}</option>)}
+      </select>
+    </label>
   );
 }
 

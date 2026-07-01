@@ -108,6 +108,7 @@ export interface ProState {
   selectAll: () => void;
   toggleClipLock: (id: string) => void;
   setClipTransition: (id: string, duration: number | null) => void;
+  setTransitionKind: (id: string, kind: import('../pro/proTypes').TransitionKind) => void;
   setAutoCutMood: (mood: Mood) => void;
   setExportIn: (t: number | null) => void;
   setExportOut: (t: number | null) => void;
@@ -443,7 +444,12 @@ export const useProStore = create<ProState>()(
         const prev = findPrevAdjacent(s.doc.clips, c);
         if (!prev) return; // crossfade нужен предыдущий смежный клип
         const max = Math.min(c.duration, prev.duration, 5);
-        c.transition = { duration: Math.min(Math.max(0.1, duration), max) };
+        c.transition = { duration: Math.min(Math.max(0.1, duration), max), kind: c.transition?.kind ?? 'dissolve' };
+      }),
+    setTransitionKind: (id, kind) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (c && c.transition) c.transition.kind = kind;
       }),
     setAutoCutMood: (mood) =>
       set((s) => {
