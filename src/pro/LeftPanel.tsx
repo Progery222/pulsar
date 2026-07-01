@@ -42,6 +42,7 @@ function InspectorTab() {
   const clip = useProStore((s) => s.doc.clips.find((c) => selected.includes(c.id)) ?? null);
   const updateTransform = useProStore((s) => s.updateClipTransform);
   const updateCrop = useProStore((s) => s.updateClipCrop);
+  const toggleLock = useProStore((s) => s.toggleClipLock);
 
   if (!clip) return <Empty text="Выделите клип на таймлайне, чтобы редактировать его параметры." />;
 
@@ -50,6 +51,22 @@ function InspectorTab() {
 
   return (
     <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
+      <button
+        onClick={() => toggleLock(clip.id)}
+        title="Закрепить клип — Auto-Cut не перезапишет его"
+        style={{
+          alignSelf: 'flex-start',
+          fontSize: 12,
+          padding: '4px 12px',
+          borderRadius: 6,
+          cursor: 'pointer',
+          color: clip.locked ? 'var(--bg-primary)' : 'var(--text-primary)',
+          background: clip.locked ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+          border: '1px solid var(--border)',
+        }}
+      >
+        {clip.locked ? '🔒 Закреплён' : '🔓 Закрепить'}
+      </button>
       <Section title="Transform">
         <Row><NumField label="Position X" value={t.x} step={1} onChange={(v) => updateTransform(clip.id, { x: v })} /></Row>
         <Row><NumField label="Position Y" value={t.y} step={1} onChange={(v) => updateTransform(clip.id, { y: v })} /></Row>

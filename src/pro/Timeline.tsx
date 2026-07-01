@@ -528,6 +528,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
             <span style={{ position: 'absolute', left: 4, bottom: 2, fontSize: 10, color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 3, padding: '0 4px', pointerEvents: 'none', whiteSpace: 'nowrap' }}>
               {c.duration.toFixed(1)}с
             </span>
+            {c.locked && <span style={{ position: 'absolute', right: 4, top: 2, fontSize: 11, pointerEvents: 'none' }}>🔒</span>}
             {trueLeft && <div onPointerDown={(e) => onGripDown(e, c, 'l')} style={gripStyle('l')} title="Подрезать слева" />}
             {trueRight && <div onPointerDown={(e) => onGripDown(e, c, 'r')} style={gripStyle('r')} title="Подрезать справа" />}
           </div>

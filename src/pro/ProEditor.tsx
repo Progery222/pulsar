@@ -1,9 +1,67 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
+import { showToast } from '../store/toastStore';
 import Timeline, { zoomAtPlayhead } from './Timeline';
 import Viewer from './Viewer';
 import LeftPanel from './LeftPanel';
-import type { ProTool } from './proTypes';
+import { buildAutoCut } from './autoCut';
+import type { Mood, ProTool } from './proTypes';
+
+const MOODS: { id: Mood; label: string }[] = [
+  { id: 'mellow', label: 'Спокойный' },
+  { id: 'natural', label: 'Обычный' },
+  { id: 'energetic', label: 'Энергичный' },
+];
+
+// Auto-Cut: анализ ритма аудио с дорожки A и раскладка видео из пула по битам.
+async function runAutoCut(): Promise<void> {
+  const st = useProStore.getState();
+  const doc = st.doc;
+  const audioTracks = new Set(doc.tracks.filter((t) => t.kind === 'audio').map((t) => t.id));
+  const videoTracks = doc.tracks.filter((t) => t.kind === 'video');
+  const audioClip = doc.clips.find((c) => audioTracks.has(c.trackId));
+  if (!audioClip) {
+    showToast('Добавьте аудио на дорожку A (кнопка ＋)');
+    return;
+  }
+  const seen = new Set<string>();
+  const pool: { path: string; duration: number }[] = [];
+  const videoTrackIds = new Set(videoTracks.map((t) => t.id));
+  for (const c of doc.clips) {
+    if (videoTrackIds.has(c.trackId) && !seen.has(c.sourceFile)) {
+      seen.add(c.sourceFile);
+      pool.push({ path: c.sourceFile, duration: c.sourceDuration ?? 0 });
+    }
+  }
+  if (!pool.length) {
+    showToast('Импортируйте видео на дорожку V (кнопка ＋)');
+    return;
+  }
+  const target = (videoTracks.find((t) => t.id === 'V1') ?? videoTracks[videoTracks.length - 1])?.id;
+  if (!target) {
+    showToast('Нет видео-дорожки');
+    return;
+  }
+  showToast('Анализ ритма…');
+  const res = await window.electronAPI.analyzeAudio(audioClip.sourceFile);
+  if (!res || 'error' in res) {
+    showToast('Не удалось проанализировать аудио');
+    return;
+  }
+  const locked = doc.clips.filter((c) => c.trackId === target && c.locked).map((c) => ({ start: c.timelineStart, end: c.timelineStart + c.duration }));
+  const gen = buildAutoCut({
+    beatData: res,
+    mood: st.autoCutMood,
+    pool,
+    trackId: target,
+    audioStart: audioClip.timelineStart,
+    audioInPoint: audioClip.inPoint,
+    audioDuration: audioClip.duration,
+    locked,
+  });
+  useProStore.getState().autoCutReplace(target, gen);
+  showToast(`Auto-Cut: ${gen.length} клипов на ${target}`);
+}
 
 // Pulsar Pro — рабочее пространство мульти-трек монтажа (§2 ТЗ).
 // Фаза 1: каркас 4 зон + resizable-разделители. Наполнение зон — след. фазы.
@@ -104,12 +162,29 @@ function ProToolbar() {
   const setTool = useProStore((s) => s.setTool);
   const snapping = useProStore((s) => s.snapping);
   const toggleSnapping = useProStore((s) => s.toggleSnapping);
+  const mood = useProStore((s) => s.autoCutMood);
+  const setMood = useProStore((s) => s.setAutoCutMood);
+  const [running, setRunning] = useState(false);
 
   const tools: { id: ProTool; label: string }[] = [
     { id: 'select', label: 'Selection' },
     { id: 'blade', label: 'Blade' },
     { id: 'ripple', label: 'Ripple' },
   ];
+
+  const onAutoCut = async () => {
+    if (running) return;
+    setRunning(true);
+    try {
+      await runAutoCut();
+    } finally {
+      setRunning(false);
+    }
+  };
+  const cycleMood = () => {
+    const i = MOODS.findIndex((m) => m.id === mood);
+    setMood(MOODS[(i + 1) % MOODS.length].id);
+  };
 
   return (
     <div
@@ -122,9 +197,12 @@ function ProToolbar() {
         </ToolBtn>
       ))}
       <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 6px' }} />
-      <ToolBtn onClick={() => {}}>Auto-Cut</ToolBtn>
-      <ToolBtn onClick={() => {}}>Mood</ToolBtn>
-      <ToolBtn onClick={() => {}}>Styles</ToolBtn>
+      <ToolBtn onClick={onAutoCut} title="Разложить видео по битам аудио">
+        {running ? 'Анализ…' : 'Auto-Cut'}
+      </ToolBtn>
+      <ToolBtn onClick={cycleMood} title="Плотность нарезки">
+        Mood: {MOODS.find((m) => m.id === mood)?.label}
+      </ToolBtn>
       <div style={{ marginLeft: 'auto' }}>
         <ToolBtn active={snapping} onClick={toggleSnapping} title="Прилипание (N)">
           Snap

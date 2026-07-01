@@ -66,6 +66,7 @@ export interface ProDocument {
 
 export type ProTool = 'select' | 'blade' | 'ripple';
 export type ViewerMode = 'none' | 'transform' | 'crop';
+export type Mood = 'mellow' | 'natural' | 'energetic';
 
 export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
 export const DEFAULT_CROP: ClipCrop = { top: 0, bottom: 0, left: 0, right: 0 };

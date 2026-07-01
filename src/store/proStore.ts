@@ -6,6 +6,7 @@ import {
   DEFAULT_TRANSFORM,
   type ClipCrop,
   type ClipTransform,
+  type Mood,
   type ProClip,
   type ProDocument,
   type ProTool,
@@ -36,6 +37,7 @@ export interface ProState {
   snapping: boolean; // прилипание (отключается клавишей N)
   selectedClipIds: string[];
   viewerMode: ViewerMode; // режим оверлея во Viewer (Transform/Crop)
+  autoCutMood: Mood; // настроение авто-нарезки (§5 ТЗ)
 
   // Раскладка панелей (resizable, Фаза 1).
   leftWidth: number;
@@ -65,6 +67,10 @@ export interface ProState {
   splitClipAt: (id: string, atTime: number) => void;
   removeClips: (ids: string[]) => void;
   rippleDeleteClips: (ids: string[]) => void;
+  toggleClipLock: (id: string) => void;
+  setAutoCutMood: (mood: Mood) => void;
+  // Заменить авто-клипы на дорожке, сохранив закреплённые (Locked, §5 ТЗ).
+  autoCutReplace: (trackId: string, generated: Omit<ProClip, 'id'>[]) => void;
 }
 
 const MIN_DUR = 0.05; // минимальная длина клипа (сек)
@@ -82,6 +88,7 @@ export const useProStore = create<ProState>()(
     snapping: true,
     selectedClipIds: [],
     viewerMode: 'none',
+    autoCutMood: 'natural',
 
     leftWidth: 300,
     timelineHeight: 300,
@@ -240,6 +247,22 @@ export const useProStore = create<ProState>()(
         }
         s.doc.clips = s.doc.clips.filter((c) => !ids.includes(c.id));
         s.selectedClipIds = s.selectedClipIds.filter((id) => !ids.includes(id));
+      }),
+
+    toggleClipLock: (id) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (c) c.locked = !c.locked;
+      }),
+    setAutoCutMood: (mood) =>
+      set((s) => {
+        s.autoCutMood = mood;
+      }),
+    autoCutReplace: (trackId, generated) =>
+      set((s) => {
+        // Убираем прежние авто-клипы дорожки, но НЕ трогаем закреплённые.
+        s.doc.clips = s.doc.clips.filter((c) => c.trackId !== trackId || c.locked);
+        for (const g of generated) s.doc.clips.push({ ...g, id: nextClipId() });
       }),
   }))
 );
