@@ -32,16 +32,20 @@ interface EncodeOpts {
   fps: number;
   audio: AudioInput[];
   outPath: string;
+  codec?: string; // libx264 | libx265
+  videoBitrateMbps?: number;
+  audioBitrateK?: number;
 }
 
 // Экспорт Pulsar Pro (§6/§7 ТЗ): кадры рендерятся в renderer WebGL-компоновщиком,
 // пишутся в temp-папку, здесь собираются FFmpeg в mp4 + мукс аудио.
 export function registerProExportHandlers() {
   // Диалог выбора файла вывода.
-  ipcMain.handle('pro:exportSavePath', async () => {
+  ipcMain.handle('pro:exportSavePath', async (_e, ext?: string) => {
+    const e = ext === 'mov' ? 'mov' : 'mp4';
     const res = await dialog.showSaveDialog({
-      defaultPath: 'pulsar-pro.mp4',
-      filters: [{ name: 'MP4', extensions: ['mp4'] }],
+      defaultPath: `pulsar-pro.${e}`,
+      filters: [{ name: e.toUpperCase(), extensions: [e] }],
     });
     return res.canceled ? null : (res.filePath ?? null);
   });
@@ -102,11 +106,15 @@ export function registerProExportHandlers() {
         return `[${i + 1}:a]${chain.join(',')}[a${i}]`;
       });
       const mix = audio.map((_, i) => `[a${i}]`).join('') + `amix=inputs=${audio.length}:normalize=0[aout]`;
-      args.push('-filter_complex', parts.join(';') + ';' + mix, '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k');
+      args.push('-filter_complex', parts.join(';') + ';' + mix, '-map', '0:v', '-map', '[aout]', '-c:a', 'aac', '-b:a', `${Math.max(64, Math.round(Number(opts.audioBitrateK) || 192))}k`);
     } else {
       args.push('-an');
     }
-    args.push('-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-preset', 'veryfast', '-movflags', '+faststart', outPath);
+    const codec = opts.codec === 'libx265' ? 'libx265' : 'libx264';
+    const vb = Math.max(1, Math.round(Number(opts.videoBitrateMbps) || 8));
+    args.push('-c:v', codec, '-b:v', `${vb}M`, '-pix_fmt', 'yuv420p', '-preset', 'veryfast');
+    if (codec === 'libx264') args.push('-profile:v', 'high');
+    args.push('-r', String(Number(fps) || 30), '-movflags', '+faststart', outPath);
 
     const result = await new Promise<{ ok: true } | { error: string }>((resolve) => {
       let err = '';

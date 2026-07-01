@@ -45,7 +45,7 @@ const electronAPI = {
     ipcRenderer.invoke('media:waveform', src),
 
   // --- Экспорт Pulsar Pro (покадровый рендер + мукс аудио) ---
-  proExportSavePath: (): Promise<string | null> => ipcRenderer.invoke('pro:exportSavePath'),
+  proExportSavePath: (ext?: string): Promise<string | null> => ipcRenderer.invoke('pro:exportSavePath', ext),
   proExportDir: (): Promise<string> => ipcRenderer.invoke('pro:exportDir'),
   proWriteFrame: (dir: string, index: number, data: ArrayBuffer): Promise<{ ok: true }> =>
     ipcRenderer.invoke('pro:writeFrame', dir, index, data),
@@ -54,6 +54,9 @@ const electronAPI = {
     fps: number;
     audio: { path: string; inPoint: number; duration: number; delayMs: number; volumeDb: number; pitch: number; fadeIn: number; fadeOut: number }[];
     outPath: string;
+    codec?: string;
+    videoBitrateMbps?: number;
+    audioBitrateK?: number;
   }): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('pro:encode', opts),
   proMakeProxy: (src: string): Promise<string | null> => ipcRenderer.invoke('pro:makeProxy', src),
 

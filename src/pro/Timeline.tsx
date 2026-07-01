@@ -695,6 +695,26 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     window.addEventListener('pointerup', up);
   };
 
+  // Создание перехода на стыке: тянем ⇄ вправо — задаём длину; клик без движения = 0.5с.
+  const onTransitionCreate = (e: React.PointerEvent, c: (typeof clips)[number]) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    useProStore.getState().pushHistory();
+    let moved = false;
+    const move = (ev: PointerEvent) => {
+      moved = true;
+      useProStore.getState().setClipTransition(c.id, Math.max(0.1, timeAt(ev.clientX) - c.timelineStart));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      if (!moved) useProStore.getState().setClipTransition(c.id, 0.5);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // Длина crossfade — тянем правый край блока перехода.
   const onTransitionResize = (e: React.PointerEvent, c: (typeof clips)[number]) => {
     if (e.button !== 0) return;
@@ -786,9 +806,9 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
             )}
             {trueLeft && hasPrevAdj && !c.transition && (
               <button
-                onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTransition(c.id, 0.5); }}
-                title="Добавить переход (crossfade) на стыке"
-                style={{ position: 'absolute', left: 2, top: 2, width: 18, height: 18, borderRadius: '50%', background: 'rgba(13,13,13,0.7)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', fontSize: 11, lineHeight: 1, cursor: 'pointer', zIndex: 4, padding: 0 }}
+                onPointerDown={(e) => onTransitionCreate(e, c)}
+                title="Переход (crossfade): тяни вправо — длина, клик — 0.5с"
+                style={{ position: 'absolute', left: 2, top: 2, width: 18, height: 18, borderRadius: '50%', background: 'rgba(13,13,13,0.7)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', fontSize: 11, lineHeight: 1, cursor: 'ew-resize', zIndex: 4, padding: 0 }}
               >
                 ⇄
               </button>

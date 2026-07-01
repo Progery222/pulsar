@@ -8,6 +8,14 @@ import { DEFAULT_AUDIO, type ProDocument } from './proTypes';
 
 type Progress = (phase: 'capture' | 'encode', cur: number, total: number) => void;
 
+export interface ExportSettings {
+  format: 'mp4' | 'mov';
+  codec: 'libx264' | 'libx265';
+  videoBitrateMbps: number;
+  fps: number;
+  audioBitrateK: number;
+}
+
 function waitReady(v: HTMLVideoElement): Promise<void> {
   return new Promise((resolve) => {
     if (v.readyState >= 1) return resolve();
@@ -41,11 +49,11 @@ function canvasToBlob(c: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => c.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png'));
 }
 
-export async function runProExport(doc: ProDocument, onProgress: Progress): Promise<{ ok: boolean; error?: string; outPath?: string }> {
-  const outPath = await window.electronAPI.proExportSavePath();
+export async function runProExport(doc: ProDocument, onProgress: Progress, settings: ExportSettings): Promise<{ ok: boolean; error?: string; outPath?: string }> {
+  const outPath = await window.electronAPI.proExportSavePath(settings.format);
   if (!outPath) return { ok: false };
 
-  const fps = doc.fps || 30;
+  const fps = settings.fps || doc.fps || 30;
   const contentEnd = doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
   if (contentEnd <= 0) return { ok: false, error: 'Пустой таймлайн' };
   // Область экспорта (in/out) — иначе весь таймлайн.
@@ -104,7 +112,7 @@ export async function runProExport(doc: ProDocument, onProgress: Progress): Prom
     }
 
     onProgress('encode', total, total);
-    const res = await window.electronAPI.proEncode({ dir, fps, audio, outPath });
+    const res = await window.electronAPI.proEncode({ dir, fps, audio, outPath, codec: settings.codec, videoBitrateMbps: settings.videoBitrateMbps, audioBitrateK: settings.audioBitrateK });
     if ('error' in res) return { ok: false, error: res.error };
     return { ok: true, outPath };
   } finally {

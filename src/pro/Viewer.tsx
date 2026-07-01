@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { frameCorners } from './compositor';
-import { runProExport } from './exporter';
+import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
 import { colorToCss, DEFAULT_CROP, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
@@ -61,6 +61,7 @@ export default function Viewer() {
   const exportingRef = useRef(false);
   const [box, setBox] = useState({ w: 0, h: 0 });
   const [exp, setExp] = useState<{ phase: string; cur: number; total: number } | null>(null);
+  const [showExportDlg, setShowExportDlg] = useState(false);
 
   const onToggleProxy = async () => {
     const st = useProStore.getState();
@@ -83,7 +84,7 @@ export default function Viewer() {
     showToast('Прокси готовы');
   };
 
-  const onExport = async () => {
+  const runExportFlow = async (settings: ExportSettings) => {
     if (exp) return;
     setExp({ phase: 'capture', cur: 0, total: 1 });
     useProStore.getState().setPlaying(false);
@@ -92,7 +93,7 @@ export default function Viewer() {
     videoRef.current?.pause();
     audioRef.current?.pause();
     try {
-      const res = await runProExport(useProStore.getState().doc, (phase, cur, total) => setExp({ phase, cur, total }));
+      const res = await runProExport(useProStore.getState().doc, (phase, cur, total) => setExp({ phase, cur, total }), settings);
       if (res.ok) showToast('Экспорт готов: ' + (res.outPath ?? ''));
       else if (res.error) showToast('Ошибка экспорта: ' + res.error);
     } catch {
@@ -218,7 +219,7 @@ export default function Viewer() {
         <ModeBtn active={viewerMode === 'crop'} onClick={() => setViewerMode(viewerMode === 'crop' ? 'none' : 'crop')}>Crop</ModeBtn>
         <ModeBtn active={useProxy} onClick={onToggleProxy}>Proxy</ModeBtn>
         <button
-          onClick={onExport}
+          onClick={() => setShowExportDlg(true)}
           disabled={!!exp}
           style={{ marginLeft: 'auto', padding: '5px 14px', fontSize: 12.5, borderRadius: 7, cursor: exp ? 'default' : 'pointer', color: 'var(--bg-primary)', background: 'var(--accent-green)', border: '1px solid var(--border)', opacity: exp ? 0.6 : 1 }}
         >
@@ -270,6 +271,8 @@ export default function Viewer() {
         <Transport title="Play / Pause (Space)" primary onClick={() => setPlaying(!isPlaying)} icon={isPlaying ? <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4.5" height="16" rx="1" /><rect x="13.5" y="4" width="4.5" height="16" rx="1" /></svg> : <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="7 4 20 12 7 20" /></svg>} />
         <Transport title="В конец" onClick={() => setPlayhead(maxEnd(useProStore.getState().doc))} icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 4 15 12 5 20" /><rect x="17.5" y="4" width="2.5" height="16" /></svg>} />
       </div>
+
+      {showExportDlg && <ExportDialog docFps={doc.fps} onCancel={() => setShowExportDlg(false)} onConfirm={(s) => { setShowExportDlg(false); runExportFlow(s); }} />}
 
       {exp && (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
@@ -428,6 +431,39 @@ function CropOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
       <line x1={x0} y1={y0} x2={x0} y2={y1} stroke="transparent" strokeWidth={10} style={{ cursor: 'ew-resize' }} onPointerDown={dragEdge('left')} />
       <line x1={x1} y1={y0} x2={x1} y2={y1} stroke="transparent" strokeWidth={10} style={{ cursor: 'ew-resize' }} onPointerDown={dragEdge('right')} />
     </svg>
+  );
+}
+
+function ExportDialog({ docFps, onCancel, onConfirm }: { docFps: number; onCancel: () => void; onConfirm: (s: ExportSettings) => void }) {
+  const [format, setFormat] = useState<'mp4' | 'mov'>('mp4');
+  const [codec, setCodec] = useState<'libx264' | 'libx265'>('libx264');
+  const [bitrate, setBitrate] = useState(8);
+  const [fps, setFps] = useState(docFps || 30);
+  const [audioK, setAudioK] = useState(192);
+  const sel: React.CSSProperties = { width: '100%', padding: '5px 8px', fontSize: 13, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' };
+  const row = (label: string, node: React.ReactNode) => (
+    <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, color: 'var(--text-secondary)' }}>
+      <span>{label}</span>
+      {node}
+    </label>
+  );
+  return (
+    <div onClick={onCancel} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 120 }}>
+      <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 22, width: 'min(420px, 92vw)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)' }}>Настройки экспорта</div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          {row('Формат', <select value={format} onChange={(e) => setFormat(e.target.value as 'mp4' | 'mov')} style={sel}><option value="mp4">MP4</option><option value="mov">MOV</option></select>)}
+          {row('Кодек', <select value={codec} onChange={(e) => setCodec(e.target.value as 'libx264' | 'libx265')} style={sel}><option value="libx264">H.264</option><option value="libx265">H.265 (HEVC)</option></select>)}
+          {row('Битрейт видео, Мбит/с', <input type="number" min={1} max={200} value={bitrate} onChange={(e) => setBitrate(Number(e.target.value))} style={sel} />)}
+          {row('FPS', <input type="number" min={1} max={120} value={fps} onChange={(e) => setFps(Number(e.target.value))} style={sel} />)}
+          {row('Аудио, кбит/с', <select value={audioK} onChange={(e) => setAudioK(Number(e.target.value))} style={sel}><option value={128}>128</option><option value={192}>192</option><option value={256}>256</option><option value={320}>320</option></select>)}
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <button onClick={onCancel} style={{ padding: '7px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
+          <button onClick={() => onConfirm({ format, codec, videoBitrateMbps: bitrate, fps, audioBitrateK: audioK })} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--accent-green)', color: 'var(--bg-primary)', cursor: 'pointer', fontSize: 13, fontWeight: 600 }}>Экспортировать</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
