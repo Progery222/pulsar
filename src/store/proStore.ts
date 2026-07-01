@@ -8,7 +8,9 @@ import {
   DEFAULT_TEXT,
   DEFAULT_TRANSFORM,
   findPrevAdjacent,
+  transformAt,
   type AdjustFilter,
+  type Keyframe,
   type ClipCrop,
   type ClipTransform,
   type Mood,
@@ -84,6 +86,8 @@ export interface ProState {
   setViewerMode: (mode: ViewerMode) => void;
   setResolution: (width: number, height: number) => void;
   updateClipTransform: (id: string, patch: Partial<ClipTransform>) => void;
+  addKeyframe: (id: string) => void;
+  clearKeyframes: (id: string) => void;
   updateClipCrop: (id: string, patch: Partial<ClipCrop>) => void;
   setLeftWidth: (w: number) => void;
   setTimelineHeight: (h: number) => void;
@@ -135,6 +139,16 @@ export interface ProState {
 }
 
 const MIN_DUR = 0.05; // минимальная длина клипа (сек)
+
+function upsertKf(arr: Keyframe[], t: number, tf: { x: number; y: number; scale: number; rotation: number }) {
+  const kf: Keyframe = { t, x: tf.x, y: tf.y, scale: tf.scale, rotation: tf.rotation };
+  const i = arr.findIndex((k) => Math.abs(k.t - t) < 0.03);
+  if (i >= 0) arr[i] = kf;
+  else {
+    arr.push(kf);
+    arr.sort((a, b) => a.t - b.t);
+  }
+}
 
 export const useProStore = create<ProState>()(
   immer((set, get) => ({
@@ -217,7 +231,26 @@ export const useProStore = create<ProState>()(
       set((s) => {
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
-        c.transform = { ...DEFAULT_TRANSFORM, ...c.transform, ...patch };
+        // В режиме ключей — правка апдейтит/создаёт ключ в текущем плейхеде.
+        if (c.keyframes && c.keyframes.length) {
+          const localSec = Math.max(0, s.playhead - c.timelineStart);
+          upsertKf(c.keyframes, localSec, { ...transformAt(c, localSec), ...patch });
+        } else {
+          c.transform = { ...DEFAULT_TRANSFORM, ...c.transform, ...patch };
+        }
+      }),
+    addKeyframe: (id) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        const localSec = Math.max(0, s.playhead - c.timelineStart);
+        if (!c.keyframes) c.keyframes = [];
+        upsertKf(c.keyframes, localSec, transformAt(c, localSec));
+      }),
+    clearKeyframes: (id) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (c) delete c.keyframes;
       }),
     updateClipCrop: (id, patch) =>
       set((s) => {

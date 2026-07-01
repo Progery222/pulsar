@@ -38,7 +38,7 @@ export class VideoPool {
 }
 
 // Углы кадра клипа в координатах проекта (px). useCrop=false — полный кадр (для Transform-рамки).
-export function frameCorners(doc: ProDocument, clip: ProClip, useCrop: boolean, srcW?: number, srcH?: number): { pos: number[][]; uv: number[][] } {
+export function frameCorners(doc: ProDocument, clip: ProClip, useCrop: boolean, srcW?: number, srcH?: number, xf?: ClipTransform): { pos: number[][]; uv: number[][] } {
   const W = doc.width;
   const H = doc.height;
   const cr: ClipCrop = useCrop ? { ...DEFAULT_CROP, ...clip.crop } : DEFAULT_CROP;
@@ -72,7 +72,7 @@ export function frameCorners(doc: ProDocument, clip: ProClip, useCrop: boolean, 
     [1 - cr.right, 1 - cr.bottom],
     [cr.left, 1 - cr.bottom],
   ];
-  const t: ClipTransform = { ...DEFAULT_TRANSFORM, ...clip.transform };
+  const t: ClipTransform = xf ?? { ...DEFAULT_TRANSFORM, ...clip.transform };
   const cx = W / 2;
   const cy = H / 2;
   const rad = (t.rotation * Math.PI) / 180;
@@ -266,7 +266,7 @@ export class Compositor {
   // drawList — снизу вверх. adjustments — фильтры корр. слоёв (постобработка).
   render(
     doc: ProDocument,
-    drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor; blend?: BlendMode }[],
+    drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor; blend?: BlendMode; xf?: ClipTransform }[],
     adjustments: { filter: number; intensity: number }[] = []
   ) {
     const gl = this.gl;
@@ -307,13 +307,13 @@ export class Compositor {
     gl.enable(gl.BLEND);
   }
 
-  private drawClips(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor; blend?: BlendMode }[]) {
+  private drawClips(doc: ProDocument, drawList: { clip: ProClip; video: HTMLVideoElement; alpha?: number; color?: ClipColor; blend?: BlendMode; xf?: ClipTransform }[]) {
     const gl = this.gl;
     gl.clearColor(0, 0, 0, 1);
     gl.clear(gl.COLOR_BUFFER_BIT);
     gl.enable(gl.BLEND);
     gl.useProgram(this.prog);
-    for (const { clip, video, alpha, color, blend } of drawList) {
+    for (const { clip, video, alpha, color, blend, xf } of drawList) {
       if (video.readyState < 2 || !video.videoWidth) continue;
       // Режим наложения на нижние слои.
       if (blend === 'add') gl.blendFunc(gl.ONE, gl.ONE);
@@ -335,7 +335,7 @@ export class Compositor {
       } catch {
         continue; // кадр ещё не готов
       }
-      const { pos, uv } = frameCorners(doc, clip, true, video.videoWidth, video.videoHeight);
+      const { pos, uv } = frameCorners(doc, clip, true, video.videoWidth, video.videoHeight, xf);
       const W = doc.width;
       const H = doc.height;
       // NDC (origin top-left → flip Y). 2 треугольника: 0,1,2 и 0,2,3.

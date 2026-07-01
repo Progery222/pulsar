@@ -201,6 +201,8 @@ function InspectorTab() {
   const setBlend = useProStore((s) => s.setClipBlend);
   const setTransitionKind = useProStore((s) => s.setTransitionKind);
   const setSpeed = useProStore((s) => s.setClipSpeed);
+  const addKeyframe = useProStore((s) => s.addKeyframe);
+  const clearKeyframes = useProStore((s) => s.clearKeyframes);
   const tracks = useProStore((s) => s.doc.tracks);
   const push = useProStore((s) => s.pushHistory);
 
@@ -333,6 +335,11 @@ function InspectorTab() {
         <Row><NumField label="Scale %" value={Math.round(t.scale * 100)} step={1} onChange={(v) => tx({ scale: Math.max(0.05, v / 100) })} /></Row>
         <Row><NumField label="Rotation°" value={Math.round(t.rotation)} step={1} onChange={(v) => tx({ rotation: v })} /></Row>
         <ResetBtn onClick={() => tx(DEFAULT_TRANSFORM)} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
+          <button onClick={() => { push(); addKeyframe(id); }} title="Добавить ключ анимации в текущем плейхеде" style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: clip.keyframes?.length ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: clip.keyframes?.length ? 'var(--bg-primary)' : 'var(--text-primary)', border: '1px solid var(--border)' }}>◆ Ключ</button>
+          {!!clip.keyframes?.length && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{clip.keyframes.length} ключ.</span>}
+          {!!clip.keyframes?.length && <button onClick={() => { push(); clearKeyframes(id); }} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>Очистить</button>}
+        </div>
       </Section>
       <Section title="Скорость">
         <Row><NumField label="× (1 = норма)" value={clip.speed ?? 1} step={0.1} onChange={(v) => spd(v)} /></Row>

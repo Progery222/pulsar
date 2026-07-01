@@ -114,12 +114,12 @@ export async function runProExport(doc: ProDocument, onProgress: Progress, setti
     for (let i = 0; i < total; i++) {
       const t = startT + i / fps;
       const items = buildFrame(doc, t);
-      const drawList: { clip: (typeof items)[number]['clip']; video: HTMLVideoElement; alpha: number; color?: (typeof items)[number]['clip']['color']; blend?: (typeof items)[number]['clip']['blend'] }[] = [];
+      const drawList: { clip: (typeof items)[number]['clip']; video: HTMLVideoElement; alpha: number; color?: (typeof items)[number]['clip']['color']; blend?: (typeof items)[number]['clip']['blend']; xf?: (typeof items)[number]['xf'] }[] = [];
       for (const it of items) {
         const key = it.out ? it.clip.sourceFile + '#out' : it.clip.sourceFile;
         const v = pool.get(key, it.clip.sourceFile);
         await seekTo(v, Math.max(0, it.sourceTime));
-        drawList.push({ clip: it.clip, video: v, alpha: it.alpha, color: it.clip.color, blend: it.clip.blend });
+        drawList.push({ clip: it.clip, video: v, alpha: it.alpha, color: it.clip.color, blend: it.clip.blend, xf: it.xf });
       }
       comp.render(doc, drawList, activeAdjustments(doc, t));
       const texts = activeTexts(doc, t);

@@ -5,7 +5,7 @@ import { activeTexts, buildFrame } from './frame';
 import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, transformAt, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -153,22 +153,22 @@ export default function Viewer() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  function applyVisual(el: HTMLElement, clip: ProClip, d: ProDocument) {
-    const t = { ...DEFAULT_TRANSFORM, ...clip.transform };
+  function applyVisual(el: HTMLElement, clip: ProClip, d: ProDocument, localSec: number) {
+    const t = transformAt(clip, localSec);
     const cr = { ...DEFAULT_CROP, ...clip.crop };
     const s = el.offsetWidth / (d.width || 1) || 1;
     el.style.transform = `translate(${t.x * s}px, ${t.y * s}px) rotate(${t.rotation}deg) scale(${t.scale})`;
     el.style.clipPath = `inset(${cr.top * 100}% ${cr.right * 100}% ${cr.bottom * 100}% ${cr.left * 100}%)`;
     el.style.filter = colorToCss(clip.color);
   }
-  function syncOne(el: HTMLVideoElement, clip: ProClip, srcRef: React.MutableRefObject<string>, srcTime: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>, d: ProDocument) {
+  function syncOne(el: HTMLVideoElement, clip: ProClip, srcRef: React.MutableRefObject<string>, srcTime: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>, d: ProDocument, localSec: number) {
     const base = proxy && proxyMap[clip.sourceFile] ? proxyMap[clip.sourceFile] : clip.sourceFile;
     if (srcRef.current !== base) { srcRef.current = base; el.src = mediaUrl(base); }
     const st = Math.max(0, srcTime);
     el.playbackRate = Math.min(16, Math.max(0.0625, clip.speed || 1));
     if (playing) { if (el.paused) el.play().catch(() => {}); if (Math.abs(el.currentTime - st) > 0.3) el.currentTime = st; }
     else { if (!el.paused) el.pause(); if (Math.abs(el.currentTime - st) > 0.05) el.currentTime = st; }
-    applyVisual(el, clip, d);
+    applyVisual(el, clip, d, localSec);
   }
   function syncVideo(d: ProDocument, ph: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>) {
     const el = videoRef.current;
@@ -193,7 +193,7 @@ export default function Viewer() {
       if (!el.paused) el.pause();
       hideEl2();
       thumb.style.display = 'block';
-      applyVisual(thumb, top.clip, d);
+      applyVisual(thumb, top.clip, d, ph - top.clip.timelineStart);
       const base = proxy && proxyMap[top.clip.sourceFile] ? proxyMap[top.clip.sourceFile] : top.clip.sourceFile;
       const key = base + '@' + Math.round(Math.max(0, top.sourceTime) * 2);
       if (curThumbKey.current !== key) {
@@ -206,12 +206,12 @@ export default function Viewer() {
     curThumbKey.current = '';
     el.style.display = 'block';
     el.style.opacity = String(top.alpha);
-    syncOne(el, top.clip, curVideoSrc, top.sourceTime, playing, proxy, proxyMap, d);
+    syncOne(el, top.clip, curVideoSrc, top.sourceTime, playing, proxy, proxyMap, d, ph - top.clip.timelineStart);
     const outItem = items.find((it) => it.out && it.clip.id !== top.clip.id);
     if (outItem && el2) {
       el2.style.display = 'block';
       el2.style.opacity = String(outItem.alpha);
-      syncOne(el2, outItem.clip, curVideoSrc2, outItem.sourceTime, playing, proxy, proxyMap, d);
+      syncOne(el2, outItem.clip, curVideoSrc2, outItem.sourceTime, playing, proxy, proxyMap, d, ph - outItem.clip.timelineStart);
     } else {
       hideEl2();
     }
@@ -383,11 +383,12 @@ function useSelectedVideoClip(doc: ProDocument): ProClip | null {
 
 function TransformOverlay({ doc, scale }: { doc: ProDocument; scale: number }) {
   const clip = useSelectedVideoClip(doc);
+  const playhead = useProStore((s) => s.playhead);
   const rootRef = useRef<SVGSVGElement>(null);
   if (!clip) return <HintOverlay text="Выделите видео-клип для Transform" />;
 
-  const t = { ...DEFAULT_TRANSFORM, ...clip.transform };
-  const { pos } = frameCorners(doc, clip, false);
+  const t = transformAt(clip, playhead - clip.timelineStart);
+  const { pos } = frameCorners(doc, clip, false, undefined, undefined, t);
   const dc = pos.map(([x, y]) => [x * scale, y * scale]);
   const cxD = (doc.width / 2 + t.x) * scale;
   const cyD = (doc.height / 2 + t.y) * scale;

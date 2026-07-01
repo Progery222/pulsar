@@ -45,6 +45,7 @@ export interface ProClip {
   locked?: boolean; // закреплён — Auto-Cut не перезаписывает (§5 ТЗ)
   linkId?: string; // связка видео+аудио одного источника (двигаются вместе)
   speed?: number; // скорость воспроизведения (1 = норма, 2 = вдвое быстрее)
+  keyframes?: Keyframe[]; // анимация Transform по ключам (t — сек от начала клипа)
   transition?: { duration: number; kind?: TransitionKind }; // переход у стыка с предыдущим клипом (§5 ТЗ)
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа
@@ -157,6 +158,36 @@ export const ADJUST_CODE: Record<AdjustFilter, number> = { bw: 1, warm: 2, cool:
 
 export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
 export const DEFAULT_CROP: ClipCrop = { top: 0, bottom: 0, left: 0, right: 0 };
+
+// Ключ анимации Transform (t — сек от начала клипа).
+export interface Keyframe {
+  t: number;
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
+}
+
+// Transform клипа в момент localSec (сек от начала клипа) с учётом ключей.
+export function transformAt(clip: ProClip, localSec: number): ClipTransform {
+  const ks = clip.keyframes;
+  if (!ks || !ks.length) return { ...DEFAULT_TRANSFORM, ...clip.transform };
+  const s = [...ks].sort((a, b) => a.t - b.t);
+  const pick = (k: Keyframe): ClipTransform => ({ x: k.x, y: k.y, scale: k.scale, rotation: k.rotation });
+  if (localSec <= s[0].t) return pick(s[0]);
+  const last = s[s.length - 1];
+  if (localSec >= last.t) return pick(last);
+  for (let i = 0; i < s.length - 1; i++) {
+    const a = s[i];
+    const b = s[i + 1];
+    if (localSec >= a.t && localSec <= b.t) {
+      const f = (localSec - a.t) / ((b.t - a.t) || 1);
+      const l = (u: number, v: number) => u + (v - u) * f;
+      return { x: l(a.x, b.x), y: l(a.y, b.y), scale: l(a.scale, b.scale), rotation: l(a.rotation, b.rotation) };
+    }
+  }
+  return pick(last);
+}
 
 // Предыдущий клип, вплотную примыкающий слева к данному (для crossfade).
 export function findPrevAdjacent(clips: ProClip[], clip: ProClip): ProClip | null {
