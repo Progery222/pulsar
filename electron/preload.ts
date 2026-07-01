@@ -55,6 +55,7 @@ const electronAPI = {
     audio: { path: string; inPoint: number; duration: number; delayMs: number; volume: number }[];
     outPath: string;
   }): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('pro:encode', opts),
+  proMakeProxy: (src: string): Promise<string | null> => ipcRenderer.invoke('pro:makeProxy', src),
 
   // Показать файл в проводнике с выделением.
   showItemInFolder: (filePath: string): Promise<{ ok: true }> =>

@@ -19,6 +19,28 @@ export default function Viewer() {
   const isPlaying = useProStore((s) => s.isPlaying);
   const setPlaying = useProStore((s) => s.setPlaying);
   const setPlayhead = useProStore((s) => s.setPlayhead);
+  const useProxy = useProStore((s) => s.useProxy);
+
+  const onToggleProxy = async () => {
+    const st = useProStore.getState();
+    if (st.useProxy) {
+      st.setUseProxy(false);
+      return;
+    }
+    const srcs = new Set<string>();
+    for (const c of st.doc.clips) {
+      const tr = st.doc.tracks.find((t) => t.id === c.trackId);
+      if (tr && tr.kind === 'video' && !tr.isAdjustment && c.sourceFile) srcs.add(c.sourceFile);
+    }
+    st.setUseProxy(true);
+    showToast('Генерация прокси 720p…');
+    for (const src of srcs) {
+      if (useProStore.getState().proxyMap[src]) continue;
+      const p = await window.electronAPI.proMakeProxy(src);
+      if (p) useProStore.getState().setProxy(src, p);
+    }
+    showToast('Прокси готовы');
+  };
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -80,8 +102,9 @@ export default function Viewer() {
       const activeSrc = new Set<string>();
       const drawList: { clip: ProClip; video: HTMLVideoElement; alpha: number }[] = [];
       for (const it of items) {
-        const v = pool.get(it.clip.sourceFile);
-        activeSrc.add(it.clip.sourceFile);
+        const path = st.useProxy && st.proxyMap[it.clip.sourceFile] ? st.proxyMap[it.clip.sourceFile] : it.clip.sourceFile;
+        const v = pool.get(path);
+        activeSrc.add(path);
         const srcTime = Math.max(0, it.sourceTime);
         if (st.isPlaying) {
           if (v.paused) v.play().catch(() => {});
@@ -124,6 +147,7 @@ export default function Viewer() {
         <ModeBtn active={viewerMode === 'crop'} onClick={() => setViewerMode(viewerMode === 'crop' ? 'none' : 'crop')}>
           Crop
         </ModeBtn>
+        <ModeBtn active={useProxy} onClick={onToggleProxy}>Proxy</ModeBtn>
         <button
           onClick={onExport}
           disabled={!!exp}

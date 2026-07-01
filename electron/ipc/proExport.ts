@@ -1,6 +1,7 @@
 import { app, dialog, ipcMain } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -44,6 +45,21 @@ export function registerProExportHandlers() {
     const name = `frame_${String(index).padStart(6, '0')}.png`;
     await fs.promises.writeFile(path.join(dir, name), Buffer.from(data));
     return { ok: true };
+  });
+
+  // Генерация proxy-файла (§7 ТЗ): 720p H.264, низкий битрейт, для быстрого превью.
+  ipcMain.handle('pro:makeProxy', async (_e, src: string) => {
+    if (!ffmpegBin || !src) return null;
+    const dir = path.join(app.getPath('userData'), 'proxies');
+    fs.mkdirSync(dir, { recursive: true });
+    const out = path.join(dir, crypto.createHash('md5').update(src).digest('hex') + '.mp4');
+    if (fs.existsSync(out)) return out;
+    await new Promise<void>((resolve) => {
+      const ch = spawn(ffmpegBin, ['-y', '-i', src, '-vf', 'scale=-2:720', '-c:v', 'libx264', '-crf', '30', '-preset', 'veryfast', '-an', out], { windowsHide: true });
+      ch.on('close', () => resolve());
+      ch.on('error', () => resolve());
+    });
+    return fs.existsSync(out) ? out : null;
   });
 
   // Кодирование кадров + аудио в mp4.

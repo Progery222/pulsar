@@ -56,6 +56,12 @@ export interface ProState {
   leftWidth: number;
   timelineHeight: number;
 
+  // Proxy для превью (§7 ТЗ).
+  useProxy: boolean;
+  proxyMap: Record<string, string>;
+  setUseProxy: (v: boolean) => void;
+  setProxy: (src: string, proxyPath: string) => void;
+
   // Действия.
   setPlayhead: (t: number) => void;
   setZoom: (pxPerSec: number) => void;
@@ -116,6 +122,17 @@ export const useProStore = create<ProState>()(
 
     leftWidth: 300,
     timelineHeight: 300,
+
+    useProxy: false,
+    proxyMap: {},
+    setUseProxy: (v) =>
+      set((s) => {
+        s.useProxy = v;
+      }),
+    setProxy: (src, proxyPath) =>
+      set((s) => {
+        s.proxyMap[src] = proxyPath;
+      }),
 
     setPlayhead: (t) =>
       set((s) => {
