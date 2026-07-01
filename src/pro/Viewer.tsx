@@ -59,9 +59,11 @@ export default function Viewer() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const videoRef2 = useRef<HTMLVideoElement>(null); // уходящий слой при crossfade
+  const thumbRef = useRef<HTMLImageElement>(null); // кадр-миниатюра на паузе/скраббинге
   const audioRef = useRef<HTMLAudioElement>(null);
   const curVideoSrc = useRef('');
   const curVideoSrc2 = useRef('');
+  const curThumbKey = useRef('');
   const curAudioSrc = useRef('');
   const exportingRef = useRef(false);
   const [box, setBox] = useState({ w: 0, h: 0 });
@@ -151,7 +153,7 @@ export default function Viewer() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  function applyVisual(el: HTMLVideoElement, clip: ProClip, d: ProDocument) {
+  function applyVisual(el: HTMLElement, clip: ProClip, d: ProDocument) {
     const t = { ...DEFAULT_TRANSFORM, ...clip.transform };
     const cr = { ...DEFAULT_CROP, ...clip.crop };
     const s = el.offsetWidth / (d.width || 1) || 1;
@@ -171,21 +173,41 @@ export default function Viewer() {
   function syncVideo(d: ProDocument, ph: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>) {
     const el = videoRef.current;
     const el2 = videoRef2.current;
+    const thumb = thumbRef.current;
     if (!el) return;
-    const items = buildFrame(d, ph); // общая логика с экспортом (центрированный crossfade)
+    const items = buildFrame(d, ph);
     const hideEl2 = () => { if (el2) { el2.style.opacity = '0'; if (!el2.paused) el2.pause(); curVideoSrc2.current = ''; } };
+    const hideThumb = () => { if (thumb) thumb.style.display = 'none'; };
     if (!items.length) {
       el.style.opacity = '0';
       if (!el.paused) el.pause();
       curVideoSrc.current = '';
       hideEl2();
+      hideThumb();
       return;
     }
-    const top = items[items.length - 1]; // верхний (входящий)
+    const top = items[items.length - 1];
+    // Пауза/скраб — надёжный кадр через миниатюру (ffmpeg-декод, не чёрный при плохой перемотке).
+    if (!playing && thumb) {
+      el.style.opacity = '0';
+      if (!el.paused) el.pause();
+      hideEl2();
+      thumb.style.display = 'block';
+      applyVisual(thumb, top.clip, d);
+      const base = proxy && proxyMap[top.clip.sourceFile] ? proxyMap[top.clip.sourceFile] : top.clip.sourceFile;
+      const key = base + '@' + Math.round(Math.max(0, top.sourceTime) * 2);
+      if (curThumbKey.current !== key) {
+        curThumbKey.current = key;
+        window.electronAPI.thumb(base, Math.max(0, top.sourceTime)).then((p) => { if (p && curThumbKey.current === key && thumbRef.current) thumbRef.current.src = mediaUrl(p); });
+      }
+      return;
+    }
+    hideThumb();
+    curThumbKey.current = '';
     el.style.display = 'block';
     el.style.opacity = String(top.alpha);
     syncOne(el, top.clip, curVideoSrc, top.sourceTime, playing, proxy, proxyMap, d);
-    const outItem = items.find((it) => it.out && it.clip.id !== top.clip.id); // уходящий слой
+    const outItem = items.find((it) => it.out && it.clip.id !== top.clip.id);
     if (outItem && el2) {
       el2.style.display = 'block';
       el2.style.opacity = String(outItem.alpha);
@@ -299,6 +321,7 @@ export default function Viewer() {
               playsInline
               style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transformOrigin: 'center center', background: '#000' }}
             />
+            <img ref={thumbRef} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'none', transformOrigin: 'center center', background: '#000' }} />
           </div>
           {viewerMode === 'none' && selClip && (
             <div onPointerDown={onFrameDrag} title="Тяни — двигать кадр (Position)" style={{ position: 'absolute', inset: 0, cursor: 'move', zIndex: 1 }} />
