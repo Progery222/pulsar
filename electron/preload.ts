@@ -44,6 +44,9 @@ const electronAPI = {
   waveform: (src: string): Promise<{ peaks: number[]; duration: number } | null> =>
     ipcRenderer.invoke('media:waveform', src),
 
+  // Детект битов/онсетов в main (без OOM в renderer).
+  beats: (src: string): Promise<BeatData | null> => ipcRenderer.invoke('media:beats', src),
+
   // --- Экспорт Pulsar Pro (покадровый рендер + мукс аудио) ---
   proExportSavePath: (ext?: string): Promise<string | null> => ipcRenderer.invoke('pro:exportSavePath', ext),
   proExportDir: (): Promise<string> => ipcRenderer.invoke('pro:exportDir'),

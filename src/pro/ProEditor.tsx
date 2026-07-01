@@ -5,7 +5,6 @@ import Timeline, { zoomAtPlayhead } from './Timeline';
 import Viewer from './Viewer';
 import LeftPanel from './LeftPanel';
 import { buildAutoCut } from './autoCut';
-import { detectBeats } from './beats';
 import { deleteProject, getCurrentId, listProjects, loadProject, migrateLegacy, newProjectId, saveProject, setCurrentId } from './persistence';
 import { createEmptyProDocument, type Mood } from './proTypes';
 
@@ -48,8 +47,8 @@ async function runAutoCut(): Promise<void> {
     return;
   }
   showToast('Анализ ритма…');
-  // 1) Детект в браузере (Web Audio) — без Python. 2) librosa, если есть. 3) сетка.
-  let beatData = await detectBeats(audioClip.sourceFile);
+  // 1) Детект в main (ffmpeg PCM, без OOM). 2) librosa, если есть. 3) сетка.
+  let beatData = await window.electronAPI.beats(audioClip.sourceFile).catch(() => null);
   if (!beatData || beatData.beat_times.length < 2) {
     const res = await window.electronAPI.analyzeAudio(audioClip.sourceFile).catch(() => null);
     if (res && !('error' in res) && (res as { beat_times?: number[] }).beat_times?.length) beatData = res as typeof beatData;

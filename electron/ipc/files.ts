@@ -154,6 +154,59 @@ export function registerFileHandlers() {
     return result;
   });
 
+  // Детект битов/онсетов в main (ffmpeg стримит PCM) — без OOM в renderer.
+  ipcMain.handle('media:beats', async (_event, src: string) => {
+    if (!ffmpegBin || !src) return null;
+    const SR = 22050;
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve) => {
+      const ch = spawn(ffmpegBin, ['-i', src, '-ac', '1', '-ar', String(SR), '-f', 's16le', '-'], { windowsHide: true });
+      ch.stdout.on('data', (d: Buffer) => chunks.push(d));
+      ch.on('close', () => resolve());
+      ch.on('error', () => resolve());
+    });
+    const buf = Buffer.concat(chunks);
+    const total = Math.floor(buf.length / 2);
+    if (total < SR) return null;
+    const duration = total / SR;
+    const hop = 1024;
+    const frames = Math.floor(total / hop);
+    const energy = new Float32Array(frames);
+    for (let i = 0; i < frames; i++) {
+      let s = 0;
+      const base = i * hop * 2;
+      for (let j = 0; j < hop; j++) {
+        const v = buf.readInt16LE(base + j * 2) / 32768;
+        s += v * v;
+      }
+      energy[i] = Math.sqrt(s / hop);
+    }
+    const flux = new Float32Array(frames);
+    for (let i = 1; i < frames; i++) {
+      const d = energy[i] - energy[i - 1];
+      flux[i] = d > 0 ? d : 0;
+    }
+    const onsets: number[] = [];
+    const win = Math.round(SR / hop);
+    for (let i = 1; i < frames - 1; i++) {
+      const lo = Math.max(0, i - win);
+      const hi = Math.min(frames, i + win);
+      let sum = 0;
+      for (let k = lo; k < hi; k++) sum += flux[k];
+      const mean = sum / (hi - lo);
+      if (flux[i] > mean * 1.6 && flux[i] >= flux[i - 1] && flux[i] >= flux[i + 1] && flux[i] > 1e-4) {
+        const t = (i * hop) / SR;
+        if (!onsets.length || t - onsets[onsets.length - 1] > 0.14) onsets.push(t);
+      }
+    }
+    if (onsets.length < 2) return null;
+    const gaps: number[] = [];
+    for (let i = 1; i < onsets.length; i++) gaps.push(onsets[i] - onsets[i - 1]);
+    gaps.sort((a, b) => a - b);
+    const med = gaps[Math.floor(gaps.length / 2)] || 0.5;
+    return { beat_times: onsets, onset_times: onsets, duration, tempo: med > 0 ? Math.round(60 / med) : 120 };
+  });
+
   // Миниатюра кадра видео (для таймлайна/очереди). Кэшируется по src+time.
   ipcMain.handle('media:thumb', async (_event, src: string, time: number) => {
     if (!ffmpegBin || !src) return null;
