@@ -65,6 +65,7 @@ interface DirEntry {
 function MediaTab() {
   const clips = useProStore((s) => s.doc.clips);
   const sources = Array.from(new Set(clips.map((c) => c.sourceFile).filter(Boolean)));
+  const [sub, setSub] = useState<'browser' | 'sources'>('browser');
   const [dir, setDir] = useState<string | null>(null);
   const [entries, setEntries] = useState<DirEntry[]>([]);
   const [parent, setParent] = useState<string | null>(null);
@@ -93,42 +94,63 @@ function MediaTab() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      {/* Источники проекта. */}
-      {sources.length > 0 && (
-        <div style={{ padding: 8, borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 10.5, textTransform: 'uppercase', letterSpacing: 1, color: 'var(--text-secondary)', marginBottom: 6 }}>Источники проекта</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px, 1fr))', gap: 6, maxHeight: 220, overflow: 'auto' }}>
-            {sources.map((src) => (
-              <MediaTile key={src} path={src} name={fileName(src)} />
-            ))}
-          </div>
-        </div>
-      )}
+      {/* Подвкладки: проводник и источники проекта — каждая на всю высоту. */}
+      <div style={{ display: 'flex', gap: 4, padding: 6, borderBottom: '1px solid var(--border)' }}>
+        <SubTab active={sub === 'browser'} onClick={() => setSub('browser')}>Проводник</SubTab>
+        <SubTab active={sub === 'sources'} onClick={() => setSub('sources')}>Источники{sources.length ? ` (${sources.length})` : ''}</SubTab>
+      </div>
 
-      {/* Файловый браузер. */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
-        <button onClick={() => setDir(parent)} disabled={!parent && dir === null} title="Вверх" style={{ ...addBtn, opacity: !parent && dir === null ? 0.4 : 1 }}>↑</button>
-        <button onClick={() => setDir(home)} title="Домой" style={addBtn}>⌂</button>
-        <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>{dir ?? 'Диски'}</span>
-        <button onClick={pickDialog} title="Выбрать через диалог" style={addBtn}>📂</button>
-      </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 6 }}>
-        {/* Папки/диски — компактным списком. */}
-        {shown.filter((e) => e.isDir).map((e) => (
-          <div key={e.path} onDoubleClick={() => setDir(e.path)} onClick={() => setDir(e.path)} title="Открыть" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 5, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
-            <span>📁</span>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
-          </div>
-        ))}
-        {/* Файлы — превью-плитками с наведением (скраббинг кадра). */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px, 1fr))', gap: 6, marginTop: 4 }}>
-          {shown.filter((e) => !e.isDir).map((e) => (
-            <MediaTile key={e.path} path={e.path} name={e.name} />
-          ))}
+      {sub === 'sources' ? (
+        <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 8 }}>
+          {sources.length ? (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8 }}>
+              {sources.map((src) => (
+                <MediaTile key={src} path={src} name={fileName(src)} />
+              ))}
+            </div>
+          ) : (
+            <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>Нет источников. Добавь медиа во вкладке «Проводник».</div>
+          )}
         </div>
-        {!shown.length && <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>Пусто</div>}
-      </div>
+      ) : (
+        <>
+          {/* Файловый браузер. */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 8px', borderBottom: '1px solid var(--border)' }}>
+            <button onClick={() => setDir(parent)} disabled={!parent && dir === null} title="Вверх" style={{ ...addBtn, opacity: !parent && dir === null ? 0.4 : 1 }}>↑</button>
+            <button onClick={() => setDir(home)} title="Домой" style={addBtn}>⌂</button>
+            <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>{dir ?? 'Диски'}</span>
+            <button onClick={pickDialog} title="Выбрать через диалог" style={addBtn}>📂</button>
+          </div>
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 6 }}>
+            {/* Папки/диски — компактным списком. */}
+            {shown.filter((e) => e.isDir).map((e) => (
+              <div key={e.path} onDoubleClick={() => setDir(e.path)} onClick={() => setDir(e.path)} title="Открыть" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 5, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                <span>📁</span>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+              </div>
+            ))}
+            {/* Файлы — превью-плитками с наведением (скраббинг кадра). */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: 8, marginTop: 4 }}>
+              {shown.filter((e) => !e.isDir).map((e) => (
+                <MediaTile key={e.path} path={e.path} name={e.name} />
+              ))}
+            </div>
+            {!shown.length && <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>Пусто</div>}
+          </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function SubTab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{ flex: 1, padding: '5px 8px', fontSize: 12, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: active ? 'var(--bg-primary)' : 'var(--text-secondary)', fontWeight: active ? 600 : 400 }}
+    >
+      {children}
+    </button>
   );
 }
 
