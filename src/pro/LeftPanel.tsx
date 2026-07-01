@@ -123,18 +123,21 @@ function MediaTab() {
         <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>{dir ?? 'Диски'}</span>
         <button onClick={pickDialog} title="Выбрать через диалог" style={addBtn}>📂</button>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px, 1fr))', gap: 6, alignContent: 'start' }}>
-        {shown.map((e) =>
-          e.isDir ? (
-            <div key={e.path} onDoubleClick={() => setDir(e.path)} title="Двойной клик — открыть" style={{ cursor: 'pointer', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
-              <div style={{ aspectRatio: '16 / 10', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>📁</div>
-              <div style={{ fontSize: 10.5, padding: '2px 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{e.name}</div>
-            </div>
-          ) : (
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 6 }}>
+        {/* Папки/диски — компактным списком. */}
+        {shown.filter((e) => e.isDir).map((e) => (
+          <div key={e.path} onDoubleClick={() => setDir(e.path)} onClick={() => setDir(e.path)} title="Открыть" style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 5, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
+            <span>📁</span>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name}</span>
+          </div>
+        ))}
+        {/* Файлы — превью-плитками с наведением (скраббинг кадра). */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px, 1fr))', gap: 6, marginTop: 4 }}>
+          {shown.filter((e) => !e.isDir).map((e) => (
             <MediaTile key={e.path} path={e.path} name={e.name} />
-          )
-        )}
-        {!shown.length && <div style={{ gridColumn: '1 / -1', padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>Пусто</div>}
+          ))}
+        </div>
+        {!shown.length && <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>Пусто</div>}
       </div>
     </div>
   );

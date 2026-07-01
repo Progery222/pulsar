@@ -280,6 +280,12 @@ export default function Timeline() {
     const dur = meta.duration || 3;
     st.pushHistory();
     st.addClip({ trackId, sourceFile: path, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: kind === 'video' ? meta.width || undefined : undefined, sourceH: kind === 'video' ? meta.height || undefined : undefined });
+    // Видео → звук отдельным клипом на аудио-дорожку.
+    if (kind === 'video') {
+      const cur = useProStore.getState();
+      const audioTrackId = cur.doc.tracks.find((t) => t.kind === 'audio')?.id ?? cur.addTrack('audio');
+      cur.addClip({ trackId: audioTrackId, sourceFile: path, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
+    }
   };
 
   const playheadX = playhead * pxPerSec - scrollX;
