@@ -734,6 +734,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         const isSel = selected.includes(c.id);
         const trueLeft = clipStartX >= 0;
         const trueRight = clipEndX <= (vpW || clipEndX);
+        const hasPrevAdj = clips.some((o) => o.id !== c.id && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.02);
 
         return (
           <div
@@ -782,6 +783,15 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
               >
                 <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize', pointerEvents: 'auto' }} title="Длина перехода" />
               </div>
+            )}
+            {trueLeft && hasPrevAdj && !c.transition && (
+              <button
+                onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTransition(c.id, 0.5); }}
+                title="Добавить переход (crossfade) на стыке"
+                style={{ position: 'absolute', left: 2, top: 2, width: 18, height: 18, borderRadius: '50%', background: 'rgba(13,13,13,0.7)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', fontSize: 11, lineHeight: 1, cursor: 'pointer', zIndex: 4, padding: 0 }}
+              >
+                ⇄
+              </button>
             )}
             {trueLeft && <div onPointerDown={(e) => onGripDown(e, c, 'l')} style={gripStyle('l')} title="Подрезать слева" />}
             {trueRight && <div onPointerDown={(e) => onGripDown(e, c, 'r')} style={gripStyle('r')} title="Подрезать справа" />}
