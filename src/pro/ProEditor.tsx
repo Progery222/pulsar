@@ -5,6 +5,7 @@ import Timeline, { zoomAtPlayhead } from './Timeline';
 import Viewer from './Viewer';
 import LeftPanel from './LeftPanel';
 import { buildAutoCut } from './autoCut';
+import { detectBeats } from './beats';
 import { deleteProject, getCurrentId, listProjects, loadProject, migrateLegacy, newProjectId, saveProject, setCurrentId } from './persistence';
 import { createEmptyProDocument, type Mood } from './proTypes';
 
@@ -47,16 +48,17 @@ async function runAutoCut(): Promise<void> {
     return;
   }
   showToast('Анализ ритма…');
-  const res = await window.electronAPI.analyzeAudio(audioClip.sourceFile);
-  let beatData;
-  if (!res || 'error' in res) {
-    // Фолбэк без librosa — равномерная сетка 0.5с.
+  // 1) Детект в браузере (Web Audio) — без Python. 2) librosa, если есть. 3) сетка.
+  let beatData = await detectBeats(audioClip.sourceFile);
+  if (!beatData || beatData.beat_times.length < 2) {
+    const res = await window.electronAPI.analyzeAudio(audioClip.sourceFile).catch(() => null);
+    if (res && !('error' in res) && (res as { beat_times?: number[] }).beat_times?.length) beatData = res as typeof beatData;
+  }
+  if (!beatData || beatData.beat_times.length < 2) {
     const beats: number[] = [];
     for (let t = 0; t <= audioClip.duration; t += 0.5) beats.push(audioClip.inPoint + t);
     beatData = { tempo: 120, beat_times: beats, onset_times: [], duration: audioClip.duration };
     showToast('Ритм не определён — равномерная сетка 0.5с');
-  } else {
-    beatData = res;
   }
   const locked = doc.clips.filter((c) => c.trackId === target && c.locked).map((c) => ({ start: c.timelineStart, end: c.timelineStart + c.duration }));
   const gen = buildAutoCut({
