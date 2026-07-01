@@ -88,10 +88,11 @@ export interface ProState {
 
   // Документ.
   addClip: (clip: Omit<ProClip, 'id'>) => string;
-  addTrack: (kind: 'video' | 'audio') => void;
+  addTrack: (kind: 'video' | 'audio') => string;
   removeTrack: (trackId: string) => void;
   toggleTrackFlag: (trackId: string, flag: 'muted' | 'solo' | 'locked' | 'hidden') => void;
   moveClip: (id: string, trackId: string, timelineStart: number) => void;
+  rippleInsert: (id: string, trackId: string, atTime: number) => void;
   moveClipsBy: (ids: string[], dt: number) => void;
   setClipTrim: (id: string, patch: { timelineStart: number; inPoint: number; duration: number }) => void;
   splitClipAt: (id: string, atTime: number) => void;
@@ -240,11 +241,12 @@ export const useProStore = create<ProState>()(
       });
       return id;
     },
-    addTrack: (kind) =>
+    addTrack: (kind) => {
+      const id = `${kind === 'video' ? 'V' : 'A'}${nextClipId()}`;
       set((s) => {
         const num = s.doc.tracks.filter((t) => t.kind === kind && !t.isAdjustment).length + 1;
         const track = {
-          id: `${kind === 'video' ? 'V' : 'A'}${num}_${nextClipId()}`,
+          id,
           kind,
           name: `${kind === 'video' ? 'V' : 'A'}${num}`,
           height: kind === 'video' ? 64 : 56,
@@ -254,14 +256,15 @@ export const useProStore = create<ProState>()(
           hidden: false,
         };
         if (kind === 'video') {
-          // Видео — над аудио: перед первой аудио-дорожкой.
           const firstAudio = s.doc.tracks.findIndex((t) => t.kind === 'audio');
           if (firstAudio === -1) s.doc.tracks.push(track);
           else s.doc.tracks.splice(firstAudio, 0, track);
         } else {
           s.doc.tracks.push(track);
         }
-      }),
+      });
+      return id;
+    },
     removeTrack: (trackId) =>
       set((s) => {
         s.doc.tracks = s.doc.tracks.filter((t) => t.id !== trackId);
@@ -283,6 +286,21 @@ export const useProStore = create<ProState>()(
         // Смена дорожки — только между дорожками того же типа.
         if (target && cur && target.kind === cur.kind && !target.locked) c.trackId = trackId;
         c.timelineStart = Math.max(0, timelineStart);
+      }),
+
+    rippleInsert: (id, trackId, atTime) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        const target = s.doc.tracks.find((t) => t.id === trackId);
+        const cur = s.doc.tracks.find((t) => t.id === c.trackId);
+        const at = Math.max(0, atTime);
+        // Раздвигаем клипы на целевой дорожке, начинающиеся на/после точки вставки.
+        for (const o of s.doc.clips) {
+          if (o.id !== id && o.trackId === trackId && o.timelineStart >= at - 1e-4) o.timelineStart += c.duration;
+        }
+        if (target && cur && target.kind === cur.kind && !target.locked) c.trackId = trackId;
+        c.timelineStart = at;
       }),
 
     moveClipsBy: (ids, dt) =>

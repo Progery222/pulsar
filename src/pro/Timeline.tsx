@@ -501,11 +501,14 @@ function TrackHeader({ track }: { track: ProTrack }) {
     if (track.kind === 'video') {
       const paths = await window.electronAPI.selectVideos();
       if (!paths.length) return;
-      useProStore.getState().pushHistory();
+      const st = useProStore.getState();
+      st.pushHistory();
+      const audioTrackId = st.doc.tracks.find((t) => t.kind === 'audio')?.id ?? st.addTrack('audio');
       let at = playhead;
       for (const p of paths) {
         const dur = (await probeDuration(p, 'video')) || 3;
         addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
+        addClip({ trackId: audioTrackId, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
         at += dur;
       }
     } else {
@@ -580,7 +583,8 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
       st.splitClipAt(c.id, timeAt(e.clientX));
       return;
     }
-    const multi = e.shiftKey || e.ctrlKey || e.metaKey;
+    const multi = e.shiftKey; // множественное — Shift; Ctrl зарезервирован под вставку
+    const insertMode = e.ctrlKey || e.metaKey; // Ctrl+перетаскивание — вставка между клипами (раздвинуть)
     let sel = st.selectedClipIds;
     if (multi) sel = sel.includes(c.id) ? sel : [...sel, c.id];
     else if (!sel.includes(c.id)) sel = [c.id];
@@ -594,12 +598,14 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const dur = c.duration;
     const exclude = new Set(movingIds);
     let pushed = false;
+    let moved = false;
 
     const move = (ev: PointerEvent) => {
       if (!pushed) {
         useProStore.getState().pushHistory();
         pushed = true;
       }
+      moved = true;
       const dt = timeAt(ev.clientX) - startTime;
       const raw = origPrimary + dt;
       const snapStart = snap(raw, exclude);
@@ -622,6 +628,12 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const up = () => {
       window.removeEventListener('pointermove', move);
       window.removeEventListener('pointerup', up);
+      // Ctrl+перетаскивание одного клипа — вставка: раздвигаем клипы на дорожке.
+      if (insertMode && moved && movingIds.length === 1) {
+        const cur = useProStore.getState();
+        const clip = cur.doc.clips.find((x) => x.id === c.id);
+        if (clip) cur.rippleInsert(c.id, clip.trackId, clip.timelineStart);
+      }
     };
     window.addEventListener('pointermove', move);
     window.addEventListener('pointerup', up);
