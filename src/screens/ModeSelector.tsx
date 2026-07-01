@@ -63,6 +63,7 @@ export default function ModeSelector() {
   const setAppMode = useUIStore((s) => s.setAppMode);
   const toggleQueue = useUIStore((s) => s.toggleQueue);
   const toggleHistory = useUIStore((s) => s.toggleHistory);
+  const [montageChoose, setMontageChoose] = useState(false);
 
   const I = (size: number) => ({ width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const });
 
@@ -89,7 +90,7 @@ export default function ModeSelector() {
           index={0}
           title="Монтаж"
           description="Автоматический монтаж видео в ритм музыки"
-          onClick={() => setAppMode('editor')}
+          onClick={() => setMontageChoose(true)}
           icon={
             <svg {...I(38)}>
               <circle cx="6" cy="6" r="3" />
@@ -215,7 +216,94 @@ export default function ModeSelector() {
           Настройки
         </button>
       </div>
+
+      {/* Выбор режима монтажа: быстрый (beat-sync) или Pro (мульти-трек). */}
+      {montageChoose && (
+        <div
+          onClick={() => setMontageChoose(false)}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0,0,0,0.6)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border)',
+              borderRadius: 16,
+              padding: 28,
+              width: 'min(620px, 92vw)',
+            }}
+          >
+            <h2 className="font-semibold" style={{ fontSize: 22, color: 'var(--text-primary)', marginBottom: 6 }}>
+              Режим монтажа
+            </h2>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 22 }}>
+              Выберите способ работы над роликом
+            </p>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <ChooserCard
+                title="Быстрый"
+                sub="beat-sync"
+                description="Авто-нарезка в ритм за 1–2 клика. Один видеоряд, стили и эффекты."
+                onClick={() => setAppMode('editor')}
+              />
+              <ChooserCard
+                title="Pro"
+                sub="мульти-трек"
+                description="Полноценный NLE: дорожки V/A, таймлайн, Transform/Crop, Undo/Redo."
+                onClick={() => setAppMode('pro')}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function ChooserCard({
+  title,
+  sub,
+  description,
+  onClick,
+}: {
+  title: string;
+  sub: string;
+  description: string;
+  onClick: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      className="flex flex-col items-start text-left"
+      style={{
+        background: 'var(--bg-tertiary)',
+        border: `1px solid ${hover ? 'var(--accent-green)' : 'var(--border)'}`,
+        borderRadius: 12,
+        padding: 20,
+        cursor: 'pointer',
+        transition: 'border-color 0.15s ease, transform 0.15s ease',
+        transform: hover ? 'translateY(-2px)' : 'none',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 8 }}>
+        <span className="font-semibold" style={{ fontSize: 18, color: 'var(--text-primary)' }}>
+          {title}
+        </span>
+        <span style={{ fontSize: 12, color: 'var(--accent-green)' }}>{sub}</span>
+      </div>
+      <p style={{ fontSize: 13, lineHeight: 1.45, color: 'var(--text-secondary)' }}>{description}</p>
+    </button>
   );
 }
 

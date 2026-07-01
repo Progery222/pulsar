@@ -12,6 +12,7 @@ import MediaPickerScreen from './screens/MediaPickerScreen';
 import MusicPickerScreen from './screens/MusicPickerScreen';
 import ProcessingScreen from './screens/ProcessingScreen';
 import EditorScreen from './screens/EditorScreen';
+import ProEditor from './pro/ProEditor';
 import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
@@ -130,6 +131,19 @@ function App() {
           <ModeSelector />
         </div>
         {showIntro && <IntroOverlay onDone={() => setShowIntro(false)} />}
+        <Overlays />
+      </>
+    );
+  }
+
+  // Pulsar Pro — мульти-трек монтаж (§2 ТЗ Pro).
+  if (appMode === 'pro') {
+    return (
+      <>
+        <div className="screen-fade" style={{ height: '100vh' }}>
+          <ProEditor />
+        </div>
+        <TopBar />
         <Overlays />
       </>
     );
