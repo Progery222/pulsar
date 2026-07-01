@@ -401,35 +401,37 @@ function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: Me
 function ToolColumn() {
   const activeTool = useProStore((s) => s.activeTool);
   const setTool = useProStore((s) => s.setTool);
+  const snapping = useProStore((s) => s.snapping);
+  const toggleSnapping = useProStore((s) => s.toggleSnapping);
   const I = { width: 18, height: 18, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: 2, strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const };
   const tools = [
     { id: 'select' as const, title: 'Курсор — выделение/перемещение (V)', icon: <svg {...I}><path d="M3 3l7 18 2.5-7.5L20 11z" /></svg> },
     { id: 'blade' as const, title: 'Лезвие — разрезать клип (C/B)', icon: <svg {...I}><path d="M4 4l10 10" /><circle cx="17" cy="17" r="3" /><path d="M14 14l6-6" /></svg> },
-    { id: 'ripple' as const, title: 'Ripple — удаление со сдвигом', icon: <svg {...I}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></svg> },
+    { id: 'ripple' as const, title: 'Ripple — удаление/трим со сдвигом', icon: <svg {...I}><polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" /></svg> },
   ];
+  const cell = (active: boolean): React.CSSProperties => ({
+    width: 30,
+    height: 30,
+    borderRadius: 7,
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    cursor: 'pointer',
+    color: active ? 'var(--bg-primary)' : 'var(--text-primary)',
+    background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)',
+    border: '1px solid var(--border)',
+  });
   return (
     <div style={{ width: 40, flex: '0 0 auto', borderRight: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, paddingTop: 8 }}>
       {tools.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => setTool(t.id)}
-          title={t.title}
-          style={{
-            width: 30,
-            height: 30,
-            borderRadius: 7,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer',
-            color: activeTool === t.id ? 'var(--bg-primary)' : 'var(--text-primary)',
-            background: activeTool === t.id ? 'var(--accent-green)' : 'var(--bg-tertiary)',
-            border: '1px solid var(--border)',
-          }}
-        >
+        <button key={t.id} onClick={() => setTool(t.id)} title={t.title} style={cell(activeTool === t.id)}>
           {t.icon}
         </button>
       ))}
+      <div style={{ width: 22, height: 1, background: 'var(--border)', margin: '2px 0' }} />
+      <button onClick={toggleSnapping} title="Магнит — прилипание (N)" style={cell(snapping)}>
+        <svg {...I}><path d="M6 4v6a6 6 0 0 0 12 0V4" /><line x1="6" y1="4" x2="10" y2="4" /><line x1="14" y1="4" x2="18" y2="4" /></svg>
+      </button>
     </div>
   );
 }
@@ -563,13 +565,22 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const ids = useProStore.getState().selectedClipIds;
     const ph = st.playhead;
     const canSplit = ph > c.timelineStart && ph < c.timelineStart + c.duration;
+    const isVideo = track.kind === 'video' && !track.isAdjustment;
     openMenu(e.clientX, e.clientY, [
-      ...(canSplit ? [{ label: 'Разрезать по плейхеду', onClick: () => { st.pushHistory(); st.splitClipAt(c.id, ph); } }] : []),
-      { label: 'Копировать', onClick: () => st.copyClips(ids) },
-      { label: 'Дублировать', onClick: () => { st.pushHistory(); st.duplicateClips(ids); } },
+      ...(canSplit ? [{ label: 'Разрезать по плейхеду (Ctrl+K)', onClick: () => { st.pushHistory(); st.splitClipAt(c.id, ph); } }] : []),
+      { label: 'Копировать (Ctrl+C)', onClick: () => st.copyClips(ids) },
+      { label: 'Дублировать (Ctrl+D)', onClick: () => { st.pushHistory(); st.duplicateClips(ids); } },
+      ...(isVideo
+        ? [{ label: 'Отделить аудио', onClick: () => {
+            st.pushHistory();
+            const atid = st.doc.tracks.find((t) => t.kind === 'audio')?.id ?? st.addTrack('audio');
+            st.addClip({ trackId: atid, sourceFile: c.sourceFile, timelineStart: c.timelineStart, duration: c.duration, inPoint: c.inPoint, sourceDuration: c.sourceDuration });
+          } }]
+        : []),
       { label: c.locked ? 'Открепить' : 'Закрепить', onClick: () => { st.pushHistory(); st.toggleClipLock(c.id); } },
-      { label: 'Удалить', danger: true, onClick: () => { st.pushHistory(); st.removeClips(ids); } },
-      { label: 'Удалить со сдвигом (Ripple)', danger: true, onClick: () => { st.pushHistory(); st.rippleDeleteClips(ids); } },
+      ...(c.sourceFile ? [{ label: 'Показать файл в проводнике', onClick: () => window.electronAPI.showItemInFolder(c.sourceFile) }] : []),
+      { label: 'Удалить (Del)', danger: true, onClick: () => { st.pushHistory(); st.removeClips(ids); } },
+      { label: 'Удалить со сдвигом (Shift+Del)', danger: true, onClick: () => { st.pushHistory(); st.rippleDeleteClips(ids); } },
     ]);
   };
 
