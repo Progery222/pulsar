@@ -249,7 +249,7 @@ export default function Viewer() {
               ref={videoRef}
               muted
               playsInline
-              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'fill', display: 'block', transformOrigin: 'center center', background: '#000' }}
+              style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain', display: 'block', transformOrigin: 'center center', background: '#000' }}
             />
           </div>
           {viewerMode === 'transform' && <TransformOverlay doc={doc} scale={scale} />}

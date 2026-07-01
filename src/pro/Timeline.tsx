@@ -53,13 +53,13 @@ export function zoomAtPlayhead(nextPx: number) {
   st.setScrollX(st.playhead * clamped - playheadX);
 }
 
-// Определяем длительность медиа через скрытый элемент (media:// протокол).
-function probeDuration(path: string, kind: 'video' | 'audio'): Promise<number> {
+// Метаданные медиа (длительность + размеры) через скрытый элемент (media://).
+function probeMeta(path: string, kind: 'video' | 'audio'): Promise<{ duration: number; width: number; height: number }> {
   return new Promise((resolve) => {
-    const el = document.createElement(kind === 'audio' ? 'audio' : 'video');
+    const el = document.createElement(kind === 'audio' ? 'audio' : 'video') as HTMLVideoElement;
     el.preload = 'metadata';
-    el.onloadedmetadata = () => resolve(el.duration || 0);
-    el.onerror = () => resolve(0);
+    el.onloadedmetadata = () => resolve({ duration: el.duration || 0, width: el.videoWidth || 0, height: el.videoHeight || 0 });
+    el.onerror = () => resolve({ duration: 0, width: 0, height: 0 });
     el.src = mediaUrl(path);
   });
 }
@@ -506,8 +506,9 @@ function TrackHeader({ track }: { track: ProTrack }) {
       const audioTrackId = st.doc.tracks.find((t) => t.kind === 'audio')?.id ?? st.addTrack('audio');
       let at = playhead;
       for (const p of paths) {
-        const dur = (await probeDuration(p, 'video')) || 3;
-        addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
+        const meta = await probeMeta(p, 'video');
+        const dur = meta.duration || 3;
+        addClip({ trackId: track.id, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined });
         addClip({ trackId: audioTrackId, sourceFile: p, timelineStart: at, duration: dur, inPoint: 0, sourceDuration: dur });
         at += dur;
       }
@@ -515,7 +516,7 @@ function TrackHeader({ track }: { track: ProTrack }) {
       const p = await window.electronAPI.selectAudio();
       if (!p) return;
       useProStore.getState().pushHistory();
-      const dur = (await probeDuration(p, 'audio')) || 3;
+      const dur = (await probeMeta(p, 'audio')).duration || 3;
       addClip({ trackId: track.id, sourceFile: p, timelineStart: playhead, duration: dur, inPoint: 0, sourceDuration: dur });
     }
   };

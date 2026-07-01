@@ -42,10 +42,22 @@ export function frameCorners(doc: ProDocument, clip: ProClip, useCrop: boolean):
   const W = doc.width;
   const H = doc.height;
   const cr: ClipCrop = useCrop ? { ...DEFAULT_CROP, ...clip.crop } : DEFAULT_CROP;
-  const rx0 = W * cr.left;
-  const rx1 = W * (1 - cr.right);
-  const ry0 = H * cr.top;
-  const ry1 = H * (1 - cr.bottom);
+  // База — вписывание источника в кадр по аспекту (letterbox), не растягивание.
+  let bx0 = 0;
+  let by0 = 0;
+  let bw = W;
+  let bh = H;
+  if (clip.sourceW && clip.sourceH) {
+    const k = Math.min(W / clip.sourceW, H / clip.sourceH);
+    bw = clip.sourceW * k;
+    bh = clip.sourceH * k;
+    bx0 = (W - bw) / 2;
+    by0 = (H - bh) / 2;
+  }
+  const rx0 = bx0 + bw * cr.left;
+  const rx1 = bx0 + bw * (1 - cr.right);
+  const ry0 = by0 + bh * cr.top;
+  const ry1 = by0 + bh * (1 - cr.bottom);
   let corners = [
     [rx0, ry0],
     [rx1, ry0],

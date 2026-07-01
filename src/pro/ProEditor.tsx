@@ -45,13 +45,19 @@ async function runAutoCut(): Promise<void> {
   }
   showToast('Анализ ритма…');
   const res = await window.electronAPI.analyzeAudio(audioClip.sourceFile);
+  let beatData;
   if (!res || 'error' in res) {
-    showToast('Не удалось проанализировать аудио');
-    return;
+    // Фолбэк без librosa — равномерная сетка 0.5с.
+    const beats: number[] = [];
+    for (let t = 0; t <= audioClip.duration; t += 0.5) beats.push(audioClip.inPoint + t);
+    beatData = { tempo: 120, beat_times: beats, onset_times: [], duration: audioClip.duration };
+    showToast('Ритм не определён — равномерная сетка 0.5с');
+  } else {
+    beatData = res;
   }
   const locked = doc.clips.filter((c) => c.trackId === target && c.locked).map((c) => ({ start: c.timelineStart, end: c.timelineStart + c.duration }));
   const gen = buildAutoCut({
-    beatData: res,
+    beatData,
     mood: st.autoCutMood,
     pool,
     trackId: target,

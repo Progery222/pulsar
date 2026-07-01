@@ -37,6 +37,8 @@ export interface ProClip {
   duration: number; // длина клипа на таймлайне (сек)
   inPoint: number; // точка входа внутри источника (сек)
   sourceDuration?: number; // полная длина исходника (сек) — граница для trim
+  sourceW?: number; // натуральные размеры источника — для вписывания в кадр (letterbox)
+  sourceH?: number;
   transform?: ClipTransform;
   crop?: ClipCrop;
   effects?: ProEffectSlot[];

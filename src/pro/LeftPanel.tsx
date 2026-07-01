@@ -4,13 +4,13 @@ import { showToast } from '../store/toastStore';
 import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type AdjustFilter } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
-// Длительность медиа через скрытый элемент.
-function probeDuration(path: string, kind: 'video' | 'audio'): Promise<number> {
+// Метаданные медиа (длительность + размеры) через скрытый элемент.
+function probeMeta(path: string, kind: 'video' | 'audio'): Promise<{ duration: number; width: number; height: number }> {
   return new Promise((resolve) => {
-    const el = document.createElement(kind === 'audio' ? 'audio' : 'video');
+    const el = document.createElement(kind === 'audio' ? 'audio' : 'video') as HTMLVideoElement;
     el.preload = 'metadata';
-    el.onloadedmetadata = () => resolve(el.duration || 0);
-    el.onerror = () => resolve(0);
+    el.onloadedmetadata = () => resolve({ duration: el.duration || 0, width: el.videoWidth || 0, height: el.videoHeight || 0 });
+    el.onerror = () => resolve({ duration: 0, width: 0, height: 0 });
     el.src = mediaUrl(path);
   });
 }
@@ -28,10 +28,11 @@ async function addFileToProject(path: string) {
     showToast(`Нет ${kind === 'video' ? 'видео' : 'аудио'}-дорожки`);
     return;
   }
-  const dur = (await probeDuration(path, kind)) || 3;
+  const meta = await probeMeta(path, kind);
+  const dur = meta.duration || 3;
   const end = st.doc.clips.filter((c) => c.trackId === track.id).reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
   st.pushHistory();
-  st.addClip({ trackId: track.id, sourceFile: path, timelineStart: end, duration: dur, inPoint: 0, sourceDuration: dur });
+  st.addClip({ trackId: track.id, sourceFile: path, timelineStart: end, duration: dur, inPoint: 0, sourceDuration: dur, sourceW: meta.width || undefined, sourceH: meta.height || undefined });
   // Видео — добавляем и связанное аудио на аудио-дорожку.
   if (kind === 'video') {
     const audioTrackId = st.doc.tracks.find((t) => t.kind === 'audio')?.id ?? st.addTrack('audio');
