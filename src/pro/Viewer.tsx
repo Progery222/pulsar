@@ -1,57 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { Compositor, frameCorners, VideoPool } from './compositor';
-import { ADJUST_CODE, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type ProClip, type ProDocument } from './proTypes';
+import { buildFrame, activeAdjustments } from './frame';
+import { runProExport } from './exporter';
+import { showToast } from '../store/toastStore';
+import { DEFAULT_CROP, DEFAULT_TRANSFORM, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4, §7 ТЗ): WebGL-компоновщик слоёв в реальном времени + оверлеи Transform/Crop.
 
 function clamp(v: number, a: number, b: number) {
   return Math.min(b, Math.max(a, v));
-}
-
-interface DrawItem {
-  clip: ProClip;
-  sourceTime: number; // тайм внутри исходника
-  alpha: number; // для crossfade
-}
-
-// Кадр под плейхедом, снизу вверх (hidden/solo + crossfade-переходы, §5 ТЗ).
-function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
-  const videoTracks = doc.tracks.filter((t) => t.kind === 'video' && !t.isAdjustment);
-  const anySolo = videoTracks.some((t) => t.solo);
-  const visible = videoTracks.filter((t) => !t.hidden && (!anySolo || t.solo));
-  const bottomUp = [...visible].reverse(); // doc: верхняя дорожка первой → рисуем с нижней
-  const out: DrawItem[] = [];
-  for (const t of bottomUp) {
-    const active = doc.clips.filter((c) => c.trackId === t.id && ph >= c.timelineStart && ph < c.timelineStart + c.duration);
-    for (const B of active) {
-      let alphaB = 1;
-      if (B.transition && ph < B.timelineStart + B.transition.duration) {
-        const d = B.transition.duration;
-        const f = (ph - B.timelineStart) / d; // 0..1
-        alphaB = f;
-        const A = findPrevAdjacent(doc.clips, B);
-        if (A) out.push({ clip: A, sourceTime: A.inPoint + A.duration + (ph - B.timelineStart), alpha: 1 - f });
-      }
-      out.push({ clip: B, sourceTime: B.inPoint + (ph - B.timelineStart), alpha: alphaB });
-    }
-  }
-  return out;
-}
-
-// Активные корр. слои под плейхедом, снизу вверх (§5 ТЗ).
-function activeAdjustments(doc: ProDocument, ph: number): { filter: number; intensity: number }[] {
-  const adjTracks = doc.tracks.filter((t) => t.isAdjustment && !t.hidden);
-  const bottomUp = [...adjTracks].reverse();
-  const out: { filter: number; intensity: number }[] = [];
-  for (const t of bottomUp) {
-    for (const c of doc.clips) {
-      if (c.trackId === t.id && c.adjust && ph >= c.timelineStart && ph < c.timelineStart + c.duration) {
-        out.push({ filter: ADJUST_CODE[c.adjust.filter], intensity: c.adjust.intensity });
-      }
-    }
-  }
-  return out;
 }
 
 export default function Viewer() {
@@ -67,6 +25,21 @@ export default function Viewer() {
   const compRef = useRef<Compositor | null>(null);
   const poolRef = useRef<VideoPool | null>(null);
   const [box, setBox] = useState({ w: 0, h: 0 });
+  const [exp, setExp] = useState<{ phase: string; cur: number; total: number } | null>(null);
+
+  const onExport = async () => {
+    if (exp) return;
+    setExp({ phase: 'capture', cur: 0, total: 1 });
+    try {
+      const res = await runProExport(useProStore.getState().doc, (phase, cur, total) => setExp({ phase, cur, total }));
+      if (res.ok) showToast('Экспорт готов: ' + (res.outPath ?? ''));
+      else if (res.error) showToast('Ошибка экспорта: ' + res.error);
+    } catch {
+      showToast('Ошибка экспорта');
+    } finally {
+      setExp(null);
+    }
+  };
 
   // Размер контейнера под letterbox.
   useEffect(() => {
@@ -142,7 +115,7 @@ export default function Viewer() {
   const scale = dispW / doc.width || 1;
 
   return (
-    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)' }}>
+    <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)', position: 'relative' }}>
       {/* Панель режимов оверлея. */}
       <div style={{ display: 'flex', gap: 6, padding: '6px 10px', borderBottom: '1px solid var(--border)' }}>
         <ModeBtn active={viewerMode === 'transform'} onClick={() => setViewerMode(viewerMode === 'transform' ? 'none' : 'transform')}>
@@ -151,7 +124,14 @@ export default function Viewer() {
         <ModeBtn active={viewerMode === 'crop'} onClick={() => setViewerMode(viewerMode === 'crop' ? 'none' : 'crop')}>
           Crop
         </ModeBtn>
-        <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--text-secondary)', alignSelf: 'center' }}>
+        <button
+          onClick={onExport}
+          disabled={!!exp}
+          style={{ marginLeft: 'auto', padding: '5px 14px', fontSize: 12.5, borderRadius: 7, cursor: exp ? 'default' : 'pointer', color: 'var(--bg-primary)', background: 'var(--accent-green)', border: '1px solid var(--border)', opacity: exp ? 0.6 : 1 }}
+        >
+          {exp ? 'Экспорт…' : 'Экспорт ⬇'}
+        </button>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)', alignSelf: 'center' }}>
           {doc.width}×{doc.height}
         </span>
       </div>
@@ -171,6 +151,19 @@ export default function Viewer() {
         <Transport label={isPlaying ? '⏸' : '▶'} title="Play / Pause (Space)" primary onClick={() => setPlaying(!isPlaying)} />
         <Transport label="⏭" title="В конец" onClick={() => { const e = useProStore.getState().doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0); setPlayhead(e); }} />
       </div>
+
+      {exp && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100 }}>
+          <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 24, width: 320, textAlign: 'center' }}>
+            <div style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12 }}>
+              {exp.phase === 'encode' ? 'Кодирование видео…' : `Рендер кадров ${exp.cur}/${exp.total}`}
+            </div>
+            <div style={{ height: 6, background: 'var(--bg-tertiary)', borderRadius: 3, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${exp.phase === 'encode' ? 100 : Math.round((exp.cur / exp.total) * 100)}%`, background: 'var(--accent-green)', transition: 'width 0.1s' }} />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

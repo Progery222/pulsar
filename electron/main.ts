@@ -26,6 +26,7 @@ import { registerDubHandlers } from './ipc/dub';
 import { registerDownloadHandlers } from './ipc/download';
 import { registerFunnelHandlers } from './ipc/funnel';
 import { registerUpdaterHandlers } from './ipc/updater';
+import { registerProExportHandlers } from './ipc/proExport';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -159,6 +160,7 @@ app.whenReady().then(() => {
   registerDownloadHandlers();
   registerFunnelHandlers();
   registerUpdaterHandlers();
+  registerProExportHandlers();
   createWindow();
 });
 

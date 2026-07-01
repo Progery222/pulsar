@@ -132,8 +132,8 @@ export class Compositor {
   private fboW = 0;
   private fboH = 0;
 
-  constructor(canvas: HTMLCanvasElement) {
-    const gl = canvas.getContext('webgl', { premultipliedAlpha: false, alpha: true })!;
+  constructor(canvas: HTMLCanvasElement, opts?: { preserveDrawingBuffer?: boolean }) {
+    const gl = canvas.getContext('webgl', { premultipliedAlpha: false, alpha: true, preserveDrawingBuffer: opts?.preserveDrawingBuffer })!;
     this.gl = gl;
     const prog = gl.createProgram()!;
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
