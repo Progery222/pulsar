@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, type AdjustFilter } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, type AdjustFilter } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -267,6 +267,15 @@ function InspectorTab() {
         <Row><NumField label="Left %" value={Math.round(cr.left * 100)} step={1} onChange={(v) => cx({ left: v / 100 })} /></Row>
         <Row><NumField label="Right %" value={Math.round(cr.right * 100)} step={1} onChange={(v) => cx({ right: v / 100 })} /></Row>
         <ResetBtn onClick={() => cx(DEFAULT_CROP)} />
+      </Section>
+      <Section title="Луки (пресеты)">
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          {LOOK_PRESETS.map((p) => (
+            <button key={p.name} onClick={() => col(p.color)} style={{ padding: '6px 8px', fontSize: 12, borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
+              {p.name}
+            </button>
+          ))}
+        </div>
       </Section>
       <Section title="Цвет">
         {(() => { const cc = { ...DEFAULT_COLOR, ...clip.color }; return (

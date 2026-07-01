@@ -59,6 +59,18 @@ export interface ClipColor {
 }
 export const DEFAULT_COLOR: ClipColor = { brightness: 0, contrast: 0, saturation: 0, temperature: 0, hue: 0 };
 
+// Пресеты «луков» (быстрый цветокор в один клик, как Film Impact).
+export const LOOK_PRESETS: { name: string; color: ClipColor }[] = [
+  { name: 'Кино', color: { brightness: 0, contrast: 18, saturation: 8, temperature: 18, hue: 0 } },
+  { name: 'Тёплый', color: { brightness: 4, contrast: 6, saturation: 8, temperature: 42, hue: 0 } },
+  { name: 'Холодный', color: { brightness: 0, contrast: 8, saturation: -8, temperature: -42, hue: 0 } },
+  { name: 'Винтаж', color: { brightness: 4, contrast: -8, saturation: -28, temperature: 26, hue: 0 } },
+  { name: 'Драма', color: { brightness: -4, contrast: 32, saturation: -14, temperature: 6, hue: 0 } },
+  { name: 'Сочный', color: { brightness: 2, contrast: 14, saturation: 42, temperature: 6, hue: 0 } },
+  { name: 'Ч/Б', color: { brightness: 2, contrast: 14, saturation: -100, temperature: 0, hue: 0 } },
+  { name: 'Тил&Оранж', color: { brightness: 0, contrast: 20, saturation: 14, temperature: 12, hue: -6 } },
+];
+
 // CSS-фильтр для превью из цветокора.
 export function colorToCss(c?: Partial<ClipColor>): string {
   const v = { ...DEFAULT_COLOR, ...c };
