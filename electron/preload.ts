@@ -52,7 +52,7 @@ const electronAPI = {
   proEncode: (opts: {
     dir: string;
     fps: number;
-    audio: { path: string; inPoint: number; duration: number; delayMs: number; volumeDb: number; pitch: number; fadeIn: number; fadeOut: number }[];
+    audio: { path: string; inPoint: number; duration: number; delayMs: number; volumeDb: number; pitch: number; fadeIn: number; fadeOut: number; speed: number }[];
     outPath: string;
     codec?: string;
     videoBitrateMbps?: number;

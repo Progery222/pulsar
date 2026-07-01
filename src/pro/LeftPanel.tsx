@@ -200,6 +200,7 @@ function InspectorTab() {
   const updateText = useProStore((s) => s.updateClipText);
   const setBlend = useProStore((s) => s.setClipBlend);
   const setTransitionKind = useProStore((s) => s.setTransitionKind);
+  const setSpeed = useProStore((s) => s.setClipSpeed);
   const tracks = useProStore((s) => s.doc.tracks);
   const push = useProStore((s) => s.pushHistory);
 
@@ -214,6 +215,7 @@ function InspectorTab() {
   const col = (p: Parameters<typeof updateColor>[1]) => { push(); updateColor(id, p); };
   const txt = (p: Parameters<typeof updateText>[1]) => { push(); updateText(id, p); };
   const setTr = (v: number | null) => { push(); setTransition(id, v); };
+  const spd = (v: number) => { push(); setSpeed(id, v); };
   const lock = () => { push(); toggleLock(id); };
   const track = tracks.find((t) => t.id === clip.trackId);
 
@@ -230,6 +232,7 @@ function InspectorTab() {
           <Row><NumField label="Питч (полутона)" value={a.pitch} step={0.5} onChange={(v) => au({ pitch: v })} /></Row>
           <Row><NumField label="Fade in, с" value={a.fadeIn} step={0.1} onChange={(v) => au({ fadeIn: Math.max(0, v) })} /></Row>
           <Row><NumField label="Fade out, с" value={a.fadeOut} step={0.1} onChange={(v) => au({ fadeOut: Math.max(0, v) })} /></Row>
+          <Row><NumField label="Скорость ×" value={clip.speed ?? 1} step={0.1} onChange={(v) => spd(v)} /></Row>
           <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
             <button onClick={() => au({ pitch: 0.4, volumeDb: a.volumeDb - 0.3 })} title="Небольшой сдвиг тона/громкости для обхода аудио-фингерпринта" style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>Anti-Shazam</button>
             <button onClick={() => au(DEFAULT_AUDIO)} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}>Сбросить</button>
@@ -330,6 +333,9 @@ function InspectorTab() {
         <Row><NumField label="Scale %" value={Math.round(t.scale * 100)} step={1} onChange={(v) => tx({ scale: Math.max(0.05, v / 100) })} /></Row>
         <Row><NumField label="Rotation°" value={Math.round(t.rotation)} step={1} onChange={(v) => tx({ rotation: v })} /></Row>
         <ResetBtn onClick={() => tx(DEFAULT_TRANSFORM)} />
+      </Section>
+      <Section title="Скорость">
+        <Row><NumField label="× (1 = норма)" value={clip.speed ?? 1} step={0.1} onChange={(v) => spd(v)} /></Row>
       </Section>
       <Section title="Crop">
         <Row><NumField label="Top %" value={Math.round(cr.top * 100)} step={1} onChange={(v) => cx({ top: v / 100 })} /></Row>

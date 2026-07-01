@@ -109,6 +109,7 @@ export interface ProState {
   duplicateClips: (ids: string[]) => void;
   selectAll: () => void;
   toggleClipLock: (id: string) => void;
+  setClipSpeed: (id: string, speed: number) => void;
   setClipTransition: (id: string, duration: number | null) => void;
   setTransitionKind: (id: string, kind: import('../pro/proTypes').TransitionKind) => void;
   setAutoCutMood: (mood: Mood) => void;
@@ -454,6 +455,11 @@ export const useProStore = create<ProState>()(
       set((s) => {
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (c) c.locked = !c.locked;
+      }),
+    setClipSpeed: (id, speed) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (c) c.speed = Math.min(8, Math.max(0.1, speed));
       }),
     setClipTransition: (id, duration) =>
       set((s) => {

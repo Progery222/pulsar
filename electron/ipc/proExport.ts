@@ -26,6 +26,17 @@ interface AudioInput {
   pitch: number;
   fadeIn: number;
   fadeOut: number;
+  speed: number;
+}
+
+// Цепочка atempo для произвольного коэффициента (ffmpeg atempo: 0.5..2 за один шаг).
+function atempoChain(factor: number): string[] {
+  const parts: string[] = [];
+  let f = factor;
+  while (f > 2) { parts.push('atempo=2.0'); f /= 2; }
+  while (f < 0.5) { parts.push('atempo=0.5'); f *= 2; }
+  if (Math.abs(f - 1) > 0.001) parts.push(`atempo=${f.toFixed(4)}`);
+  return parts;
 }
 interface EncodeOpts {
   dir: string;
@@ -86,13 +97,19 @@ export function registerProExportHandlers() {
     const { dir, fps, audio, outPath } = opts;
     if (!isTempDir(dir)) return { error: 'bad dir' };
     const args = ['-y', '-framerate', String(Number(fps) || 30), '-i', path.join(dir, 'frame_%06d.jpg')];
-    for (const a of audio) args.push('-ss', String(Math.max(0, Number(a.inPoint) || 0)), '-t', String(Math.max(0.01, Number(a.duration) || 0.01)), '-i', a.path);
+    for (const a of audio) {
+      const sp = Number(a.speed) || 1;
+      args.push('-ss', String(Math.max(0, Number(a.inPoint) || 0)), '-t', String(Math.max(0.01, (Number(a.duration) || 0.01) * sp)), '-i', a.path);
+    }
 
     if (audio.length) {
       const parts = audio.map((a, i) => {
         const d = Math.max(0, Math.round(Number(a.delayMs) || 0));
         const vol = Math.pow(10, (Number(a.volumeDb) || 0) / 20);
         const chain: string[] = [];
+        // Скорость клипа: atempo (изменяет и длину, и темп аудио).
+        const sp = Number(a.speed) || 1;
+        if (Math.abs(sp - 1) > 0.001) chain.push(...atempoChain(sp));
         // Питч: смещение тона без изменения темпа (asetrate → aresample → atempo).
         const pitch = Number(a.pitch) || 0;
         if (pitch) {

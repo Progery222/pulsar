@@ -21,7 +21,7 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
     // Обычные активные клипы.
     for (const c of doc.clips) {
       if (c.trackId === t.id && !c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration) {
-        map.set(c.id, { clip: c, sourceTime: c.inPoint + (ph - c.timelineStart), alpha: 1 });
+        map.set(c.id, { clip: c, sourceTime: c.inPoint + (ph - c.timelineStart) * (c.speed || 1), alpha: 1 });
       }
     }
     // Переход центрирован на стыке [start-d/2, start+d/2] — нахлёст в обе стороны.
@@ -36,12 +36,14 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
       // Через чёрный: сначала уходящий гаснет в чёрный, затем входящий проявляется.
       const inA = kind === 'fadeblack' ? Math.max(0, 2 * f - 1) : f;
       const outA = kind === 'fadeblack' ? Math.max(0, 1 - 2 * f) : 1 - f;
-      const bTime = ph >= B.timelineStart ? B.inPoint + (ph - B.timelineStart) : B.inPoint;
+      const bSpeed = B.speed || 1;
+      const bTime = ph >= B.timelineStart ? B.inPoint + (ph - B.timelineStart) * bSpeed : B.inPoint;
       map.set(B.id, { clip: B, sourceTime: bTime, alpha: inA });
       const A = findPrevAdjacent(doc.clips, B);
       if (A) {
+        const aSpeed = A.speed || 1;
         const aEnd = A.timelineStart + A.duration;
-        const aTime = ph < aEnd ? A.inPoint + (ph - A.timelineStart) : Math.max(0, A.inPoint + A.duration - 0.05);
+        const aTime = ph < aEnd ? A.inPoint + (ph - A.timelineStart) * aSpeed : Math.max(0, A.inPoint + A.duration * aSpeed - 0.05);
         map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true });
       }
     }

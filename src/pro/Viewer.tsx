@@ -163,6 +163,7 @@ export default function Viewer() {
     const base = proxy && proxyMap[clip.sourceFile] ? proxyMap[clip.sourceFile] : clip.sourceFile;
     if (srcRef.current !== base) { srcRef.current = base; el.src = mediaUrl(base); }
     const st = Math.max(0, srcTime);
+    el.playbackRate = Math.min(16, Math.max(0.0625, clip.speed || 1));
     if (playing) { if (el.paused) el.play().catch(() => {}); if (Math.abs(el.currentTime - st) > 0.3) el.currentTime = st; }
     else { if (!el.paused) el.pause(); if (Math.abs(el.currentTime - st) > 0.05) el.currentTime = st; }
     applyVisual(el, clip, d);
@@ -208,7 +209,8 @@ export default function Viewer() {
       el.src = mediaUrl(clip.sourceFile);
     }
     el.volume = Math.min(1, Math.pow(10, (clip.audio?.volumeDb ?? 0) / 20));
-    const srcTime = Math.max(0, clip.inPoint + (ph - clip.timelineStart));
+    el.playbackRate = Math.min(16, Math.max(0.0625, clip.speed || 1));
+    const srcTime = Math.max(0, clip.inPoint + (ph - clip.timelineStart) * (clip.speed || 1));
     if (playing) {
       if (el.paused) el.play().catch(() => {});
       if (Math.abs(el.currentTime - srcTime) > 0.3) el.currentTime = srcTime;
