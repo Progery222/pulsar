@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
 import { ADJUST_FILTERS, ADJUST_LABEL, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, type AdjustFilter } from './proTypes';
@@ -117,22 +117,53 @@ function MediaTab() {
         <span style={{ flex: 1, fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>{dir ?? 'Диски'}</span>
         <button onClick={pickDialog} title="Выбрать через диалог" style={addBtn}>📂</button>
       </div>
-      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 6 }}>
-        {shown.map((e) => (
-          <div
-            key={e.path}
-            onDoubleClick={() => (e.isDir ? setDir(e.path) : addFileToProject(e.path))}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 6, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}
-            title={e.isDir ? 'Двойной клик — открыть' : 'Двойной клик — добавить в проект'}
-          >
-            <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {e.isDir ? '📁' : isVideoFile(e.path) ? '🎬' : '🎵'} {e.name}
-            </span>
-            {!e.isDir && <button onClick={(ev) => { ev.stopPropagation(); addFileToProject(e.path); }} title="Добавить" style={addBtn}>＋</button>}
-          </div>
-        ))}
-        {!shown.length && <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>Пусто</div>}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 6, display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(94px, 1fr))', gap: 6, alignContent: 'start' }}>
+        {shown.map((e) =>
+          e.isDir ? (
+            <div key={e.path} onDoubleClick={() => setDir(e.path)} title="Двойной клик — открыть" style={{ cursor: 'pointer', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+              <div style={{ aspectRatio: '16 / 10', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26 }}>📁</div>
+              <div style={{ fontSize: 10.5, padding: '2px 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{e.name}</div>
+            </div>
+          ) : (
+            <MediaTile key={e.path} path={e.path} name={e.name} />
+          )
+        )}
+        {!shown.length && <div style={{ gridColumn: '1 / -1', padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--text-secondary)' }}>Пусто</div>}
       </div>
+    </div>
+  );
+}
+
+// Плитка медиафайла: миниатюра + hover-скраббинг кадра, двойной клик — добавить.
+function MediaTile({ path, name }: { path: string; name: string }) {
+  const isVid = isVideoFile(path);
+  const [thumb, setThumb] = useState<string | null>(null);
+  const durRef = useRef(0);
+  const lastBucket = useRef(-1);
+  useEffect(() => {
+    let alive = true;
+    if (isVid) {
+      window.electronAPI.thumb(path, 1).then((p) => alive && setThumb(p));
+      probeMeta(path, 'video').then((m) => { durRef.current = m.duration; });
+    }
+    return () => { alive = false; };
+  }, [path, isVid]);
+  const onMove = (e: React.MouseEvent) => {
+    if (!isVid || !durRef.current) return;
+    const r = e.currentTarget.getBoundingClientRect();
+    const t = Math.max(0, Math.min(durRef.current, ((e.clientX - r.left) / r.width) * durRef.current));
+    const b = Math.round(t * 2);
+    if (b !== lastBucket.current) {
+      lastBucket.current = b;
+      window.electronAPI.thumb(path, t).then((p) => p && setThumb(p));
+    }
+  };
+  return (
+    <div onDoubleClick={() => addFileToProject(path)} onMouseMove={onMove} title="Двойной клик — добавить; наведи — превью кадра" style={{ cursor: 'pointer', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+      <div style={{ aspectRatio: '16 / 10', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
+        {thumb ? <img src={mediaUrl(thumb)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : isVid ? '🎬' : '🎵'}
+      </div>
+      <div style={{ fontSize: 10.5, padding: '2px 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{name}</div>
     </div>
   );
 }
