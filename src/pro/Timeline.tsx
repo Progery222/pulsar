@@ -704,14 +704,17 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
       let applied = target - origPrimary;
       applied = Math.max(applied, -minOrig); // не левее нуля
       const cur = useProStore.getState();
+      // Захваченный клип может сменить дорожку по вертикали (как в Premiere);
+      // связанные (аудио) остаются на своих — двигаются только по времени.
+      const primaryTid = trackAt(ev.clientY) || c.trackId;
       if (movingIds.length === 1) {
-        const tId = trackAt(ev.clientY) || c.trackId;
-        cur.moveClip(c.id, tId, origPrimary + applied);
+        cur.moveClip(c.id, primaryTid, origPrimary + applied);
       } else {
         for (const id of movingIds) {
           const os = origStart.get(id) ?? 0;
           const clip = cur.doc.clips.find((x) => x.id === id);
-          if (clip) cur.moveClip(id, clip.trackId, os + applied);
+          if (!clip) continue;
+          cur.moveClip(id, id === c.id ? primaryTid : clip.trackId, os + applied);
         }
       }
     };

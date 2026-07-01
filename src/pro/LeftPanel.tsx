@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, LOOK_PRESETS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type TransitionKind } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, KF_EASE_LABEL, KF_EASES, KF_PARAM_LABEL, KF_PARAMS, LOOK_PRESETS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type KfEase, type KfParam, type ProClip, type TransitionKind } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -202,8 +202,12 @@ function InspectorTab() {
   const setTransitionKind = useProStore((s) => s.setTransitionKind);
   const setSpeed = useProStore((s) => s.setClipSpeed);
   const addKeyframe = useProStore((s) => s.addKeyframe);
+  const removeKeyframe = useProStore((s) => s.removeKeyframe);
+  const setKeyframeEase = useProStore((s) => s.setKeyframeEase);
   const clearKeyframes = useProStore((s) => s.clearKeyframes);
   const tracks = useProStore((s) => s.doc.tracks);
+  const playhead = useProStore((s) => s.playhead);
+  const setPlayhead = useProStore((s) => s.setPlayhead);
   const push = useProStore((s) => s.pushHistory);
 
   if (!clip) return <Empty text="Выделите клип на таймлайне, чтобы редактировать его параметры." />;
@@ -330,17 +334,20 @@ function InspectorTab() {
         {clip.locked ? '🔒 Закреплён' : '🔓 Закрепить'}
       </button>
       <Section title="Transform">
-        <Row><NumField label="Position X" value={t.x} step={1} onChange={(v) => tx({ x: v })} /></Row>
-        <Row><NumField label="Position Y" value={t.y} step={1} onChange={(v) => tx({ y: v })} /></Row>
-        <Row><NumField label="Scale %" value={Math.round(t.scale * 100)} step={1} onChange={(v) => tx({ scale: Math.max(0.05, v / 100) })} /></Row>
-        <Row><NumField label="Rotation°" value={Math.round(t.rotation)} step={1} onChange={(v) => tx({ rotation: v })} /></Row>
+        <Row><NumField label="Position X" value={t.x} step={1} onChange={(v) => tx({ x: v })} /><KfBtn id={id} clip={clip} param="x" localSec={playhead - clip.timelineStart} add={addKeyframe} push={push} /></Row>
+        <Row><NumField label="Position Y" value={t.y} step={1} onChange={(v) => tx({ y: v })} /><KfBtn id={id} clip={clip} param="y" localSec={playhead - clip.timelineStart} add={addKeyframe} push={push} /></Row>
+        <Row><NumField label="Scale %" value={Math.round(t.scale * 100)} step={1} onChange={(v) => tx({ scale: Math.max(0.05, v / 100) })} /><KfBtn id={id} clip={clip} param="scale" localSec={playhead - clip.timelineStart} add={addKeyframe} push={push} /></Row>
+        <Row><NumField label="Rotation°" value={Math.round(t.rotation)} step={1} onChange={(v) => tx({ rotation: v })} /><KfBtn id={id} clip={clip} param="rotation" localSec={playhead - clip.timelineStart} add={addKeyframe} push={push} /></Row>
         <ResetBtn onClick={() => tx(DEFAULT_TRANSFORM)} />
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4 }}>
-          <button onClick={() => { push(); addKeyframe(id); }} title="Добавить ключ анимации в текущем плейхеде" style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: clip.keyframes?.length ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: clip.keyframes?.length ? 'var(--bg-primary)' : 'var(--text-primary)', border: '1px solid var(--border)' }}>◆ Ключ</button>
-          {!!clip.keyframes?.length && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{clip.keyframes.length} ключ.</span>}
-          {!!clip.keyframes?.length && <button onClick={() => { push(); clearKeyframes(id); }} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>Очистить</button>}
-        </div>
       </Section>
+      <KeyframeEditor
+        clip={clip}
+        playhead={playhead}
+        onSeek={(t2) => setPlayhead(clip.timelineStart + t2)}
+        onRemove={(p, t2) => { push(); removeKeyframe(id, p, t2); }}
+        onEase={(p, t2, e) => { push(); setKeyframeEase(id, p, t2, e); }}
+        onClear={() => { push(); clearKeyframes(id); }}
+      />
       <Section title="Скорость">
         <Row><NumField label="× (1 = норма)" value={clip.speed ?? 1} step={0.1} onChange={(v) => spd(v)} /></Row>
       </Section>
@@ -425,7 +432,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 function Row({ children }: { children: React.ReactNode }) {
-  return <div>{children}</div>;
+  return <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>{children}</div>;
 }
 
 function NumField({ label, value, step, onChange }: { label: string; value: number; step: number; onChange: (v: number) => void }) {
@@ -446,7 +453,7 @@ function NumField({ label, value, step, onChange }: { label: string; value: numb
     window.addEventListener('pointerup', up);
   };
   return (
-    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+    <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)', flex: 1 }}>
       <span onPointerDown={onScrubDown} style={{ cursor: 'ew-resize', userSelect: 'none', flex: 1 }} title="Тянуть — менять значение">{label}</span>
       <input
         type="number"
@@ -476,6 +483,89 @@ function TransKindSelect({ value, onPick }: { id: string; value: TransitionKind;
         {TRANSITION_KINDS.map((k) => <option key={k} value={k}>{TRANSITION_LABEL[k]}</option>)}
       </select>
     </label>
+  );
+}
+
+// Кнопка «поставить ключ» на конкретный параметр (рядом с полем).
+function KfBtn({ id, clip, param, localSec, add, push }: { id: string; clip: ProClip; param: KfParam; localSec: number; add: (id: string, p: KfParam) => void; push: () => void }) {
+  const track = clip.keyframes?.[param];
+  const has = !!track?.length;
+  const onKey = has && track!.some((k) => Math.abs(k.t - localSec) < 0.06);
+  return (
+    <button
+      onClick={() => { push(); add(id, param); }}
+      title="Ключ анимации на этом параметре в плейхеде"
+      style={{ flex: 'none', width: 24, height: 24, borderRadius: 6, cursor: 'pointer', lineHeight: 1, fontSize: 12, background: onKey ? 'var(--accent-green)' : has ? 'var(--bg-tertiary)' : 'var(--bg-tertiary)', color: onKey ? 'var(--bg-primary)' : has ? 'var(--accent-green)' : 'var(--text-secondary)', border: '1px solid var(--border)' }}
+    >
+      ◆
+    </button>
+  );
+}
+
+// Редактор ключей: дорожки по параметрам, ромбы по времени — клик = перейти, ЛКМ-меню плавности, × — удалить.
+function KeyframeEditor({ clip, playhead, onSeek, onRemove, onEase, onClear }: {
+  clip: ProClip;
+  playhead: number;
+  onSeek: (t: number) => void;
+  onRemove: (p: KfParam, t: number) => void;
+  onEase: (p: KfParam, t: number, e: KfEase) => void;
+  onClear: () => void;
+}) {
+  const [sel, setSel] = useState<{ p: KfParam; t: number } | null>(null);
+  const dur = Math.max(0.001, clip.duration);
+  const kf = clip.keyframes;
+  const rows = KF_PARAMS.filter((p) => kf?.[p]?.length);
+  const phLocal = playhead - clip.timelineStart;
+  const total = rows.reduce((n, p) => n + (kf![p]!.length), 0);
+  if (!rows.length) return (
+    <div style={{ fontSize: 11, color: 'var(--text-secondary)', padding: '2px 2px 0' }}>Ключей нет. Нажми ◆ у параметра, чтобы анимировать.</div>
+  );
+  const selKf = sel ? kf?.[sel.p]?.find((k) => Math.abs(k.t - sel.t) < 0.03) : null;
+  return (
+    <Section title="Ключи анимации">
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+        {rows.map((p) => (
+          <div key={p} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ width: 62, flex: 'none', fontSize: 10.5, color: 'var(--text-secondary)' }}>{KF_PARAM_LABEL[p]}</span>
+            <div style={{ position: 'relative', flex: 1, height: 18, background: 'var(--bg-tertiary)', borderRadius: 4, border: '1px solid var(--border)' }}>
+              {/* плейхед */}
+              {phLocal >= 0 && phLocal <= dur && (
+                <div style={{ position: 'absolute', left: `${(phLocal / dur) * 100}%`, top: 0, bottom: 0, width: 1, background: 'var(--accent-green)', opacity: 0.7 }} />
+              )}
+              {kf![p]!.map((k) => {
+                const active = sel?.p === p && Math.abs(sel.t - k.t) < 0.03;
+                return (
+                  <button
+                    key={k.t}
+                    onClick={() => { setSel({ p, t: k.t }); onSeek(k.t); }}
+                    title={`t=${k.t.toFixed(2)}с · ${KF_EASE_LABEL[k.ease ?? 'linear']}`}
+                    style={{ position: 'absolute', left: `${(k.t / dur) * 100}%`, top: '50%', width: 12, height: 12, transform: 'translate(-50%,-50%) rotate(45deg)', background: active ? 'var(--accent-green)' : '#cbd2dd', border: active ? '1px solid #fff' : '1px solid var(--border)', borderRadius: 2, cursor: 'pointer', padding: 0 }}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+      {sel && selKf && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{KF_PARAM_LABEL[sel.p]} @ {sel.t.toFixed(2)}с</span>
+          <select
+            value={selKf.ease ?? 'linear'}
+            onChange={(e) => onEase(sel.p, sel.t, e.target.value as KfEase)}
+            title="Плавность (бизье) на выходе из ключа"
+            style={{ padding: '3px 6px', fontSize: 11.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}
+          >
+            {KF_EASES.map((e) => <option key={e} value={e}>{KF_EASE_LABEL[e]}</option>)}
+          </select>
+          <button onClick={() => { onRemove(sel.p, sel.t); setSel(null); }} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', color: '#ff8080', border: '1px solid var(--border)' }}>✕ Удалить</button>
+        </div>
+      )}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 6 }}>
+        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>{total} ключ.</span>
+        <button onClick={onClear} style={{ fontSize: 11.5, padding: '3px 10px', borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', color: 'var(--text-secondary)', border: '1px solid var(--border)' }}>Очистить все</button>
+      </div>
+    </Section>
   );
 }
 

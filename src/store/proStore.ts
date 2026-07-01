@@ -10,7 +10,9 @@ import {
   findPrevAdjacent,
   transformAt,
   type AdjustFilter,
-  type Keyframe,
+  type Kf,
+  type KfEase,
+  type KfParam,
   type ClipCrop,
   type ClipTransform,
   type Mood,
@@ -86,7 +88,9 @@ export interface ProState {
   setViewerMode: (mode: ViewerMode) => void;
   setResolution: (width: number, height: number) => void;
   updateClipTransform: (id: string, patch: Partial<ClipTransform>) => void;
-  addKeyframe: (id: string) => void;
+  addKeyframe: (id: string, param: KfParam) => void;
+  removeKeyframe: (id: string, param: KfParam, t: number) => void;
+  setKeyframeEase: (id: string, param: KfParam, t: number, ease: KfEase) => void;
   clearKeyframes: (id: string) => void;
   updateClipCrop: (id: string, patch: Partial<ClipCrop>) => void;
   setLeftWidth: (w: number) => void;
@@ -140,12 +144,11 @@ export interface ProState {
 
 const MIN_DUR = 0.05; // минимальная длина клипа (сек)
 
-function upsertKf(arr: Keyframe[], t: number, tf: { x: number; y: number; scale: number; rotation: number }) {
-  const kf: Keyframe = { t, x: tf.x, y: tf.y, scale: tf.scale, rotation: tf.rotation };
+function upsertKf(arr: Kf[], t: number, v: number) {
   const i = arr.findIndex((k) => Math.abs(k.t - t) < 0.03);
-  if (i >= 0) arr[i] = kf;
+  if (i >= 0) arr[i] = { t, v };
   else {
-    arr.push(kf);
+    arr.push({ t, v });
     arr.sort((a, b) => a.t - b.t);
   }
 }
@@ -231,21 +234,40 @@ export const useProStore = create<ProState>()(
       set((s) => {
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
-        // В режиме ключей — правка апдейтит/создаёт ключ в текущем плейхеде.
-        if (c.keyframes && c.keyframes.length) {
-          const localSec = Math.max(0, s.playhead - c.timelineStart);
-          upsertKf(c.keyframes, localSec, { ...transformAt(c, localSec), ...patch });
-        } else {
-          c.transform = { ...DEFAULT_TRANSFORM, ...c.transform, ...patch };
+        const localSec = Math.max(0, s.playhead - c.timelineStart);
+        const params: KfParam[] = ['x', 'y', 'scale', 'rotation'];
+        for (const p of params) {
+          const val = patch[p];
+          if (val === undefined) continue;
+          const track = c.keyframes?.[p];
+          if (track && track.length) upsertKf(track, localSec, val); // в режиме ключей — обновить ключ
+          else c.transform = { ...DEFAULT_TRANSFORM, ...c.transform, [p]: val };
         }
       }),
-    addKeyframe: (id) =>
+    addKeyframe: (id, param) =>
       set((s) => {
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
         const localSec = Math.max(0, s.playhead - c.timelineStart);
-        if (!c.keyframes) c.keyframes = [];
-        upsertKf(c.keyframes, localSec, transformAt(c, localSec));
+        const cur = transformAt(c, localSec);
+        if (!c.keyframes) c.keyframes = {};
+        if (!c.keyframes[param]) c.keyframes[param] = [];
+        upsertKf(c.keyframes[param]!, localSec, cur[param]);
+      }),
+    removeKeyframe: (id, param, t) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        const track = c?.keyframes?.[param];
+        if (!track) return;
+        const idx = track.findIndex((k) => Math.abs(k.t - t) < 0.03);
+        if (idx >= 0) track.splice(idx, 1);
+        if (!track.length && c!.keyframes) delete c!.keyframes[param];
+      }),
+    setKeyframeEase: (id, param, t, ease) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        const k = c?.keyframes?.[param]?.find((x) => Math.abs(x.t - t) < 0.03);
+        if (k) k.ease = ease;
       }),
     clearKeyframes: (id) =>
       set((s) => {

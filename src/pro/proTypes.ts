@@ -45,7 +45,7 @@ export interface ProClip {
   locked?: boolean; // закреплён — Auto-Cut не перезаписывает (§5 ТЗ)
   linkId?: string; // связка видео+аудио одного источника (двигаются вместе)
   speed?: number; // скорость воспроизведения (1 = норма, 2 = вдвое быстрее)
-  keyframes?: Keyframe[]; // анимация Transform по ключам (t — сек от начала клипа)
+  keyframes?: Keyframes; // анимация Transform: отдельная дорожка ключей на параметр
   transition?: { duration: number; kind?: TransitionKind }; // переход у стыка с предыдущим клипом (§5 ТЗ)
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа
@@ -159,34 +159,65 @@ export const ADJUST_CODE: Record<AdjustFilter, number> = { bw: 1, warm: 2, cool:
 export const DEFAULT_TRANSFORM: ClipTransform = { x: 0, y: 0, scale: 1, rotation: 0 };
 export const DEFAULT_CROP: ClipCrop = { top: 0, bottom: 0, left: 0, right: 0 };
 
-// Ключ анимации Transform (t — сек от начала клипа).
-export interface Keyframe {
+// Тип сглаживания на выходе из ключа (плавность/бизье).
+export type KfEase = 'linear' | 'smooth' | 'in' | 'out';
+export const KF_EASES: KfEase[] = ['linear', 'smooth', 'in', 'out'];
+export const KF_EASE_LABEL: Record<KfEase, string> = { linear: 'Линейно', smooth: 'Плавно', in: 'Ускорение', out: 'Замедление' };
+
+// Ключ одного параметра (t — сек от начала клипа, v — значение, ease — сглаживание к следующему).
+export interface Kf {
   t: number;
-  x: number;
-  y: number;
-  scale: number;
-  rotation: number;
+  v: number;
+  ease?: KfEase;
+}
+export type KfParam = 'x' | 'y' | 'scale' | 'rotation';
+export const KF_PARAMS: KfParam[] = ['x', 'y', 'scale', 'rotation'];
+export const KF_PARAM_LABEL: Record<KfParam, string> = { x: 'Position X', y: 'Position Y', scale: 'Scale', rotation: 'Rotation' };
+// Отдельная дорожка ключей на каждый параметр.
+export interface Keyframes {
+  x?: Kf[];
+  y?: Kf[];
+  scale?: Kf[];
+  rotation?: Kf[];
 }
 
-// Transform клипа в момент localSec (сек от начала клипа) с учётом ключей.
-export function transformAt(clip: ProClip, localSec: number): ClipTransform {
-  const ks = clip.keyframes;
-  if (!ks || !ks.length) return { ...DEFAULT_TRANSFORM, ...clip.transform };
-  const s = [...ks].sort((a, b) => a.t - b.t);
-  const pick = (k: Keyframe): ClipTransform => ({ x: k.x, y: k.y, scale: k.scale, rotation: k.rotation });
-  if (localSec <= s[0].t) return pick(s[0]);
+function easeF(f: number, e?: KfEase): number {
+  switch (e) {
+    case 'smooth':
+      return f * f * (3 - 2 * f); // smoothstep (бизье-подобно)
+    case 'in':
+      return f * f;
+    case 'out':
+      return f * (2 - f);
+    default:
+      return f;
+  }
+}
+
+function interpKf(track: Kf[], t: number): number {
+  const s = [...track].sort((a, b) => a.t - b.t);
+  if (t <= s[0].t) return s[0].v;
   const last = s[s.length - 1];
-  if (localSec >= last.t) return pick(last);
+  if (t >= last.t) return last.v;
   for (let i = 0; i < s.length - 1; i++) {
     const a = s[i];
     const b = s[i + 1];
-    if (localSec >= a.t && localSec <= b.t) {
-      const f = (localSec - a.t) / ((b.t - a.t) || 1);
-      const l = (u: number, v: number) => u + (v - u) * f;
-      return { x: l(a.x, b.x), y: l(a.y, b.y), scale: l(a.scale, b.scale), rotation: l(a.rotation, b.rotation) };
+    if (t >= a.t && t <= b.t) {
+      let f = (t - a.t) / ((b.t - a.t) || 1);
+      f = easeF(f, a.ease); // сглаживание на сегменте определяется ключом-началом
+      return a.v + (b.v - a.v) * f;
     }
   }
-  return pick(last);
+  return last.v;
+}
+
+// Transform клипа в момент localSec с учётом ключей (каждый параметр — независимо).
+export function transformAt(clip: ProClip, localSec: number): ClipTransform {
+  const base = { ...DEFAULT_TRANSFORM, ...clip.transform };
+  const kf = clip.keyframes;
+  if (!kf) return base;
+  const g = (track: Kf[] | undefined, fb: number) => (track && track.length ? interpKf(track, localSec) : fb);
+  return { x: g(kf.x, base.x), y: g(kf.y, base.y), scale: g(kf.scale, base.scale), rotation: g(kf.rotation, base.rotation) };
 }
 
 // Предыдущий клип, вплотную примыкающий слева к данному (для crossfade).
