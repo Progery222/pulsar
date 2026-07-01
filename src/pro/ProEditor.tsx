@@ -118,6 +118,10 @@ export default function ProEditor() {
         st.setTool('blade');
       } else if (key === 'v') {
         st.setTool('select');
+      } else if (key === 'i') {
+        st.setExportIn(st.playhead); // начало области экспорта
+      } else if (key === 'o') {
+        st.setExportOut(st.playhead); // конец области экспорта
       } else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (!st.selectedClipIds.length) return;

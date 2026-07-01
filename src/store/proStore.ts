@@ -51,6 +51,8 @@ export interface ProState {
   selectedClipIds: string[];
   viewerMode: ViewerMode; // режим оверлея во Viewer (Transform/Crop)
   autoCutMood: Mood; // настроение авто-нарезки (§5 ТЗ)
+  exportIn: number | null; // область экспорта (§7): in/out маркеры (сек)
+  exportOut: number | null;
 
   // Раскладка панелей (resizable, Фаза 1).
   leftWidth: number;
@@ -92,6 +94,8 @@ export interface ProState {
   toggleClipLock: (id: string) => void;
   setClipTransition: (id: string, duration: number | null) => void;
   setAutoCutMood: (mood: Mood) => void;
+  setExportIn: (t: number | null) => void;
+  setExportOut: (t: number | null) => void;
   // Заменить авто-клипы на дорожке, сохранив закреплённые (Locked, §5 ТЗ).
   autoCutReplace: (trackId: string, generated: Omit<ProClip, 'id'>[]) => void;
   // Дорожка корректирующих слоёв (§5 ТЗ).
@@ -122,6 +126,8 @@ export const useProStore = create<ProState>()(
     selectedClipIds: [],
     viewerMode: 'none',
     autoCutMood: 'natural',
+    exportIn: null,
+    exportOut: null,
 
     leftWidth: 300,
     timelineHeight: 300,
@@ -347,6 +353,16 @@ export const useProStore = create<ProState>()(
     setAutoCutMood: (mood) =>
       set((s) => {
         s.autoCutMood = mood;
+      }),
+    setExportIn: (t) =>
+      set((s) => {
+        s.exportIn = t === null ? null : Math.max(0, t);
+        if (s.exportIn !== null && s.exportOut !== null && s.exportOut <= s.exportIn) s.exportOut = null;
+      }),
+    setExportOut: (t) =>
+      set((s) => {
+        s.exportOut = t === null ? null : Math.max(0, t);
+        if (s.exportIn !== null && s.exportOut !== null && s.exportOut <= s.exportIn) s.exportIn = null;
       }),
     autoCutReplace: (trackId, generated) =>
       set((s) => {

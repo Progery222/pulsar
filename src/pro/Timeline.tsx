@@ -65,6 +65,8 @@ export default function Timeline() {
   const setScrollX = useProStore((s) => s.setScrollX);
   const setPlayhead = useProStore((s) => s.setPlayhead);
   const activeTool = useProStore((s) => s.activeTool);
+  const exportIn = useProStore((s) => s.exportIn);
+  const exportOut = useProStore((s) => s.exportOut);
 
   const rightRef = useRef<HTMLDivElement>(null);
   const [vp, setVp] = useState({ w: 0, h: 0 });
@@ -304,6 +306,20 @@ export default function Timeline() {
               </div>
             )}
           </div>
+
+          {/* Область экспорта (in/out, §7 ТЗ). */}
+          {(exportIn != null || exportOut != null) && (() => {
+            const a = (exportIn ?? 0) * pxPerSec - scrollX;
+            const b = (exportOut ?? contentEnd) * pxPerSec - scrollX;
+            const l = Math.max(0, Math.min(a, b));
+            const r = Math.min(vp.w, Math.max(a, b));
+            if (r <= 0 || l >= vp.w) return null;
+            return (
+              <>
+                <div style={{ position: 'absolute', top: RULER_H, bottom: 0, left: l, width: r - l, background: 'rgba(204,255,0,0.08)', borderLeft: '1px solid var(--accent-green)', borderRight: '1px solid var(--accent-green)', zIndex: 3, pointerEvents: 'none' }} />
+              </>
+            );
+          })()}
 
           {/* Playhead (§3.2 ТЗ). */}
           {playheadX >= 0 && playheadX <= vp.w && (
@@ -750,6 +766,11 @@ function ZoomBar({ contentEnd }: { contentEnd: number }) {
   const playhead = useProStore((s) => s.playhead);
   const fps = useProStore((s) => s.doc.fps);
   const snapping = useProStore((s) => s.snapping);
+  const exportIn = useProStore((s) => s.exportIn);
+  const exportOut = useProStore((s) => s.exportOut);
+  const setExportIn = useProStore((s) => s.setExportIn);
+  const setExportOut = useProStore((s) => s.setExportOut);
+  const rangeSet = exportIn != null || exportOut != null;
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '5px 10px', borderBottom: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
       <span style={{ fontSize: 11, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums' }}>
@@ -757,6 +778,15 @@ function ZoomBar({ contentEnd }: { contentEnd: number }) {
       </span>
       <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>· {contentEnd.toFixed(1)}с</span>
       {!snapping && <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>· snap off (N)</span>}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginLeft: 6 }}>
+        <button onClick={() => setExportIn(useProStore.getState().playhead)} title="Начало области экспорта (I)" style={zoomBtn}>I</button>
+        <button onClick={() => setExportOut(useProStore.getState().playhead)} title="Конец области экспорта (O)" style={zoomBtn}>O</button>
+        {rangeSet && (
+          <button onClick={() => { setExportIn(null); setExportOut(null); }} title="Сбросить область экспорта" style={{ ...zoomBtn, width: 'auto', padding: '0 6px' }}>
+            диапазон ✕
+          </button>
+        )}
+      </div>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
         <button onClick={() => zoomAtPlayhead(pxPerSec / 1.3)} style={zoomBtn} title="Уменьшить (-)">−</button>
         <input

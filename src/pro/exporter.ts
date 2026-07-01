@@ -1,5 +1,6 @@
 import { Compositor, VideoPool } from './compositor';
 import { buildFrame, activeAdjustments } from './frame';
+import { useProStore } from '../store/proStore';
 import type { ProDocument } from './proTypes';
 
 // Экспорт Pulsar Pro: покадровый рендер тем же WebGL-компоновщиком (превью == экспорт),
@@ -47,7 +48,12 @@ export async function runProExport(doc: ProDocument, onProgress: Progress): Prom
   const fps = doc.fps || 30;
   const contentEnd = doc.clips.reduce((m, c) => Math.max(m, c.timelineStart + c.duration), 0);
   if (contentEnd <= 0) return { ok: false, error: 'Пустой таймлайн' };
-  const total = Math.max(1, Math.ceil(contentEnd * fps));
+  // Область экспорта (in/out) — иначе весь таймлайн.
+  const rng = useProStore.getState();
+  const startT = rng.exportIn ?? 0;
+  const endT = rng.exportOut ?? contentEnd;
+  if (endT <= startT) return { ok: false, error: 'Пустой диапазон экспорта' };
+  const total = Math.max(1, Math.ceil((endT - startT) * fps));
 
   const canvas = document.createElement('canvas');
   canvas.width = doc.width;
@@ -67,7 +73,7 @@ export async function runProExport(doc: ProDocument, onProgress: Progress): Prom
     const dir = await window.electronAPI.proExportDir();
 
     for (let i = 0; i < total; i++) {
-      const t = i / fps;
+      const t = startT + i / fps;
       const items = buildFrame(doc, t);
       const drawList: { clip: (typeof items)[number]['clip']; video: HTMLVideoElement; alpha: number }[] = [];
       for (const it of items) {
@@ -89,7 +95,11 @@ export async function runProExport(doc: ProDocument, onProgress: Progress): Prom
     for (const c of doc.clips) {
       const tr = doc.tracks.find((t) => t.id === c.trackId);
       if (!tr || tr.kind !== 'audio' || !c.sourceFile || tr.muted || (anySolo && !tr.solo)) continue;
-      audio.push({ path: c.sourceFile, inPoint: c.inPoint, duration: c.duration, delayMs: c.timelineStart * 1000, volume: 1 });
+      // Подрезаем клип под диапазон [startT, endT] и сдвигаем к его началу.
+      const s0 = Math.max(c.timelineStart, startT);
+      const e0 = Math.min(c.timelineStart + c.duration, endT);
+      if (e0 <= s0) continue;
+      audio.push({ path: c.sourceFile, inPoint: c.inPoint + (s0 - c.timelineStart), duration: e0 - s0, delayMs: (s0 - startT) * 1000, volume: 1 });
     }
 
     onProgress('encode', total, total);
