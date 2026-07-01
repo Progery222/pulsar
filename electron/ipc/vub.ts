@@ -153,15 +153,14 @@ async function normalizeClip(src: string, dest: string, W: number, H: number): P
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
   const cmd = ffmpeg(src).addInputOption('-nostdin');
   const fc = [`[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v]`];
-  const oo = ['-map', '[v]'];
   if (info.hasAudio) {
     fc.push(`[0:a]${A_NORM}[a]`);
   } else {
     cmd.input('anullsrc=channel_layout=stereo:sample_rate=44100').inputOptions(['-f', 'lavfi', '-t', String(Math.max(0.3, info.duration || 2))]);
     fc.push(`[1:a]${A_NORM}[a]`);
   }
-  oo.push('-map', '[a]');
-  cmd.complexFilter(fc, ['v', 'a']).outputOptions([...oo, ...venc, '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2']);
+  // complexFilter(fc, ['v','a']) уже добавляет -map [v] -map [a]; вручную НЕ дублируем.
+  cmd.complexFilter(fc, ['v', 'a']).outputOptions([...venc, '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-ac', '2']);
   await runFf(cmd, dest);
 }
 

@@ -89,6 +89,9 @@ export async function videoEncoderOptions(opts: EncoderOpts): Promise<string[]> 
     out.push('-c:v', 'libx264', '-preset', opts.preset, '-crf', String(opts.crf));
   }
   if (opts.gop != null) out.push('-g', String(opts.gop));
+  // Совместимость: yuv420p + профиль High — иначе GPU-кодек может выдать поток,
+  // который мобильные декодеры (TikTok) не читают («Couldn't decode»).
+  out.push('-pix_fmt', 'yuv420p', '-profile:v', 'high');
   return out;
 }
 
