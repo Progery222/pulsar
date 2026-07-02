@@ -237,6 +237,46 @@ function ProEditor() {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // Авто-конформинг (как «оптимизированные медиа» в DaVinci / прокси в Premiere):
+  // тяжёлые/лог-кодеки, которые Chromium не тянет, в фоне пережимаются в 720p-прокси.
+  useEffect(() => {
+    const done = new Set<string>();
+    const busy = new Set<string>();
+    const conform = async () => {
+      const st = useProStore.getState();
+      const srcs = new Set<string>();
+      for (const c of st.doc.clips) {
+        const tr = st.doc.tracks.find((t) => t.id === c.trackId);
+        if (tr && tr.kind === 'video' && !tr.isAdjustment && c.sourceFile && !c.text) srcs.add(c.sourceFile);
+      }
+      for (const src of srcs) {
+        if (done.has(src) || busy.has(src) || useProStore.getState().proxyMap[src]) continue;
+        busy.add(src);
+        try {
+          const info = await window.electronAPI.proProbeVideo(src);
+          const heavy = !info || /10le|12le|p010|p012|444/.test(info.pixFmt) || ['hevc', 'prores', 'dnxhd', 'dnxhr', 'ffv1'].includes(info.codec) || info.width >= 3840 || info.bitrate > 40_000_000;
+          if (heavy) {
+            showToast('Конформинг тяжёлого клипа в прокси…');
+            const p = await window.electronAPI.proMakeProxy(src);
+            if (p) {
+              useProStore.getState().setProxy(src, p);
+              showToast('Прокси готов — превью ускорено');
+            }
+          }
+          done.add(src);
+        } catch {
+          /* повторим при следующем изменении */
+        } finally {
+          busy.delete(src);
+        }
+      }
+    };
+    conform();
+    return useProStore.subscribe((s, prev) => {
+      if (s.doc.clips !== prev.doc.clips) conform();
+    });
+  }, []);
+
   // Загрузка текущего проекта + автосейв в IndexedDB (§6 ТЗ).
   useEffect(() => {
     let alive = true;

@@ -162,7 +162,9 @@ export default function Viewer() {
     el.style.filter = colorToCss(clip.color);
   }
   function syncOne(el: HTMLVideoElement, clip: ProClip, srcRef: React.MutableRefObject<string>, srcTime: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>, d: ProDocument, localSec: number) {
-    const base = proxy && proxyMap[clip.sourceFile] ? proxyMap[clip.sourceFile] : clip.sourceFile;
+    // Прокси используется автоматически, как только он готов (даже без ручного тумблера).
+    void proxy;
+    const base = proxyMap[clip.sourceFile] || clip.sourceFile;
     if (srcRef.current !== base) { srcRef.current = base; el.src = mediaUrl(base); }
     const st = Math.max(0, srcTime);
     el.playbackRate = Math.min(16, Math.max(0.0625, clip.speed || 1));
@@ -196,7 +198,7 @@ export default function Viewer() {
       // В кроссфейде показываем доминирующий по альфе слой (иначе «замороженный» первый кадр входящего клипа часто чёрный).
       const dom = items.reduce((m, it) => (it.alpha > m.alpha ? it : m), items[0]);
       applyVisual(thumb, dom.clip, d, ph - dom.clip.timelineStart);
-      const base = proxy && proxyMap[dom.clip.sourceFile] ? proxyMap[dom.clip.sourceFile] : dom.clip.sourceFile;
+      const base = proxyMap[dom.clip.sourceFile] || dom.clip.sourceFile;
       const key = base + '@' + Math.round(Math.max(0, dom.sourceTime) * 2);
       if (curThumbKey.current !== key) {
         curThumbKey.current = key;

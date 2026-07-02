@@ -69,6 +69,7 @@ const electronAPI = {
     audioBitrateK?: number;
   }): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('pro:encode', opts),
   proMakeProxy: (src: string): Promise<string | null> => ipcRenderer.invoke('pro:makeProxy', src),
+  proProbeVideo: (src: string): Promise<{ codec: string; pixFmt: string; width: number; height: number; bitrate: number } | null> => ipcRenderer.invoke('pro:probeVideo', src),
 
   // Показать файл в проводнике с выделением.
   showItemInFolder: (filePath: string): Promise<{ ok: true }> =>

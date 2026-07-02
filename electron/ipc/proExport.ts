@@ -1,5 +1,6 @@
 import { app, dialog, ipcMain } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -7,6 +8,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
+const ffprobeBin = (ffprobeStatic as unknown as { path: string })?.path?.replace('app.asar', 'app.asar.unpacked');
 
 // Разрешаем работать только внутри системной temp-папки (кадры экспорта).
 function isTempDir(dir: string): boolean {
@@ -77,6 +79,25 @@ export function registerProExportHandlers() {
   });
 
   // Генерация proxy-файла (§7 ТЗ): 720p H.264, низкий битрейт, для быстрого превью.
+  // Параметры видеопотока — чтобы решить, тяжёлый ли кодек (нужен прокси).
+  ipcMain.handle('pro:probeVideo', async (_e, src: string) => {
+    if (!ffprobeBin || !src) return null;
+    return new Promise((resolve) => {
+      const ch = spawn(ffprobeBin, ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,pix_fmt,width,height,bit_rate', '-of', 'json', src], { windowsHide: true });
+      let out = '';
+      ch.stdout.on('data', (d: Buffer) => (out += d.toString()));
+      ch.on('close', () => {
+        try {
+          const s = (JSON.parse(out).streams ?? [])[0] ?? {};
+          resolve({ codec: s.codec_name || '', pixFmt: s.pix_fmt || '', width: s.width || 0, height: s.height || 0, bitrate: Number(s.bit_rate) || 0 });
+        } catch {
+          resolve(null);
+        }
+      });
+      ch.on('error', () => resolve(null));
+    });
+  });
+
   ipcMain.handle('pro:makeProxy', async (_e, src: string) => {
     if (!ffmpegBin || !src) return null;
     const dir = path.join(app.getPath('userData'), 'proxies');
