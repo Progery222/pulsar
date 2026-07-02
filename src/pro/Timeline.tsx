@@ -643,8 +643,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     // за счёт запаса исходника (как в Premiere). Клипы НЕ двигаем.
     const addXfade = (rightClip: (typeof clips)[number]) => {
       st.pushHistory();
-      st.setClipTransition(rightClip.id, 0.5);
-      st.setTransitionAlign(rightClip.id, 'center');
+      st.setClipTransition(rightClip.id, 0.5); // align выберется в сторе: center (стык) или left (одиночный fade)
     };
     openMenu(e.clientX, e.clientY, [
       ...(canSplit ? [{ label: 'Разрезать по плейхеду (Ctrl+K)', onClick: () => { st.pushHistory(); st.splitClipAt(c.id, ph); } }] : []),
@@ -653,6 +652,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         : []),
       ...(leftAdj && !c.transition ? [{ label: '⇄ Кросс-фейд (стык слева)', onClick: () => addXfade(c) }] : []),
       ...(rightAdj && !rightAdj.transition ? [{ label: '⇄ Кросс-фейд (стык справа)', onClick: () => addXfade(rightAdj) }] : []),
+      ...(canX && !leftAdj && !rightAdj && !c.transition ? [{ label: '⇄ Появление (fade in)', onClick: () => addXfade(c) }] : []),
       ...(c.transition ? [{ label: 'Убрать переход', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, null); } }] : []),
       ...(c.linkId ? [{ label: 'Разделить видео/аудио', onClick: () => { st.pushHistory(); st.unlinkClip(c.id); } }] : []),
       { label: 'Копировать (Ctrl+C)', onClick: () => st.copyClips(ids) },
@@ -903,7 +903,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
       {/* Переходы по центру стыка (поверх клипов, нахлёст в обе стороны). */}
       {clips.map((c) => {
         const hasPrev = clips.some((o) => o.id !== c.id && o.trackId === c.trackId && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.05);
-        if (!hasPrev) return null; // без смежного слева перехода нет (не рисуем «висящий» блок)
+        if (!hasPrev && !c.transition) return null; // ⇄ добавляем только на стыке; блок — если переход есть
         const bx = c.timelineStart * pxPerSec - scrollX;
         if (vpW > 0 && (bx < -60 || bx > vpW + 60)) return null;
         if (c.transition) {

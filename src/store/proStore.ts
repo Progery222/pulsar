@@ -576,9 +576,9 @@ export const useProStore = create<ProState>()(
           return;
         }
         const prev = findPrevAdjacent(s.doc.clips, c);
-        if (!prev) return; // crossfade нужен предыдущий смежный клип
-        const max = Math.min(c.duration, prev.duration, 5);
-        c.transition = { duration: Math.min(Math.max(0.1, duration), max), kind: c.transition?.kind ?? 'dissolve', align: c.transition?.align ?? 'center' };
+        // Есть смежный слева -> кроссфейд (центр, нахлёст). Нет -> появление (fade in, внутри клипа).
+        const max = Math.min(c.duration, prev ? prev.duration : c.duration, 5);
+        c.transition = { duration: Math.min(Math.max(0.1, duration), max), kind: c.transition?.kind ?? 'dissolve', align: c.transition?.align ?? (prev ? 'center' : 'left') };
       }),
     setTransitionAlign: (id, align) =>
       set((s) => {

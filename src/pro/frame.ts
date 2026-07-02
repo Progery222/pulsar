@@ -29,7 +29,6 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
     for (const B of doc.clips) {
       if (B.trackId !== t.id || B.text || !B.transition) continue;
       const A = findPrevAdjacent(doc.clips, B);
-      if (!A) continue; // нет смежного слева — переход не применяется (не «вылазит» в пустоту)
       const cf = crossfadeAlpha(B, ph);
       if (!cf) continue;
       const { inA, outA } = cf;
@@ -37,12 +36,15 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
       // Входящий проигрывается непрерывно, с пред-роллом до реза (не «замороженный» первый кадр).
       const bTime = Math.max(0, B.inPoint + (ph - B.timelineStart) * bSpeed);
       map.set(B.id, { clip: B, sourceTime: bTime, alpha: inA, xf: transformAt(B, ph - B.timelineStart) });
-      const aSpeed = A.speed || 1;
-      // Уходящий продолжает крутиться за резом (запас исходника), иначе — рывок в центре перехода.
-      let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed;
-      if (A.sourceDuration) aTime = Math.min(aTime, A.sourceDuration - 0.03);
-      aTime = Math.max(0, aTime);
-      map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true, xf: transformAt(A, ph - A.timelineStart) });
+      if (A) {
+        // Кроссфейд: уходящий крутится за резом (запас исходника), иначе — рывок в центре перехода.
+        const aSpeed = A.speed || 1;
+        let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed;
+        if (A.sourceDuration) aTime = Math.min(aTime, A.sourceDuration - 0.03);
+        aTime = Math.max(0, aTime);
+        map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true, xf: transformAt(A, ph - A.timelineStart) });
+      }
+      // Без смежного слева A — B просто проявляется от чёрного/нижнего слоя (fade in).
     }
     const arr = [...map.values()].sort((a, b) => (a.out ? 0 : 1) - (b.out ? 0 : 1));
     out.push(...arr);
