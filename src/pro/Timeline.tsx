@@ -919,9 +919,9 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
           const align = c.transition.align || 'center';
           const left = align === 'left' ? bx : align === 'right' ? bx - w : bx - w / 2;
           return (
-            <div key={'tr' + c.id} onContextMenu={(e) => onClipContext(e, c)} style={{ position: 'absolute', left, top: 3, height: track.height - 6, width: w, background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.30), rgba(204,255,0,0.30) 4px, transparent 4px, transparent 8px)', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 5 }}>
-              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', left: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize' }} title="Длина перехода" />
-              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize' }} title="Длина перехода" />
+            <div key={'tr' + c.id} onContextMenu={(e) => onClipContext(e, c)} style={{ position: 'absolute', left, top: 3, height: track.height - 6, width: w, background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.30), rgba(204,255,0,0.30) 4px, transparent 4px, transparent 8px)', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 10 }}>
+              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', left: -5, top: 0, bottom: 0, width: 11, cursor: 'ew-resize', zIndex: 2 }} title="Длина перехода" />
+              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -5, top: 0, bottom: 0, width: 11, cursor: 'ew-resize', zIndex: 2 }} title="Длина перехода" />
               <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTransition(c.id, null); }} title="Убрать переход" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0 }}>✕</button>
             </div>
           );
