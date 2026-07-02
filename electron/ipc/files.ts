@@ -229,6 +229,7 @@ export function registerFileHandlers() {
       const d = energy[i] - energy[i - 1];
       flux[i] = d > 0 ? d : 0;
     }
+    // Сырые onset'ы (акценты) — адаптивный порог + пик-пикинг.
     const onsets: number[] = [];
     const win = Math.round(SR / hop);
     for (let i = 1; i < frames - 1; i++) {
@@ -243,11 +244,46 @@ export function registerFileHandlers() {
       }
     }
     if (onsets.length < 2) return null;
-    const gaps: number[] = [];
-    for (let i = 1; i < onsets.length; i++) gaps.push(onsets[i] - onsets[i - 1]);
-    gaps.sort((a, b) => a - b);
-    const med = gaps[Math.floor(gaps.length / 2)] || 0.5;
-    return { beat_times: onsets, onset_times: onsets, duration, tempo: med > 0 ? Math.round(60 / med) : 120 };
+
+    // Оценка темпа: автокорреляция огибающей онсетов (сглаженной) на диапазоне 60..190 BPM.
+    const fps = SR / hop; // кадров огибающей в секунду
+    const env = new Float32Array(frames);
+    for (let i = 0; i < frames; i++) env[i] = (flux[Math.max(0, i - 1)] + flux[i] + flux[Math.min(frames - 1, i + 1)]) / 3;
+    const minLag = Math.max(2, Math.floor((fps * 60) / 190));
+    const maxLag = Math.min(frames - 2, Math.ceil((fps * 60) / 60));
+    const ac = new Float32Array(maxLag + 2);
+    for (let lag = minLag; lag <= maxLag + 1; lag++) {
+      let s = 0;
+      for (let i = lag; i < frames; i++) s += env[i] * env[i - lag];
+      ac[lag] = s / (frames - lag);
+    }
+    let bestLag = minLag;
+    for (let lag = minLag + 1; lag <= maxLag; lag++) if (ac[lag] > ac[bestLag]) bestLag = lag;
+    // Парабол. интерполяция вершины для дробного периода.
+    const al = ac[bestLag - 1] || 0;
+    const bl = ac[bestLag];
+    const cl = ac[bestLag + 1] || 0;
+    const denom = al - 2 * bl + cl;
+    let period = bestLag + (denom < 0 ? (0.5 * (al - cl)) / denom : 0);
+    if (!(period > 1)) period = bestLag;
+
+    // Фаза: смещение сетки, максимизирующее сумму огибающей на долях.
+    let bestPhase = 0;
+    let bestScore = -1;
+    for (let p = 0; p < period; p += 0.5) {
+      let s = 0;
+      for (let f = p; f < frames; f += period) s += env[Math.round(f)] || 0;
+      if (s > bestScore) {
+        bestScore = s;
+        bestPhase = p;
+      }
+    }
+
+    // Ровная сетка битов (tactus) по темпу+фазе.
+    const grid: number[] = [];
+    for (let f = bestPhase; f < frames; f += period) grid.push(Number(((f * hop) / SR).toFixed(3)));
+    const tempo = Math.round((60 * fps) / period);
+    return { beat_times: grid.length >= 2 ? grid : onsets, onset_times: onsets, duration, tempo };
   });
 
   // Миниатюра кадра видео (для таймлайна/очереди). Кэшируется по src+time.
