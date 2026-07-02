@@ -259,13 +259,17 @@ export function registerFileHandlers() {
     const fps = SR / hop; // кадров огибающей в секунду
     const env = new Float32Array(frames);
     for (let i = 0; i < frames; i++) env[i] = (flux[Math.max(0, i - 1)] + flux[i] + flux[Math.min(frames - 1, i + 1)]) / 3;
-    const minLag = Math.max(2, Math.floor((fps * 60) / 190));
-    const maxLag = Math.min(frames - 2, Math.ceil((fps * 60) / 60));
+    // Диапазон tactus 70..180 BPM + весовое предпочтение ~120 BPM (иначе автокорр цепляется за двойной/половинный темп).
+    const minLag = Math.max(2, Math.round((fps * 60) / 180));
+    const maxLag = Math.min(frames - 2, Math.round((fps * 60) / 70));
     const ac = new Float32Array(maxLag + 2);
     for (let lag = minLag; lag <= maxLag + 1; lag++) {
       let s = 0;
       for (let i = lag; i < frames; i++) s += env[i] * env[i - lag];
-      ac[lag] = s / (frames - lag);
+      s /= frames - lag;
+      const bpm = (60 * fps) / lag;
+      const w = Math.exp(-0.5 * Math.pow(Math.log2(bpm / 120) / 0.8, 2)); // гаусс вокруг 120 BPM
+      ac[lag] = s * w;
     }
     let bestLag = minLag;
     for (let lag = minLag + 1; lag <= maxLag; lag++) if (ac[lag] > ac[bestLag]) bestLag = lag;
@@ -277,10 +281,10 @@ export function registerFileHandlers() {
     let period = bestLag + (denom < 0 ? (0.5 * (al - cl)) / denom : 0);
     if (!(period > 1)) period = bestLag;
 
-    // Фаза: смещение сетки, максимизирующее сумму огибающей на долях.
+    // Фаза: смещение сетки, максимизирующее сумму огибающей на долях (мелкий шаг для точной посадки).
     let bestPhase = 0;
     let bestScore = -1;
-    for (let p = 0; p < period; p += 0.5) {
+    for (let p = 0; p < period; p += 0.25) {
       let s = 0;
       for (let f = p; f < frames; f += period) s += env[Math.round(f)] || 0;
       if (s > bestScore) {
