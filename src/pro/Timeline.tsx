@@ -830,6 +830,29 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     window.addEventListener('pointerup', up);
   };
 
+  // Длина «ухода» (fade out) у правого края: тянем левый край блока влево -> длиннее.
+  const onTailFadeResize = (e: React.PointerEvent, c: (typeof clips)[number]) => {
+    if (e.button !== 0) return;
+    e.stopPropagation();
+    e.preventDefault();
+    const end = c.timelineStart + c.duration;
+    let pushed = false;
+    const move = (ev: PointerEvent) => {
+      if (!pushed) {
+        useProStore.getState().pushHistory();
+        pushed = true;
+      }
+      const dur = end - timeAt(ev.clientX); // расстояние от конца клипа
+      useProStore.getState().setClipTailFade(c.id, Math.max(0.1, dur));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
   // Длина crossfade — симметрично от стыка (тянуть любой край в любую сторону = нахлёст).
   const onTransitionResize = (e: React.PointerEvent, c: (typeof clips)[number]) => {
     if (e.button !== 0) return;
@@ -905,7 +928,6 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
               {c.duration.toFixed(1)}с
             </span>
             {c.locked && <span style={{ position: 'absolute', right: 4, top: 2, fontSize: 11, pointerEvents: 'none' }}>🔒</span>}
-            {!!c.tailFade && <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: Math.min(visW, c.tailFade * pxPerSec), background: 'linear-gradient(to right, transparent, rgba(0,0,0,0.72))', pointerEvents: 'none' }} title="Уход в чёрный" />}
             {trueLeft && <div onPointerDown={(e) => onGripDown(e, c, 'l')} style={gripStyle('l')} title="Подрезать слева" />}
             {trueRight && <div onPointerDown={(e) => onGripDown(e, c, 'r')} style={gripStyle('r')} title="Подрезать справа" />}
           </div>
@@ -934,6 +956,20 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         }
         return (
           <button key={'add' + c.id} onPointerDown={(e) => onTransitionCreate(e, c)} onContextMenu={(e) => onClipContext(e, c)} title="Переход (crossfade): клик — 0.5с, тяни в стороны — нахлёст, ПКМ — меню" style={{ position: 'absolute', left: bx - 9, top: track.height / 2 - 9, width: 18, height: 18, borderRadius: '50%', background: 'rgba(13,13,13,0.7)', border: '1px solid var(--accent-green)', color: 'var(--accent-green)', fontSize: 11, lineHeight: 1, cursor: 'ew-resize', zIndex: 5, padding: 0 }}>⇄</button>
+        );
+      })}
+
+      {/* «Уход» (fade out) у правого края — тянущийся блок. */}
+      {clips.map((c) => {
+        if (!c.tailFade) return null;
+        const endX = (c.timelineStart + c.duration) * pxPerSec - scrollX;
+        const w = Math.max(18, c.tailFade * pxPerSec);
+        if (vpW > 0 && (endX < -10 || endX - w > vpW + 10)) return null;
+        return (
+          <div key={'tf' + c.id} onPointerDown={(e) => onTailFadeResize(e, c)} onContextMenu={(e) => onClipContext(e, c)} title="Тяни левый край/тело — длина ухода; ПКМ — меню" style={{ position: 'absolute', left: endX - w, top: 3, height: track.height - 6, width: w, background: 'linear-gradient(to right, rgba(0,0,0,0.15), rgba(0,0,0,0.8))', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 10, cursor: 'ew-resize' }}>
+            <div style={{ position: 'absolute', top: 0, bottom: 0, left: -3, width: 6, cursor: 'ew-resize', zIndex: 3, background: 'var(--accent-green)', boxShadow: '0 0 4px rgba(204,255,0,0.8)', borderRadius: '3px 0 0 3px' }} />
+            <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTailFade(c.id, null); }} title="Убрать уход" style={{ position: 'absolute', right: 1, top: 1, width: 14, height: 14, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 9, lineHeight: 1, cursor: 'pointer', padding: 0, zIndex: 4 }}>✕</button>
+          </div>
         );
       })}
     </div>
