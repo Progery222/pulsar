@@ -81,10 +81,12 @@ export function registerProExportHandlers() {
     if (!ffmpegBin || !src) return null;
     const dir = path.join(app.getPath('userData'), 'proxies');
     fs.mkdirSync(dir, { recursive: true });
-    const out = path.join(dir, crypto.createHash('md5').update(src).digest('hex') + '.mp4');
+    // _v2 — новые параметры (8-бит yuv420p); старые 10-битные прокси не переиспользуем.
+    const out = path.join(dir, crypto.createHash('md5').update(src).digest('hex') + '_v2.mp4');
     if (fs.existsSync(out)) return out;
     await new Promise<void>((resolve) => {
-      const ch = spawn(ffmpegBin, ['-y', '-i', src, '-vf', 'scale=-2:720', '-c:v', 'libx264', '-crf', '30', '-preset', 'veryfast', '-an', out], { windowsHide: true });
+      // -pix_fmt yuv420p обязателен: 10-bit/log-исходники иначе дают High10, который Chromium не декодирует.
+      const ch = spawn(ffmpegBin, ['-y', '-i', src, '-vf', 'scale=-2:720:flags=fast_bilinear,format=yuv420p', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-crf', '30', '-preset', 'veryfast', '-g', '30', '-an', '-movflags', '+faststart', out], { windowsHide: true });
       ch.on('close', () => resolve());
       ch.on('error', () => resolve());
     });
