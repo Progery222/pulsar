@@ -80,6 +80,65 @@ async function runAutoCut(): Promise<void> {
   showToast(`Auto-Cut: ${gen.length} клипов`);
 }
 
+// Авто-титры: распознавание речи по выбранному (или первому) клипу с речью -> текстовые клипы.
+async function runSubtitles(): Promise<void> {
+  const st = useProStore.getState();
+  const doc = st.doc;
+  // Источник речи: выделенный клип, иначе первый видео/аудио клип с файлом.
+  const sel = doc.clips.find((c) => st.selectedClipIds.includes(c.id) && c.sourceFile);
+  const src = sel ?? doc.clips.find((c) => c.sourceFile && !c.text);
+  if (!src) {
+    showToast('Нет клипа с речью');
+    return;
+  }
+  showToast('Распознаю речь… (может занять до минуты)');
+  const res = await window.electronAPI.proTranscribe(src.sourceFile, 'ru').catch((e) => ({ error: String(e) }));
+  if ('error' in res) {
+    showToast('Титры: ' + res.error);
+    return;
+  }
+  const words = res.words;
+  if (!words.length) {
+    showToast('Речь не распознана');
+    return;
+  }
+  // Группируем слова в строки: пауза > 0.7с, или > 42 символов, или > 3.2с.
+  const sp = src.speed || 1;
+  const inS = src.inPoint;
+  const outS = src.inPoint + src.duration * sp;
+  const lines: { start: number; duration: number; content: string }[] = [];
+  let cur: { text: string; start: number; end: number }[] = [];
+  const flush = () => {
+    if (!cur.length) return;
+    const w0 = cur[0].start / 1000;
+    const w1 = cur[cur.length - 1].end / 1000;
+    // Пересечение со временем источника, попадающим в клип.
+    if (w1 > inS && w0 < outS) {
+      const s0 = Math.max(w0, inS);
+      const e0 = Math.min(w1, outS);
+      const tlStart = src.timelineStart + (s0 - inS) / sp;
+      lines.push({ start: tlStart, duration: Math.max(0.4, (e0 - s0) / sp), content: cur.map((w) => w.text).join(' ') });
+    }
+    cur = [];
+  };
+  for (let i = 0; i < words.length; i++) {
+    cur.push(words[i]);
+    const text = cur.map((w) => w.text).join(' ');
+    const dur = (words[i].end - cur[0].start) / 1000;
+    const gap = i + 1 < words.length ? (words[i + 1].start - words[i].end) / 1000 : 999;
+    if (gap > 0.7 || text.length > 42 || dur > 3.2) flush();
+  }
+  flush();
+  if (!lines.length) {
+    showToast('Титры вне диапазона клипа');
+    return;
+  }
+  st.pushHistory();
+  const trackId = st.addTrack('video'); // отдельная дорожка под титры сверху
+  st.addSubtitles(trackId, lines);
+  showToast(`Титры: ${lines.length} строк`);
+}
+
 // Pulsar Pro — рабочее пространство мульти-трек монтажа (§2 ТЗ).
 // Фаза 1: каркас 4 зон + resizable-разделители. Наполнение зон — след. фазы.
 
@@ -387,6 +446,7 @@ function ProToolbar() {
   const setMood = useProStore((s) => s.setAutoCutMood);
   const addAdjustmentTrack = useProStore((s) => s.addAdjustmentTrack);
   const [running, setRunning] = useState(false);
+  const [subbing, setSubbing] = useState(false);
 
   const onAutoCut = async () => {
     if (running) return;
@@ -395,6 +455,15 @@ function ProToolbar() {
       await runAutoCut();
     } finally {
       setRunning(false);
+    }
+  };
+  const onSubtitles = async () => {
+    if (subbing) return;
+    setSubbing(true);
+    try {
+      await runSubtitles();
+    } finally {
+      setSubbing(false);
     }
   };
   const cycleMood = () => {
@@ -425,6 +494,9 @@ function ProToolbar() {
         showToast('Текст добавлен — отредактируйте в Inspector');
       }} title="Добавить текст/титр">
         ＋Текст
+      </ToolBtn>
+      <ToolBtn onClick={onSubtitles} title="Авто-титры: распознать речь и разложить субтитры (offline Whisper)">
+        {subbing ? 'Распознаю…' : '＋Авто-титры'}
       </ToolBtn>
       <div style={{ marginLeft: 'auto' }}>
         <ToolBtn active={snapping} onClick={toggleSnapping} title="Прилипание (N)">

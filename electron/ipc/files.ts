@@ -62,6 +62,16 @@ function listSystemFonts(): Promise<string[]> {
 // IPC-обработчики для файловой системы: системные диалоги выбора файлов.
 export function registerFileHandlers() {
   ipcMain.handle('fonts:list', () => listSystemFonts());
+
+  // Авто-титры: офлайн-распознавание речи (faster-whisper) -> слова с таймингами (мс).
+  ipcMain.handle('pro:transcribe', async (_e, src: string, language: string) => {
+    try {
+      const { transcribeWhisper } = await import('./transcribe');
+      return { words: await transcribeWhisper(src, language || 'ru') };
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+  });
   // Листинг директории для бокового проводника. dir пустой -> диски (Windows) / home.
   ipcMain.handle('fs:listDir', async (_e, dir: string | null) => {
     try {

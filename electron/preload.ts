@@ -19,6 +19,10 @@ const electronAPI = {
   // Список системных шрифтов (семейства).
   listFonts: (): Promise<string[]> => ipcRenderer.invoke('fonts:list'),
 
+  // Авто-титры: распознавание речи (offline Whisper) — слова с таймингами (мс).
+  proTranscribe: (src: string, language: string): Promise<{ words: { text: string; start: number; end: number }[] } | { error: string }> =>
+    ipcRenderer.invoke('pro:transcribe', src, language),
+
   // Анализ аудио (beat detection через Python) — §9.1.
   analyzeAudio: (audioPath: string): Promise<BeatData | { error: string }> =>
     ipcRenderer.invoke('analyze-audio', audioPath),

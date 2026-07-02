@@ -135,6 +135,7 @@ export interface ProState {
   updateClipColor: (id: string, patch: Partial<import('../pro/proTypes').ClipColor>) => void;
   setClipBlend: (id: string, blend: import('../pro/proTypes').BlendMode) => void;
   addTextClip: (trackId: string, start: number, duration: number) => void;
+  addSubtitles: (trackId: string, lines: { start: number; duration: number; content: string }[]) => void;
   updateClipText: (id: string, patch: Partial<import('../pro/proTypes').ClipText>) => void;
   // История (§6 ТЗ). pushHistory вызывается в начале дискретного действия/жеста.
   pushHistory: () => void;
@@ -662,6 +663,14 @@ export const useProStore = create<ProState>()(
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
         c.text = { ...DEFAULT_TEXT, ...c.text, ...patch };
+      }),
+    addSubtitles: (trackId, lines) =>
+      set((s) => {
+        // Стиль субтитров: снизу, крупно, с обводкой для читаемости.
+        const style = { ...DEFAULT_TEXT, size: 6, y: 0.88, bold: true, outline: 0.6, outlineColor: '#000000', shadow: false, bg: false };
+        for (const ln of lines) {
+          s.doc.clips.push({ id: nextClipId(), trackId, sourceFile: '', timelineStart: Math.max(0, ln.start), duration: Math.max(0.3, ln.duration), inPoint: 0, text: { ...style, content: ln.content } });
+        }
       }),
 
     pushHistory: () => {
