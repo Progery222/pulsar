@@ -38,13 +38,16 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
       const inA = kind === 'fadeblack' ? Math.max(0, 2 * f - 1) : f;
       const outA = kind === 'fadeblack' ? Math.max(0, 1 - 2 * f) : 1 - f;
       const bSpeed = B.speed || 1;
-      const bTime = ph >= B.timelineStart ? B.inPoint + (ph - B.timelineStart) * bSpeed : B.inPoint;
+      // Входящий проигрывается непрерывно, с пред-роллом до реза (не «замороженный» первый кадр).
+      const bTime = Math.max(0, B.inPoint + (ph - B.timelineStart) * bSpeed);
       map.set(B.id, { clip: B, sourceTime: bTime, alpha: inA, xf: transformAt(B, ph - B.timelineStart) });
       const A = findPrevAdjacent(doc.clips, B);
       if (A) {
         const aSpeed = A.speed || 1;
-        const aEnd = A.timelineStart + A.duration;
-        const aTime = ph < aEnd ? A.inPoint + (ph - A.timelineStart) * aSpeed : Math.max(0, A.inPoint + A.duration * aSpeed - 0.05);
+        // Уходящий продолжает крутиться за резом (запас исходника), иначе — рывок в центре перехода.
+        let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed;
+        if (A.sourceDuration) aTime = Math.min(aTime, A.sourceDuration - 0.03);
+        aTime = Math.max(0, aTime);
         map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true, xf: transformAt(A, ph - A.timelineStart) });
       }
     }

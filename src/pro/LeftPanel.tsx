@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, KF_EASE_LABEL, KF_EASES, KF_PARAM_LABEL, KF_PARAMS, LOOK_PRESETS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type KfEase, type KfParam, type ProClip, type TransitionKind } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, KF_EASE_LABEL, KF_EASES, KF_PARAM_LABEL, KF_PARAMS, LOOK_PRESETS, TEXT_FONTS, TEXT_PRESETS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type ClipText, type KfEase, type KfParam, type ProClip, type TransitionKind } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -320,6 +320,9 @@ function InspectorTab() {
   // Текстовый клип — редактор титра.
   if (clip.text) {
     const tt = { ...DEFAULT_TEXT, ...clip.text };
+    const seg = (label: string, active: boolean, onClick: () => void) => (
+      <button onClick={onClick} style={{ flex: 1, padding: '5px 4px', fontSize: 12, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: active ? 'var(--bg-primary)' : 'var(--text-primary)' }}>{label}</button>
+    );
     return (
       <div style={{ padding: 10, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Section title="Текст / титр">
@@ -329,16 +332,66 @@ function InspectorTab() {
             rows={2}
             style={{ width: '100%', padding: '6px 8px', fontSize: 13, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)', resize: 'vertical' }}
           />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 5 }}>
+            {TEXT_PRESETS.map((p) => (
+              <button key={p.name} onClick={() => txt(p.text)} style={{ padding: '5px 4px', fontSize: 11.5, borderRadius: 6, cursor: 'pointer', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>{p.name}</button>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Шрифт">
+          <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            <span>Гарнитура</span>
+            <select value={tt.font} onChange={(e) => txt({ font: e.target.value as ClipText['font'] })} style={{ flex: 1, maxWidth: 150, padding: '4px 6px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}>
+              {TEXT_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+            </select>
+          </label>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {seg('Ж', !!tt.bold, () => txt({ bold: !tt.bold }))}
+            {seg('К', !!tt.italic, () => txt({ italic: !tt.italic }))}
+          </div>
+          <div style={{ display: 'flex', gap: 5 }}>
+            {seg('◧ Слева', tt.align === 'left', () => txt({ align: 'left' }))}
+            {seg('▣ Центр', tt.align === 'center', () => txt({ align: 'center' }))}
+            {seg('◨ Справа', tt.align === 'right', () => txt({ align: 'right' }))}
+          </div>
           <Row><NumField label="Размер %" value={tt.size} step={0.5} onChange={(v) => txt({ size: Math.max(1, v) })} /></Row>
+          <Row><NumField label="Трекинг" value={tt.letterSpacing ?? 0} step={0.1} onChange={(v) => txt({ letterSpacing: v })} /></Row>
+          <Row><NumField label="Межстрочный ×" value={tt.lineHeight ?? 1.15} step={0.05} onChange={(v) => txt({ lineHeight: Math.max(0.5, v) })} /></Row>
+        </Section>
+
+        <Section title="Цвет и стиль">
           <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-secondary)' }}>
-            <span>Цвет</span>
+            <span>Цвет текста</span>
             <input type="color" value={tt.color} onChange={(e) => txt({ color: e.target.value })} style={{ width: 44, height: 24, background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
           </label>
-          <Row><NumField label="X %" value={Math.round(tt.x * 100)} step={1} onChange={(v) => txt({ x: v / 100 })} /></Row>
-          <Row><NumField label="Y %" value={Math.round(tt.y * 100)} step={1} onChange={(v) => txt({ y: v / 100 })} /></Row>
+          <Row><NumField label="Прозрачность %" value={Math.round((tt.opacity ?? 1) * 100)} step={5} onChange={(v) => txt({ opacity: Math.max(0, Math.min(1, v / 100)) })} /></Row>
+          <Row><NumField label="Обводка" value={tt.outline ?? 0} step={0.2} onChange={(v) => txt({ outline: Math.max(0, v) })} /></Row>
+          {(tt.outline ?? 0) > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              <span>Цвет обводки</span>
+              <input type="color" value={tt.outlineColor} onChange={(e) => txt({ outlineColor: e.target.value })} style={{ width: 44, height: 24, background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
+            </label>
+          )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
+            <input type="checkbox" checked={!!tt.shadow} onChange={(e) => txt({ shadow: e.target.checked })} /> Тень
+          </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
             <input type="checkbox" checked={tt.bg} onChange={(e) => txt({ bg: e.target.checked })} /> Плашка-подложка
           </label>
+          {tt.bg && (
+            <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-secondary)' }}>
+              <span>Цвет плашки</span>
+              <input type="color" value={tt.bgColor} onChange={(e) => txt({ bgColor: e.target.value })} style={{ width: 44, height: 24, background: 'none', border: '1px solid var(--border)', borderRadius: 6, cursor: 'pointer' }} />
+            </label>
+          )}
+        </Section>
+
+        <Section title="Позиция и анимация">
+          <Row><NumField label="X %" value={Math.round(tt.x * 100)} step={1} onChange={(v) => txt({ x: v / 100 })} /></Row>
+          <Row><NumField label="Y %" value={Math.round(tt.y * 100)} step={1} onChange={(v) => txt({ y: v / 100 })} /></Row>
+          <Row><NumField label="Появление, с" value={tt.fadeIn ?? 0} step={0.1} onChange={(v) => txt({ fadeIn: Math.max(0, v) })} /></Row>
+          <Row><NumField label="Исчезновение, с" value={tt.fadeOut ?? 0} step={0.1} onChange={(v) => txt({ fadeOut: Math.max(0, v) })} /></Row>
         </Section>
       </div>
     );

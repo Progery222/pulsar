@@ -1,30 +1,40 @@
 import { Compositor, VideoPool } from './compositor';
 import { buildFrame, activeAdjustments, activeTexts } from './frame';
 import { useProStore } from '../store/proStore';
-import { DEFAULT_AUDIO, DEFAULT_TEXT, type ProClip, type ProDocument } from './proTypes';
+import { DEFAULT_AUDIO, DEFAULT_TEXT, fontCss, textOpacityAt, type ProClip, type ProDocument } from './proTypes';
 
-function drawTexts(ctx: CanvasRenderingContext2D, doc: ProDocument, texts: ProClip[]) {
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
+function drawTexts(ctx: CanvasRenderingContext2D, doc: ProDocument, texts: ProClip[], ph: number) {
   for (const c of texts) {
     const tt = { ...DEFAULT_TEXT, ...c.text };
     const fs = (doc.height * tt.size) / 100;
-    ctx.font = `700 ${fs}px sans-serif`;
+    const lh = (tt.lineHeight ?? 1.15) * fs;
+    const align = tt.align ?? 'center';
+    ctx.textAlign = align;
+    ctx.textBaseline = 'middle';
+    ctx.font = `${tt.italic ? 'italic ' : ''}${tt.bold ? 800 : 400} ${fs}px ${fontCss(tt.font)}`;
+    (ctx as unknown as { letterSpacing: string }).letterSpacing = `${((tt.letterSpacing ?? 0) * doc.height) / 100}px`;
+    ctx.globalAlpha = textOpacityAt(tt, ph - c.timelineStart, c.duration);
     const x = tt.x * doc.width;
     const y = tt.y * doc.height;
     const lines = tt.content.split('\n');
     if (tt.bg) {
       const w = Math.max(...lines.map((l) => ctx.measureText(l).width));
-      ctx.fillStyle = 'rgba(0,0,0,0.45)';
-      ctx.fillRect(x - w / 2 - 12, y - (lines.length * fs * 1.15) / 2 - 4, w + 24, lines.length * fs * 1.15 + 8);
+      const bx = align === 'left' ? x : align === 'right' ? x - w : x - w / 2;
+      ctx.fillStyle = tt.bgColor ?? '#000000';
+      ctx.fillRect(bx - 12, y - (lines.length * lh) / 2 - 4, w + 24, lines.length * lh + 8);
     }
-    ctx.fillStyle = tt.color;
-    ctx.shadowColor = 'rgba(0,0,0,0.75)';
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetY = 2;
-    lines.forEach((ln, i) => ctx.fillText(ln, x, y + (i - (lines.length - 1) / 2) * fs * 1.15));
+    const ow = ((tt.outline ?? 0) * doc.height) / 100;
+    lines.forEach((ln, i) => {
+      const ly = y + (i - (lines.length - 1) / 2) * lh;
+      if (tt.shadow) { ctx.shadowColor = 'rgba(0,0,0,0.75)'; ctx.shadowBlur = 6; ctx.shadowOffsetY = 2; } else { ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; }
+      if (ow > 0) { ctx.lineJoin = 'round'; ctx.lineWidth = ow * 2; ctx.strokeStyle = tt.outlineColor ?? '#000000'; ctx.strokeText(ln, x, ly); ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; }
+      ctx.fillStyle = tt.color;
+      ctx.fillText(ln, x, ly);
+    });
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
+    ctx.globalAlpha = 1;
+    (ctx as unknown as { letterSpacing: string }).letterSpacing = '0px';
   }
 }
 
@@ -129,7 +139,7 @@ export async function runProExport(doc: ProDocument, onProgress: Progress, setti
       if (texts.length && ctx2d) {
         ctx2d.clearRect(0, 0, doc.width, doc.height);
         ctx2d.drawImage(canvas, 0, 0);
-        drawTexts(ctx2d, doc, texts);
+        drawTexts(ctx2d, doc, texts, t);
         outCanvas = canvas2d;
       }
       const blob = await canvasToBlob(outCanvas);

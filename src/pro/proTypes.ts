@@ -63,6 +63,19 @@ export const BLEND_MODES: BlendMode[] = ['normal', 'add', 'screen', 'multiply'];
 export const BLEND_LABEL: Record<BlendMode, string> = { normal: 'Обычный', add: 'Сложение', screen: 'Экран', multiply: 'Умножение' };
 
 // Текстовый клип (титры). x,y — доля кадра (центр текста), size — % высоты кадра.
+export type TextAlign = 'left' | 'center' | 'right';
+export type TextFont = 'sans' | 'serif' | 'mono' | 'display' | 'hand';
+export const TEXT_FONTS: { id: TextFont; label: string; css: string }[] = [
+  { id: 'sans', label: 'Sans', css: 'system-ui, "Segoe UI", Arial, sans-serif' },
+  { id: 'serif', label: 'Serif', css: 'Georgia, "Times New Roman", serif' },
+  { id: 'mono', label: 'Моно', css: '"Consolas", "Courier New", monospace' },
+  { id: 'display', label: 'Дисплей', css: '"Impact", "Arial Black", sans-serif' },
+  { id: 'hand', label: 'Рукопись', css: '"Comic Sans MS", "Segoe Print", cursive' },
+];
+export function fontCss(f?: TextFont): string {
+  return (TEXT_FONTS.find((x) => x.id === f) ?? TEXT_FONTS[0]).css;
+}
+
 export interface ClipText {
   content: string;
   size: number;
@@ -70,8 +83,59 @@ export interface ClipText {
   x: number;
   y: number;
   bg: boolean; // подложка-плашка под текстом
+  font?: TextFont;
+  bold?: boolean;
+  italic?: boolean;
+  align?: TextAlign;
+  opacity?: number; // 0..1
+  bgColor?: string; // цвет плашки
+  outline?: number; // толщина обводки (px @ высота проекта / 100), 0 = нет
+  outlineColor?: string;
+  shadow?: boolean; // тень
+  letterSpacing?: number; // трекинг (% высоты проекта на em)
+  lineHeight?: number; // множитель межстрочного
+  fadeIn?: number; // появление, сек (0 = мгновенно)
+  fadeOut?: number; // исчезновение, сек
 }
-export const DEFAULT_TEXT: ClipText = { content: 'Заголовок', size: 8, color: '#ffffff', x: 0.5, y: 0.85, bg: false };
+export const DEFAULT_TEXT: ClipText = {
+  content: 'Заголовок',
+  size: 8,
+  color: '#ffffff',
+  x: 0.5,
+  y: 0.85,
+  bg: false,
+  font: 'sans',
+  bold: true,
+  italic: false,
+  align: 'center',
+  opacity: 1,
+  bgColor: '#000000',
+  outline: 0,
+  outlineColor: '#000000',
+  shadow: true,
+  letterSpacing: 0,
+  lineHeight: 1.15,
+  fadeIn: 0,
+  fadeOut: 0,
+};
+
+// Пресеты стилей текста (быстрый старт).
+export const TEXT_PRESETS: { name: string; text: Partial<ClipText> }[] = [
+  { name: 'Заголовок', text: { font: 'display', bold: true, size: 11, color: '#ffffff', outline: 0, shadow: true, bg: false } },
+  { name: 'Субтитры', text: { font: 'sans', bold: true, size: 6, color: '#ffffff', outline: 0.6, outlineColor: '#000000', shadow: false, bg: false, y: 0.88 } },
+  { name: 'Плашка', text: { font: 'sans', bold: true, size: 7, color: '#ffffff', bg: true, bgColor: '#000000', shadow: false, outline: 0 } },
+  { name: 'Неон', text: { font: 'display', bold: true, size: 12, color: '#ccff00', outline: 0.4, outlineColor: '#1a1a00', shadow: true } },
+  { name: 'Контур', text: { font: 'display', bold: true, size: 12, color: '#ffffff', outline: 1.2, outlineColor: '#000000', shadow: false, bg: false } },
+];
+
+// Прозрачность текста в момент localSec с учётом fade in/out.
+export function textOpacityAt(t: ClipText, localSec: number, duration: number): number {
+  const base = t.opacity ?? 1;
+  let f = 1;
+  if (t.fadeIn && t.fadeIn > 0) f = Math.min(f, Math.max(0, localSec / t.fadeIn));
+  if (t.fadeOut && t.fadeOut > 0) f = Math.min(f, Math.max(0, (duration - localSec) / t.fadeOut));
+  return base * Math.max(0, Math.min(1, f));
+}
 
 // Цветокоррекция (значения -100..100, hue -180..180; 0 = нейтрально).
 export interface ClipColor {

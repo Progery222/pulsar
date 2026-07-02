@@ -5,7 +5,7 @@ import { activeTexts, buildFrame } from './frame';
 import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, transformAt, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, fontCss, textOpacityAt, transformAt, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -330,8 +330,38 @@ export default function Viewer() {
           )}
           {activeTexts(doc, playhead).map((c) => {
             const tt = { ...DEFAULT_TEXT, ...c.text };
+            const fs = (dispH * tt.size) / 100;
+            const ow = ((tt.outline ?? 0) * dispH) / 100;
+            const align = tt.align ?? 'center';
+            const opacity = textOpacityAt(tt, playhead - c.timelineStart, c.duration);
+            const shadow = tt.shadow ? '0 2px 6px rgba(0,0,0,0.75)' : undefined;
+            const outline = ow > 0 ? Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2; return `${Math.cos(a) * ow}px ${Math.sin(a) * ow}px 0 ${tt.outlineColor}`; }).join(',') : undefined;
+            const textShadow = [outline, shadow].filter(Boolean).join(',') || undefined;
+            const tx = align === 'left' ? '0' : align === 'right' ? '-100%' : '-50%';
             return (
-              <div key={c.id} style={{ position: 'absolute', left: `${tt.x * 100}%`, top: `${tt.y * 100}%`, transform: 'translate(-50%,-50%)', color: tt.color, fontSize: (dispH * tt.size) / 100, fontWeight: 700, textAlign: 'center', lineHeight: 1.15, textShadow: '0 2px 6px rgba(0,0,0,0.75)', whiteSpace: 'pre-wrap', pointerEvents: 'none', maxWidth: '96%', ...(tt.bg ? { background: 'rgba(0,0,0,0.45)', padding: '2px 10px', borderRadius: 6 } : {}) }}>
+              <div
+                key={c.id}
+                style={{
+                  position: 'absolute',
+                  left: `${tt.x * 100}%`,
+                  top: `${tt.y * 100}%`,
+                  transform: `translate(${tx},-50%)`,
+                  color: tt.color,
+                  opacity,
+                  fontSize: fs,
+                  fontFamily: fontCss(tt.font),
+                  fontWeight: tt.bold ? 800 : 400,
+                  fontStyle: tt.italic ? 'italic' : 'normal',
+                  textAlign: align,
+                  letterSpacing: ((tt.letterSpacing ?? 0) * dispH) / 100,
+                  lineHeight: tt.lineHeight ?? 1.15,
+                  textShadow,
+                  whiteSpace: 'pre-wrap',
+                  pointerEvents: 'none',
+                  maxWidth: '96%',
+                  ...(tt.bg ? { background: tt.bgColor, padding: '4px 12px', borderRadius: 6 } : {}),
+                }}
+              >
                 {tt.content}
               </div>
             );

@@ -638,6 +638,9 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
       ...(clips.some((o) => o.sourceFile === c.sourceFile && o.id !== c.id && Math.abs(o.timelineStart - (c.timelineStart + c.duration)) < 0.05)
         ? [{ label: 'Склеить со следующим', onClick: () => { st.pushHistory(); st.mergeWithNext(c.id); } }]
         : []),
+      ...(!c.transition && isVideo && clips.some((o) => o.id !== c.id && o.trackId === c.trackId && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.05)
+        ? [{ label: '⇄ Добавить кросс-дизолв', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, 0.5); } }]
+        : []),
       ...(c.transition ? [{ label: 'Убрать переход', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, null); } }] : []),
       ...(c.linkId ? [{ label: 'Разделить видео/аудио', onClick: () => { st.pushHistory(); st.unlinkClip(c.id); } }] : []),
       { label: 'Копировать (Ctrl+C)', onClick: () => st.copyClips(ids) },
@@ -859,7 +862,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
             }}
           >
             {c.text ? (
-              <div style={{ width: visW, height: track.height - 8, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', background: 'rgba(255,200,60,0.28)', color: '#fff', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden' }}>T {c.text.content}</div>
+              <div style={{ width: visW, height: track.height - 8, display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px', background: 'rgba(255,200,60,0.28)', color: '#fff', fontSize: 11, whiteSpace: 'nowrap', overflow: 'hidden', pointerEvents: 'none' }}>T {c.text.content}</div>
             ) : track.isAdjustment ? (
               <AdjustBlock label={c.adjust ? ADJUST_LABEL[c.adjust.filter] : 'Adj'} width={visW} height={track.height - 8} />
             ) : track.kind === 'video' ? (
@@ -907,10 +910,10 @@ function gripStyle(side: 'l' | 'r'): React.CSSProperties {
     top: 0,
     bottom: 0,
     [side === 'l' ? 'left' : 'right']: 0,
-    width: 8,
+    width: 12,
     cursor: 'ew-resize',
-    zIndex: 2,
-    background: `linear-gradient(${side === 'l' ? 'to right' : 'to left'}, rgba(204,255,0,0.45), transparent)`,
+    zIndex: 8, // выше блоков перехода (5), чтобы край всегда можно было схватить
+    background: `linear-gradient(${side === 'l' ? 'to right' : 'to left'}, rgba(204,255,0,0.5), transparent)`,
   };
 }
 
