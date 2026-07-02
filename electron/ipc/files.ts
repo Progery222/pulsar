@@ -1,5 +1,6 @@
 import { app, dialog, ipcMain, shell } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
+import { transcribeWhisper } from './transcribe';
 import { spawn } from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -66,7 +67,6 @@ export function registerFileHandlers() {
   // Авто-титры: офлайн-распознавание речи (faster-whisper) -> слова с таймингами (мс).
   ipcMain.handle('pro:transcribe', async (_e, src: string, language: string) => {
     try {
-      const { transcribeWhisper } = await import('./transcribe');
       return { words: await transcribeWhisper(src, language || 'ru') };
     } catch (e) {
       return { error: (e as Error).message };
