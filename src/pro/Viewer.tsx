@@ -193,12 +193,14 @@ export default function Viewer() {
       if (!el.paused) el.pause();
       hideEl2();
       thumb.style.display = 'block';
-      applyVisual(thumb, top.clip, d, ph - top.clip.timelineStart);
-      const base = proxy && proxyMap[top.clip.sourceFile] ? proxyMap[top.clip.sourceFile] : top.clip.sourceFile;
-      const key = base + '@' + Math.round(Math.max(0, top.sourceTime) * 2);
+      // В кроссфейде показываем доминирующий по альфе слой (иначе «замороженный» первый кадр входящего клипа часто чёрный).
+      const dom = items.reduce((m, it) => (it.alpha > m.alpha ? it : m), items[0]);
+      applyVisual(thumb, dom.clip, d, ph - dom.clip.timelineStart);
+      const base = proxy && proxyMap[dom.clip.sourceFile] ? proxyMap[dom.clip.sourceFile] : dom.clip.sourceFile;
+      const key = base + '@' + Math.round(Math.max(0, dom.sourceTime) * 2);
       if (curThumbKey.current !== key) {
         curThumbKey.current = key;
-        window.electronAPI.thumb(base, Math.max(0, top.sourceTime)).then((p) => { if (p && curThumbKey.current === key && thumbRef.current) thumbRef.current.src = mediaUrl(p); });
+        window.electronAPI.thumb(base, Math.max(0, dom.sourceTime)).then((p) => { if (p && curThumbKey.current === key && thumbRef.current) thumbRef.current.src = mediaUrl(p); });
       }
       return;
     }
