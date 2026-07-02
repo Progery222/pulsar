@@ -597,22 +597,26 @@ function TrackHeader({ track }: { track: ProTrack }) {
   };
 
   return (
-    <div onContextMenu={onContext} style={{ height: track.height, borderBottom: '1px solid var(--border)', padding: '6px 8px', display: 'flex', flexDirection: 'column', gap: 4, background: track.kind === 'audio' ? 'var(--bg-primary)' : 'var(--bg-secondary)' }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }} title="ПКМ — меню дорожки">
-        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>{track.name}</span>
-        <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>⋯</span>
-      </div>
-      <div style={{ display: 'flex', gap: 3 }}>
-        <FlagBtn on={track.muted} onClick={() => flag('muted')} title="Mute">M</FlagBtn>
-        <FlagBtn on={track.solo} onClick={() => flag('solo')} title="Solo">S</FlagBtn>
-        <FlagBtn on={track.locked} onClick={() => flag('locked')} title="Lock">L</FlagBtn>
-        {track.kind === 'video' && (
-          <FlagBtn on={track.hidden} onClick={() => flag('hidden')} title="Скрыть видео">
-            👁
-          </FlagBtn>
-        )}
-      </div>
-    </div>
+    // Узкая дорожка -> имя и M/S/L в одну строку (иначе контент наезжает на соседнюю).
+    (() => {
+      const compact = track.height < 54;
+      const flags = (
+        <div style={{ display: 'flex', gap: 3, flex: 'none' }}>
+          <FlagBtn on={track.muted} onClick={() => flag('muted')} title="Mute">M</FlagBtn>
+          <FlagBtn on={track.solo} onClick={() => flag('solo')} title="Solo">S</FlagBtn>
+          <FlagBtn on={track.locked} onClick={() => flag('locked')} title="Lock">L</FlagBtn>
+          {track.kind === 'video' && (
+            <FlagBtn on={track.hidden} onClick={() => flag('hidden')} title="Скрыть видео">👁</FlagBtn>
+          )}
+        </div>
+      );
+      return (
+        <div onContextMenu={onContext} style={{ height: track.height, overflow: 'hidden', borderBottom: '1px solid var(--border)', padding: compact ? '3px 6px' : '6px 8px', display: 'flex', flexDirection: compact ? 'row' : 'column', alignItems: 'center', gap: compact ? 6 : 4, background: track.kind === 'audio' ? 'var(--bg-primary)' : 'var(--bg-secondary)' }} title="ПКМ — меню дорожки">
+          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', flex: 1, minWidth: 0, alignSelf: compact ? 'center' : 'stretch', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{track.name}</span>
+          {flags}
+        </div>
+      );
+    })()
   );
 }
 
