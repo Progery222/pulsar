@@ -915,14 +915,16 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         const bx = c.timelineStart * pxPerSec - scrollX;
         if (vpW > 0 && (bx < -60 || bx > vpW + 60)) return null;
         if (c.transition) {
-          const w = c.transition.duration * pxPerSec;
+          const w = Math.max(18, c.transition.duration * pxPerSec); // не уже минимума, чтобы было за что схватить
           const align = c.transition.align || 'center';
           const left = align === 'left' ? bx : align === 'right' ? bx - w : bx - w / 2;
+          const handle: React.CSSProperties = { position: 'absolute', top: 0, bottom: 0, width: 6, cursor: 'ew-resize', zIndex: 3, background: 'var(--accent-green)', boxShadow: '0 0 4px rgba(204,255,0,0.8)' };
           return (
-            <div key={'tr' + c.id} onContextMenu={(e) => onClipContext(e, c)} style={{ position: 'absolute', left, top: 3, height: track.height - 6, width: w, background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.30), rgba(204,255,0,0.30) 4px, transparent 4px, transparent 8px)', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 10 }}>
-              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', left: -5, top: 0, bottom: 0, width: 11, cursor: 'ew-resize', zIndex: 2 }} title="Длина перехода" />
-              <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -5, top: 0, bottom: 0, width: 11, cursor: 'ew-resize', zIndex: 2 }} title="Длина перехода" />
-              <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTransition(c.id, null); }} title="Убрать переход" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0 }}>✕</button>
+            // Весь блок тянется -> меняет длину; края — явные зелёные полоски-ручки.
+            <div key={'tr' + c.id} onPointerDown={(e) => onTransitionResize(e, c)} onContextMenu={(e) => onClipContext(e, c)} title="Тяни за края или тело — длина перехода; ПКМ — меню" style={{ position: 'absolute', left, top: 3, height: track.height - 6, width: w, background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.35), rgba(204,255,0,0.35) 4px, transparent 4px, transparent 8px)', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 10, cursor: 'ew-resize' }}>
+              <div style={{ ...handle, left: -3, borderRadius: '3px 0 0 3px' }} />
+              <div style={{ ...handle, right: -3, borderRadius: '0 3px 3px 0' }} />
+              <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTransition(c.id, null); }} title="Убрать переход" style={{ position: 'absolute', right: 1, top: 1, width: 14, height: 14, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.7)', color: '#fff', fontSize: 9, lineHeight: 1, cursor: 'pointer', padding: 0, zIndex: 4 }}>✕</button>
             </div>
           );
         }
