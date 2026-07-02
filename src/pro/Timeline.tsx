@@ -79,10 +79,13 @@ export default function Timeline() {
   const [vp, setVp] = useState({ w: 0, h: 0 });
   const [scrollY, setScrollY] = useState(0);
 
-  // Раскладка дорожек по вертикали.
+  // Раскладка дорожек по вертикали (с учётом множителя высоты).
+  const trackScale = useProStore((s) => s.trackScale);
+  const setTrackScale = useProStore((s) => s.setTrackScale);
   const laneOffsets: { track: ProTrack; y: number }[] = [];
   let cy = 0;
-  for (const track of doc.tracks) {
+  for (const t0 of doc.tracks) {
+    const track = { ...t0, height: Math.max(30, Math.round(t0.height * trackScale)) };
     laneOffsets.push({ track, y: cy });
     cy += track.height;
   }
@@ -306,6 +309,8 @@ export default function Timeline() {
           <div style={{ height: RULER_H, borderBottom: '1px solid var(--border)', background: 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', gap: 4, padding: '0 6px' }}>
             <button onClick={() => { useProStore.getState().pushHistory(); useProStore.getState().addTrack('video'); }} title="Добавить видео-дорожку" style={addTrackBtn}>＋V</button>
             <button onClick={() => { useProStore.getState().pushHistory(); useProStore.getState().addTrack('audio'); }} title="Добавить аудио-дорожку" style={addTrackBtn}>＋A</button>
+            <span title="Высота дорожек" style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 2 }}>↕</span>
+            <input type="range" min={0.6} max={2.5} step={0.05} value={trackScale} onChange={(e) => setTrackScale(Number(e.target.value))} title="Высота дорожек" style={{ flex: 1, minWidth: 0, cursor: 'pointer', accentColor: 'var(--accent-green)' }} />
           </div>
           <div style={{ transform: `translateY(${-clampedScrollY}px)` }}>
             {laneOffsets.map(({ track }) => (
@@ -652,8 +657,10 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         : []),
       ...(leftAdj && !c.transition ? [{ label: '⇄ Кросс-фейд (стык слева)', onClick: () => addXfade(c) }] : []),
       ...(rightAdj && !rightAdj.transition ? [{ label: '⇄ Кросс-фейд (стык справа)', onClick: () => addXfade(rightAdj) }] : []),
-      ...(canX && !leftAdj && !rightAdj && !c.transition ? [{ label: '⇄ Появление (fade in)', onClick: () => addXfade(c) }] : []),
+      ...(canX && !leftAdj && !c.transition ? [{ label: '⇄ Появление (fade in)', onClick: () => addXfade(c) }] : []),
+      ...(canX && !rightAdj && !c.tailFade ? [{ label: '⇄ Уход (fade out)', onClick: () => { st.pushHistory(); st.setClipTailFade(c.id, 0.5); } }] : []),
       ...(c.transition ? [{ label: 'Убрать переход', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, null); } }] : []),
+      ...(c.tailFade ? [{ label: 'Убрать уход', onClick: () => { st.pushHistory(); st.setClipTailFade(c.id, null); } }] : []),
       ...(c.linkId ? [{ label: 'Разделить видео/аудио', onClick: () => { st.pushHistory(); st.unlinkClip(c.id); } }] : []),
       { label: 'Копировать (Ctrl+C)', onClick: () => st.copyClips(ids) },
       { label: 'Дублировать (Ctrl+D)', onClick: () => { st.pushHistory(); st.duplicateClips(ids); } },
@@ -894,6 +901,7 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
               {c.duration.toFixed(1)}с
             </span>
             {c.locked && <span style={{ position: 'absolute', right: 4, top: 2, fontSize: 11, pointerEvents: 'none' }}>🔒</span>}
+            {!!c.tailFade && <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: Math.min(visW, c.tailFade * pxPerSec), background: 'linear-gradient(to right, transparent, rgba(0,0,0,0.72))', pointerEvents: 'none' }} title="Уход в чёрный" />}
             {trueLeft && <div onPointerDown={(e) => onGripDown(e, c, 'l')} style={gripStyle('l')} title="Подрезать слева" />}
             {trueRight && <div onPointerDown={(e) => onGripDown(e, c, 'r')} style={gripStyle('r')} title="Подрезать справа" />}
           </div>

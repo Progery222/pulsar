@@ -46,7 +46,8 @@ export interface ProClip {
   linkId?: string; // связка видео+аудио одного источника (двигаются вместе)
   speed?: number; // скорость воспроизведения (1 = норма, 2 = вдвое быстрее)
   keyframes?: Keyframes; // анимация Transform: отдельная дорожка ключей на параметр
-  transition?: { duration: number; kind?: TransitionKind; align?: TransitionAlign }; // переход у стыка с предыдущим клипом (§5 ТЗ)
+  transition?: { duration: number; kind?: TransitionKind; align?: TransitionAlign }; // переход/появление у левого края (§5 ТЗ)
+  tailFade?: number; // уход в чёрный у правого края клипа (сек), если нет смежного справа
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа
   color?: ClipColor; // цветокоррекция видео-клипа

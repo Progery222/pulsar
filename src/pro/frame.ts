@@ -22,7 +22,16 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
     // Обычные активные клипы.
     for (const c of doc.clips) {
       if (c.trackId === t.id && !c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration) {
-        map.set(c.id, { clip: c, sourceTime: c.inPoint + (ph - c.timelineStart) * (c.speed || 1), alpha: 1, xf: transformAt(c, ph - c.timelineStart) });
+        let alpha = 1;
+        // Уход в чёрный у правого края (если справа нет смежного — иначе там кроссфейд).
+        if (c.tailFade && c.tailFade > 0) {
+          const nextAdj = doc.clips.some((o) => o.trackId === t.id && !o.text && o.id !== c.id && Math.abs(o.timelineStart - (c.timelineStart + c.duration)) < 0.06);
+          if (!nextAdj) {
+            const rem = c.timelineStart + c.duration - ph;
+            if (rem < c.tailFade) alpha = Math.max(0, rem / c.tailFade);
+          }
+        }
+        map.set(c.id, { clip: c, sourceTime: c.inPoint + (ph - c.timelineStart) * (c.speed || 1), alpha, xf: transformAt(c, ph - c.timelineStart) });
       }
     }
     // Переход центрирован на стыке [start-d/2, start+d/2] — нахлёст в обе стороны.

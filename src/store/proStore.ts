@@ -66,6 +66,8 @@ export interface ProState {
   // Раскладка панелей (resizable, Фаза 1).
   leftWidth: number;
   timelineHeight: number;
+  trackScale: number; // множитель высоты дорожек на таймлайне
+  setTrackScale: (v: number) => void;
 
   // Текущий проект (§6 ТЗ).
   projectId: string | null;
@@ -122,6 +124,7 @@ export interface ProState {
   setClipTransition: (id: string, duration: number | null) => void;
   setTransitionKind: (id: string, kind: import('../pro/proTypes').TransitionKind) => void;
   setTransitionAlign: (id: string, align: import('../pro/proTypes').TransitionAlign) => void;
+  setClipTailFade: (id: string, dur: number | null) => void;
   setAutoCutMood: (mood: Mood) => void;
   setExportIn: (t: number | null) => void;
   setExportOut: (t: number | null) => void;
@@ -200,6 +203,11 @@ export const useProStore = create<ProState>()(
 
     leftWidth: 300,
     timelineHeight: 300,
+    trackScale: 1,
+    setTrackScale: (v) =>
+      set((s) => {
+        s.trackScale = Math.min(2.5, Math.max(0.6, v));
+      }),
 
     projectId: null,
     projectName: 'Проект',
@@ -584,6 +592,13 @@ export const useProStore = create<ProState>()(
       set((s) => {
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (c?.transition) c.transition.align = align;
+      }),
+    setClipTailFade: (id, dur) =>
+      set((s) => {
+        const c = s.doc.clips.find((cl) => cl.id === id);
+        if (!c) return;
+        if (dur === null || dur <= 0) delete c.tailFade;
+        else c.tailFade = Math.min(Math.max(0.1, dur), Math.min(c.duration, 5));
       }),
     setTransitionKind: (id, kind) =>
       set((s) => {
