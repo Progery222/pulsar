@@ -507,7 +507,7 @@ async function uniqueize(src: string, out: string): Promise<{ ok: true } | { err
     gridSize: { enabled: false, size: 32 },
   };
   const text: VubText = { spintax: '', font: '', size: 24, color: '#FFFFFF', position: 'bottom' };
-  const { sampleRate } = await probe(src);
+  const { sampleRate, hasAudio } = await probe(src);
   // nativeExport=true (метаданные телефона), hard.drift=true (непрерывный дрейф кадра).
   const plan = buildVubPlan(params, effects, text, true, 0, 1, true, sampleRate, {
     drift: true,
@@ -519,14 +519,22 @@ async function uniqueize(src: string, out: string): Promise<{ ok: true } | { err
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 21 + Math.floor(Math.random() * 4) });
   const cmd = ffmpeg(src).addInputOption('-nostdin');
   if (plan.videoFilters.length) cmd.videoFilters(plan.videoFilters.join(','));
-  if (plan.audioFilters.length) cmd.audioFilters(plan.audioFilters.join(','));
+  // Аудио: если в исходнике есть звук — гарантированно перекодируем в aac (иначе поток
+  // периодически терялся, и после хука тело оказывалось немым). Нет звука — явный -an.
+  if (hasAudio) {
+    if (plan.audioFilters.length) cmd.audioFilters(plan.audioFilters.join(','));
+    cmd.outputOptions('-c:a', 'aac', '-b:a', '192k');
+  } else {
+    cmd.outputOptions('-an');
+  }
   cmd.outputOptions('-map_metadata', '-1');
   for (const [k, v] of Object.entries(plan.metadata)) cmd.outputOptions('-metadata', `${k}=${v}`);
   // +use_metadata_tags — чтобы теги телефона (com.apple.*, com.android.*) записались.
   cmd.outputOptions(venc).outputOptions('-movflags', '+faststart+use_metadata_tags');
   const res = await runCmd(cmd, out);
-  // Меняем хэш файла валидным free-атомом (не ломает контейнер -> TikTok декодирует).
-  if ('ok' in res) {
+  // Меняем хэш валидным free-атомом. НЕ дописываем, если дальше будет хук: его перекодировка
+  // всё равно стирает атом, а лишний trailing-бокс путал ffprobe (тело помечалось как немое).
+  if ('ok' in res && !funnelHooks.length) {
     try {
       await appendFreeAtom(out);
     } catch {
