@@ -439,6 +439,32 @@ export default function ProEditorRoot() {
   );
 }
 
+// Пресеты рабочих пространств (как workspaces в Premiere): задают ширину панели и высоту таймлайна.
+const WORKSPACES: { id: string; label: string; left: number; timeline: number }[] = [
+  { id: 'edit', label: 'Монтаж', left: 300, timeline: 320 },
+  { id: 'view', label: 'Просмотр', left: 240, timeline: 190 },
+  { id: 'text', label: 'Титры', left: 480, timeline: 240 },
+  { id: 'timeline', label: 'Таймлайн', left: 260, timeline: 560 },
+];
+function WorkspacePresets() {
+  const setLeftWidth = useProStore((s) => s.setLeftWidth);
+  const setTimelineHeight = useProStore((s) => s.setTimelineHeight);
+  return (
+    <select
+      onChange={(e) => {
+        const w = WORKSPACES.find((x) => x.id === e.target.value);
+        if (w) { setLeftWidth(w.left); setTimelineHeight(w.timeline); }
+      }}
+      defaultValue=""
+      title="Раскладка окон"
+      style={{ padding: '5px 8px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 7, color: 'var(--text-primary)', cursor: 'pointer' }}
+    >
+      <option value="" disabled>Раскладка…</option>
+      {WORKSPACES.map((w) => <option key={w.id} value={w.id}>{w.label}</option>)}
+    </select>
+  );
+}
+
 function ProToolbar() {
   const snapping = useProStore((s) => s.snapping);
   const toggleSnapping = useProStore((s) => s.toggleSnapping);
@@ -498,7 +524,8 @@ function ProToolbar() {
       <ToolBtn onClick={onSubtitles} title="Авто-титры: распознать речь и разложить субтитры (offline Whisper)">
         {subbing ? 'Распознаю…' : '＋Авто-титры'}
       </ToolBtn>
-      <div style={{ marginLeft: 'auto' }}>
+      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <WorkspacePresets />
         <ToolBtn active={snapping} onClick={toggleSnapping} title="Прилипание (N)">
           Snap
         </ToolBtn>
