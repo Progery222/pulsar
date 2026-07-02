@@ -633,14 +633,26 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     const ph = st.playhead;
     const canSplit = ph > c.timelineStart && ph < c.timelineStart + c.duration;
     const isVideo = track.kind === 'video' && !track.isAdjustment;
+    // Соседние клипы одного рода по обе стороны (с допуском на микро-зазор) — кроссфейд на видео/аудио/тексте.
+    const NEAR = 0.12;
+    const canX = !track.isAdjustment;
+    const kin = (o: (typeof clips)[number]) => !!o.text === !!c.text; // текст↔текст, видео↔видео (аудио — свой трек)
+    const leftAdj = canX ? clips.filter((o) => o.id !== c.id && kin(o) && o.timelineStart < c.timelineStart && o.timelineStart + o.duration <= c.timelineStart + NEAR).sort((a, b) => b.timelineStart + b.duration - (a.timelineStart + a.duration))[0] : undefined;
+    const rightAdj = canX ? clips.filter((o) => o.id !== c.id && kin(o) && o.timelineStart > c.timelineStart && o.timelineStart >= c.timelineStart + c.duration - NEAR).sort((a, b) => a.timelineStart - b.timelineStart)[0] : undefined;
+    // Добавить кроссфейд: подтягиваем правый клип вплотную к левому и ставим переход на правом.
+    const addXfade = (rightClip: (typeof clips)[number], leftClip: (typeof clips)[number]) => {
+      st.pushHistory();
+      const flush = leftClip.timelineStart + leftClip.duration;
+      if (Math.abs(rightClip.timelineStart - flush) > 0.001) st.moveClip(rightClip.id, rightClip.trackId, flush);
+      st.setClipTransition(rightClip.id, 0.5);
+    };
     openMenu(e.clientX, e.clientY, [
       ...(canSplit ? [{ label: 'Разрезать по плейхеду (Ctrl+K)', onClick: () => { st.pushHistory(); st.splitClipAt(c.id, ph); } }] : []),
       ...(clips.some((o) => o.sourceFile === c.sourceFile && o.id !== c.id && Math.abs(o.timelineStart - (c.timelineStart + c.duration)) < 0.05)
         ? [{ label: 'Склеить со следующим', onClick: () => { st.pushHistory(); st.mergeWithNext(c.id); } }]
         : []),
-      ...(!c.transition && isVideo && clips.some((o) => o.id !== c.id && o.trackId === c.trackId && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.05)
-        ? [{ label: '⇄ Добавить кросс-дизолв', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, 0.5); } }]
-        : []),
+      ...(leftAdj && !c.transition ? [{ label: '⇄ Кросс-фейд (слева)', onClick: () => addXfade(c, leftAdj) }] : []),
+      ...(rightAdj && !rightAdj.transition ? [{ label: '⇄ Кросс-фейд (справа)', onClick: () => addXfade(rightAdj, c) }] : []),
       ...(c.transition ? [{ label: 'Убрать переход', onClick: () => { st.pushHistory(); st.setClipTransition(c.id, null); } }] : []),
       ...(c.linkId ? [{ label: 'Разделить видео/аудио', onClick: () => { st.pushHistory(); st.unlinkClip(c.id); } }] : []),
       { label: 'Копировать (Ctrl+C)', onClick: () => st.copyClips(ids) },

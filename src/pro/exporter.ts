@@ -1,10 +1,10 @@
 import { Compositor, VideoPool } from './compositor';
 import { buildFrame, activeAdjustments, activeTexts } from './frame';
 import { useProStore } from '../store/proStore';
-import { DEFAULT_AUDIO, DEFAULT_TEXT, fontCss, textOpacityAt, type ProClip, type ProDocument } from './proTypes';
+import { DEFAULT_AUDIO, DEFAULT_TEXT, findPrevAdjacent, fontCss, textOpacityAt, type ProClip, type ProDocument } from './proTypes';
 
-function drawTexts(ctx: CanvasRenderingContext2D, doc: ProDocument, texts: ProClip[], ph: number) {
-  for (const c of texts) {
+function drawTexts(ctx: CanvasRenderingContext2D, doc: ProDocument, texts: { clip: ProClip; alpha: number }[], ph: number) {
+  for (const { clip: c, alpha } of texts) {
     const tt = { ...DEFAULT_TEXT, ...c.text };
     const fs = (doc.height * tt.size) / 100;
     const lh = (tt.lineHeight ?? 1.15) * fs;
@@ -13,7 +13,7 @@ function drawTexts(ctx: CanvasRenderingContext2D, doc: ProDocument, texts: ProCl
     ctx.textBaseline = 'middle';
     ctx.font = `${tt.italic ? 'italic ' : ''}${tt.bold ? 800 : 400} ${fs}px ${fontCss(tt.font)}`;
     (ctx as unknown as { letterSpacing: string }).letterSpacing = `${((tt.letterSpacing ?? 0) * doc.height) / 100}px`;
-    ctx.globalAlpha = textOpacityAt(tt, ph - c.timelineStart, c.duration);
+    ctx.globalAlpha = textOpacityAt(tt, ph - c.timelineStart, c.duration) * alpha;
     const x = tt.x * doc.width;
     const y = tt.y * doc.height;
     const lines = tt.content.split('\n');
@@ -159,7 +159,13 @@ export async function runProExport(doc: ProDocument, onProgress: Progress, setti
       if (e0 <= s0) continue;
       const a = { ...DEFAULT_AUDIO, ...c.audio };
       const sp = c.speed || 1;
-      audio.push({ path: c.sourceFile, inPoint: c.inPoint + (s0 - c.timelineStart) * sp, duration: e0 - s0, delayMs: (s0 - startT) * 1000, volumeDb: a.volumeDb, pitch: a.pitch, fadeIn: a.fadeIn, fadeOut: a.fadeOut, speed: sp });
+      // Аудио-crossfade на резе: свой переход -> fade in; переход у следующего смежного клипа -> fade out.
+      let fadeIn = a.fadeIn;
+      let fadeOut = a.fadeOut;
+      if (c.transition && findPrevAdjacent(doc.clips, c)) fadeIn = Math.max(fadeIn, c.transition.duration);
+      const nextB = doc.clips.find((b) => b.trackId === c.trackId && b.transition && findPrevAdjacent(doc.clips, b)?.id === c.id);
+      if (nextB) fadeOut = Math.max(fadeOut, nextB.transition!.duration);
+      audio.push({ path: c.sourceFile, inPoint: c.inPoint + (s0 - c.timelineStart) * sp, duration: e0 - s0, delayMs: (s0 - startT) * 1000, volumeDb: a.volumeDb, pitch: a.pitch, fadeIn, fadeOut, speed: sp });
     }
 
     onProgress('encode', total, total);

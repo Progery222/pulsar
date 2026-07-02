@@ -5,7 +5,7 @@ import { activeTexts, buildFrame } from './frame';
 import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { colorToCss, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, fontCss, textOpacityAt, transformAt, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, crossfadeAlpha, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, fontCss, textOpacityAt, transformAt, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -232,7 +232,12 @@ export default function Viewer() {
       curAudioSrc.current = clip.sourceFile;
       el.src = mediaUrl(clip.sourceFile);
     }
-    el.volume = Math.min(1, Math.pow(10, (clip.audio?.volumeDb ?? 0) / 20));
+    // Кроссфейд на резе: свой переход -> нарастание; переход у следующего смежного -> затухание (превью, приближённо).
+    let xf = 1;
+    if (clip.transition && findPrevAdjacent(d.clips, clip)) { const cf = crossfadeAlpha(clip, ph); if (cf) xf = Math.min(xf, cf.inA); }
+    const nextB = d.clips.find((b) => b.trackId === clip.trackId && b.transition && findPrevAdjacent(d.clips, b)?.id === clip.id);
+    if (nextB) { const cf = crossfadeAlpha(nextB, ph); if (cf) xf = Math.min(xf, cf.outA); }
+    el.volume = Math.min(1, Math.pow(10, (clip.audio?.volumeDb ?? 0) / 20)) * xf;
     el.playbackRate = Math.min(16, Math.max(0.0625, clip.speed || 1));
     const srcTime = Math.max(0, clip.inPoint + (ph - clip.timelineStart) * (clip.speed || 1));
     if (playing) {
@@ -328,12 +333,12 @@ export default function Viewer() {
           {viewerMode === 'none' && selClip && (
             <div onPointerDown={onFrameDrag} title="Тяни — двигать кадр (Position)" style={{ position: 'absolute', inset: 0, cursor: 'move', zIndex: 1 }} />
           )}
-          {activeTexts(doc, playhead).map((c) => {
+          {activeTexts(doc, playhead).map(({ clip: c, alpha }) => {
             const tt = { ...DEFAULT_TEXT, ...c.text };
             const fs = (dispH * tt.size) / 100;
             const ow = ((tt.outline ?? 0) * dispH) / 100;
             const align = tt.align ?? 'center';
-            const opacity = textOpacityAt(tt, playhead - c.timelineStart, c.duration);
+            const opacity = textOpacityAt(tt, playhead - c.timelineStart, c.duration) * alpha;
             const shadow = tt.shadow ? '0 2px 6px rgba(0,0,0,0.75)' : undefined;
             const outline = ow > 0 ? Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2; return `${Math.cos(a) * ow}px ${Math.sin(a) * ow}px 0 ${tt.outlineColor}`; }).join(',') : undefined;
             const textShadow = [outline, shadow].filter(Boolean).join(',') || undefined;

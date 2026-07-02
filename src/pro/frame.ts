@@ -1,4 +1,4 @@
-import { ADJUST_CODE, findPrevAdjacent, transformAt, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
+import { ADJUST_CODE, crossfadeAlpha, findPrevAdjacent, transformAt, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
 
 // Сборка кадра под плейхедом — общая для Viewer (превью) и экспорта.
 
@@ -30,17 +30,9 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
       if (B.trackId !== t.id || B.text || !B.transition) continue;
       const A = findPrevAdjacent(doc.clips, B);
       if (!A) continue; // нет смежного слева — переход не применяется (не «вылазит» в пустоту)
-      const d = B.transition.duration;
-      const align = B.transition.align || 'center';
-      // Окно перехода относительно реза (B.timelineStart) по выравниванию.
-      const s = align === 'left' ? B.timelineStart : align === 'right' ? B.timelineStart - d : B.timelineStart - d / 2;
-      const e = s + d;
-      if (ph < s || ph >= e) continue;
-      const f = Math.max(0, Math.min(1, (ph - s) / d));
-      const kind = B.transition.kind || 'dissolve';
-      // Через чёрный: сначала уходящий гаснет в чёрный, затем входящий проявляется.
-      const inA = kind === 'fadeblack' ? Math.max(0, 2 * f - 1) : f;
-      const outA = kind === 'fadeblack' ? Math.max(0, 1 - 2 * f) : 1 - f;
+      const cf = crossfadeAlpha(B, ph);
+      if (!cf) continue;
+      const { inA, outA } = cf;
       const bSpeed = B.speed || 1;
       // Входящий проигрывается непрерывно, с пред-роллом до реза (не «замороженный» первый кадр).
       const bTime = Math.max(0, B.inPoint + (ph - B.timelineStart) * bSpeed);
@@ -58,13 +50,32 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
   return out;
 }
 
-// Активные текстовые клипы под плейхедом (снизу вверх), для оверлея и экспорта.
-export function activeTexts(doc: ProDocument, ph: number): ProClip[] {
+// Активные текстовые клипы под плейхедом с альфой (учёт crossfade между смежными титрами).
+export interface TextItem {
+  clip: ProClip;
+  alpha: number;
+}
+export function activeTexts(doc: ProDocument, ph: number): TextItem[] {
   const videoTracks = doc.tracks.filter((t) => t.kind === 'video' && !t.isAdjustment && !t.hidden);
-  const out: ProClip[] = [];
+  const out: TextItem[] = [];
   for (const t of [...videoTracks].reverse()) {
+    const map = new Map<string, number>();
     for (const c of doc.clips) {
-      if (c.trackId === t.id && c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration) out.push(c);
+      if (c.trackId === t.id && c.text && ph >= c.timelineStart && ph < c.timelineStart + c.duration) map.set(c.id, 1);
+    }
+    // Переход между смежными титрами: входящий проявляется, уходящий гаснет.
+    for (const B of doc.clips) {
+      if (B.trackId !== t.id || !B.text || !B.transition) continue;
+      const A = findPrevAdjacent(doc.clips, B);
+      if (!A) continue;
+      const cf = crossfadeAlpha(B, ph);
+      if (!cf) continue;
+      map.set(B.id, cf.inA);
+      map.set(A.id, cf.outA);
+    }
+    for (const [id, alpha] of map) {
+      const clip = doc.clips.find((c) => c.id === id);
+      if (clip && alpha > 0.001) out.push({ clip, alpha });
     }
   }
   return out;

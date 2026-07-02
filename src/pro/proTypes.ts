@@ -293,12 +293,32 @@ export function transformAt(clip: ProClip, localSec: number): ClipTransform {
   return { x: g(kf.x, base.x), y: g(kf.y, base.y), scale: g(kf.scale, base.scale), rotation: g(kf.rotation, base.rotation) };
 }
 
-// Предыдущий клип, вплотную примыкающий слева к данному (для crossfade).
+// Предыдущий клип, вплотную примыкающий слева к данному (для crossfade). Пары одного рода (текст↔текст, видео↔видео).
 export function findPrevAdjacent(clips: ProClip[], clip: ProClip): ProClip | null {
   const cands = clips
-    .filter((c) => c.trackId === clip.trackId && c.id !== clip.id && Math.abs(c.timelineStart + c.duration - clip.timelineStart) < 0.02)
+    .filter((c) => c.trackId === clip.trackId && c.id !== clip.id && !!c.text === !!clip.text && Math.abs(c.timelineStart + c.duration - clip.timelineStart) < 0.06)
     .sort((a, b) => b.timelineStart - a.timelineStart);
   return cands[0] ?? null;
+}
+
+// Окно перехода на резе (относительно B.timelineStart) с учётом выравнивания.
+export function transitionSpan(B: ProClip): { d: number; s: number; e: number } | null {
+  if (!B.transition) return null;
+  const d = B.transition.duration;
+  const align = B.transition.align || 'center';
+  const s = align === 'left' ? B.timelineStart : align === 'right' ? B.timelineStart - d : B.timelineStart - d / 2;
+  return { d, s, e: s + d };
+}
+
+// Альфы входящего/уходящего слоёв в момент ph внутри окна перехода (null — вне окна).
+export function crossfadeAlpha(B: ProClip, ph: number): { inA: number; outA: number; f: number } | null {
+  const sp = transitionSpan(B);
+  if (!sp || ph < sp.s || ph >= sp.e) return null;
+  const f = Math.max(0, Math.min(1, (ph - sp.s) / sp.d));
+  const kind = B.transition!.kind || 'dissolve';
+  const inA = kind === 'fadeblack' ? Math.max(0, 2 * f - 1) : f;
+  const outA = kind === 'fadeblack' ? Math.max(0, 1 - 2 * f) : 1 - f;
+  return { inA, outA, f };
 }
 
 // Пустой документ по умолчанию: 2 видео + 2 аудио дорожки, 30 fps.
