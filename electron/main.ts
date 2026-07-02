@@ -126,8 +126,12 @@ app.whenReady().then(() => {
 
       if (rangeHeader) {
         const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-        const start = match ? parseInt(match[1], 10) : 0;
-        const end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+        let start = match ? parseInt(match[1], 10) : 0;
+        let end = match && match[2] ? parseInt(match[2], 10) : total - 1;
+        // Клампим кривой/великоватый Range, иначе неверный Content-Length.
+        if (!Number.isFinite(start) || start < 0) start = 0;
+        if (!Number.isFinite(end) || end >= total) end = total - 1;
+        if (end < start) end = start;
         const stream = fs.createReadStream(filePath, { start, end });
         return new Response(Readable.toWeb(stream) as ReadableStream, {
           status: 206,

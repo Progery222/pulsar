@@ -9,8 +9,18 @@ function probeMeta(path: string, kind: 'video' | 'audio'): Promise<{ duration: n
   return new Promise((resolve) => {
     const el = document.createElement(kind === 'audio' ? 'audio' : 'video') as HTMLVideoElement;
     el.preload = 'metadata';
-    el.onloadedmetadata = () => resolve({ duration: el.duration || 0, width: el.videoWidth || 0, height: el.videoHeight || 0 });
-    el.onerror = () => resolve({ duration: 0, width: 0, height: 0 });
+    let done = false;
+    const finish = (r: { duration: number; width: number; height: number }) => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      el.removeAttribute('src');
+      el.load();
+      resolve(r);
+    };
+    el.onloadedmetadata = () => finish({ duration: el.duration || 0, width: el.videoWidth || 0, height: el.videoHeight || 0 });
+    el.onerror = () => finish({ duration: 0, width: 0, height: 0 });
+    const timer = setTimeout(() => finish({ duration: 0, width: 0, height: 0 }), 8000); // не зависаем на битом файле
     el.src = mediaUrl(path);
   });
 }

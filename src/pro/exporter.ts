@@ -58,15 +58,17 @@ function seekTo(v: HTMLVideoElement, t: number): Promise<void> {
   return new Promise((resolve) => {
     if (Math.abs(v.currentTime - t) < 0.001 && v.readyState >= 2) return resolve();
     let done = false;
+    let timer: ReturnType<typeof setTimeout>;
     const on = () => {
       if (done) return;
       done = true;
+      clearTimeout(timer);
       v.removeEventListener('seeked', on);
       resolve();
     };
     v.addEventListener('seeked', on);
     v.currentTime = t;
-    setTimeout(on, 1500); // защита от зависшего seek
+    timer = setTimeout(on, 1500); // защита от зависшего seek
   });
 }
 

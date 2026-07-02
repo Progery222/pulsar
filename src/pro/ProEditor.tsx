@@ -121,8 +121,9 @@ function ProEditor() {
   // Хоткеи Pro-режима (§3.2 ТЗ): zoom +/-, snapping N, play Space.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      const el = e.target as HTMLElement;
+      const tag = el?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || el?.isContentEditable) return;
       const st = useProStore.getState();
       const code = e.code; // независимо от раскладки клавиатуры (кириллица и т.п.)
       // Комбинации с Ctrl/Cmd.
@@ -148,15 +149,17 @@ function ProEditor() {
         }
         return;
       }
-      // Без модификаторов.
-      if (code === 'Equal' || code === 'NumpadAdd') { e.preventDefault(); zoomAtPlayhead(st.pxPerSec * 1.3); }
-      else if (code === 'Minus' || code === 'NumpadSubtract') { e.preventDefault(); zoomAtPlayhead(st.pxPerSec / 1.3); }
-      else if (code === 'KeyN') st.toggleSnapping();
+      if (e.altKey) return; // Alt-комбинации не трогаем
+      // Без модификаторов (буквенные шорткаты — только без Shift, чтобы Shift+буква не переключала инструмент).
+      const plain = !e.shiftKey;
+      if (plain && (code === 'Equal' || code === 'NumpadAdd')) { e.preventDefault(); zoomAtPlayhead(st.pxPerSec * 1.3); }
+      else if (plain && (code === 'Minus' || code === 'NumpadSubtract')) { e.preventDefault(); zoomAtPlayhead(st.pxPerSec / 1.3); }
+      else if (plain && code === 'KeyN') st.toggleSnapping();
       else if (e.shiftKey && code === 'Slash') setShowHelp((v) => !v);
-      else if (code === 'KeyC' || code === 'KeyB') st.setTool('blade');
-      else if (code === 'KeyV') st.setTool('select');
-      else if (code === 'KeyI') st.setExportIn(st.playhead);
-      else if (code === 'KeyO') st.setExportOut(st.playhead);
+      else if (plain && (code === 'KeyC' || code === 'KeyB')) st.setTool('blade');
+      else if (plain && code === 'KeyV') st.setTool('select');
+      else if (plain && code === 'KeyI') st.setExportIn(st.playhead);
+      else if (plain && code === 'KeyO') st.setExportOut(st.playhead);
       else if (e.key === 'Delete' || e.key === 'Backspace') {
         e.preventDefault();
         if (!st.selectedClipIds.length) return;

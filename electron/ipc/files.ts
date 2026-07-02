@@ -123,9 +123,15 @@ export function registerFileHandlers() {
     }
     const SR = 8000;
     const chunks: Buffer[] = [];
+    let bytes = 0;
+    const CAP = SR * 2 * 3600; // ≤1 час PCM — защита от OOM на аномально длинных файлах
     await new Promise<void>((resolve) => {
       const ch = spawn(ffmpegBin, ['-i', src, '-ac', '1', '-ar', String(SR), '-f', 's16le', '-'], { windowsHide: true });
-      ch.stdout.on('data', (d: Buffer) => chunks.push(d));
+      ch.stdout.on('data', (d: Buffer) => {
+        chunks.push(d);
+        bytes += d.length;
+        if (bytes >= CAP) ch.kill();
+      });
       ch.on('close', () => resolve());
       ch.on('error', () => resolve());
     });
@@ -159,9 +165,15 @@ export function registerFileHandlers() {
     if (!ffmpegBin || !src) return null;
     const SR = 22050;
     const chunks: Buffer[] = [];
+    let bytes = 0;
+    const CAP = SR * 2 * 3600; // ≤1 час PCM — защита от OOM
     await new Promise<void>((resolve) => {
       const ch = spawn(ffmpegBin, ['-i', src, '-ac', '1', '-ar', String(SR), '-f', 's16le', '-'], { windowsHide: true });
-      ch.stdout.on('data', (d: Buffer) => chunks.push(d));
+      ch.stdout.on('data', (d: Buffer) => {
+        chunks.push(d);
+        bytes += d.length;
+        if (bytes >= CAP) ch.kill();
+      });
       ch.on('close', () => resolve());
       ch.on('error', () => resolve());
     });

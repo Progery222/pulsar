@@ -13,6 +13,7 @@ import {
   type Kf,
   type KfEase,
   type KfParam,
+  type Keyframes,
   type ClipCrop,
   type ClipTransform,
   type Mood,
@@ -143,6 +144,30 @@ export interface ProState {
 }
 
 const MIN_DUR = 0.05; // минимальная длина клипа (сек)
+
+// Глубокая копия дорожек ключей (иначе split/copy/duplicate делят один объект по ссылке).
+function cloneKeyframes(kf?: Keyframes): Keyframes | undefined {
+  if (!kf || Array.isArray(kf)) return undefined;
+  const out: Keyframes = {};
+  for (const p of ['x', 'y', 'scale', 'rotation'] as KfParam[]) if (kf[p]?.length) out[p] = kf[p]!.map((k) => ({ ...k }));
+  return Object.keys(out).length ? out : undefined;
+}
+
+// Глубокая копия клипа (вложенные объекты — новыми ссылками).
+function cloneClip(c: ProClip): ProClip {
+  return {
+    ...c,
+    transform: c.transform ? { ...c.transform } : undefined,
+    crop: c.crop ? { ...c.crop } : undefined,
+    audio: c.audio ? { ...c.audio } : undefined,
+    color: c.color ? { ...c.color } : undefined,
+    text: c.text ? { ...c.text } : undefined,
+    adjust: c.adjust ? { ...c.adjust } : undefined,
+    transition: c.transition ? { ...c.transition } : undefined,
+    effects: c.effects ? c.effects.map((e) => ({ ...e })) : undefined,
+    keyframes: cloneKeyframes(c.keyframes),
+  };
+}
 
 function upsertKf(arr: Kf[], t: number, v: number) {
   const i = arr.findIndex((k) => Math.abs(k.t - t) < 0.03);
@@ -407,8 +432,15 @@ export const useProStore = create<ProState>()(
         const c = s.doc.clips.find((cl) => cl.id === id);
         if (!c) return;
         c.timelineStart = Math.max(0, patch.timelineStart);
-        c.inPoint = Math.max(0, patch.inPoint);
-        c.duration = Math.max(MIN_DUR, patch.duration);
+        let inPoint = Math.max(0, patch.inPoint);
+        let duration = Math.max(MIN_DUR, patch.duration);
+        // Не выходим за длину источника.
+        if (c.sourceDuration != null) {
+          inPoint = Math.min(inPoint, Math.max(0, c.sourceDuration - MIN_DUR));
+          duration = Math.min(duration, c.sourceDuration - inPoint);
+        }
+        c.inPoint = inPoint;
+        c.duration = Math.max(MIN_DUR, duration);
       }),
 
     splitClipAt: (id, atTime) =>
@@ -421,16 +453,32 @@ export const useProStore = create<ProState>()(
         const rightId = nextClipId();
         const rightEffects = (c.effects ?? []).filter((ef) => ef.offset >= offset).map((ef) => ({ ...ef, offset: ef.offset - offset }));
         const leftEffects = (c.effects ?? []).filter((ef) => ef.offset < offset);
+        // Ключи: правой половине — со сдвигом времени на -offset; левой — только до реза.
+        const kf = Array.isArray(c.keyframes) ? undefined : c.keyframes;
+        const splitKf = (side: 'l' | 'r'): Keyframes | undefined => {
+          if (!kf) return undefined;
+          const out: Keyframes = {};
+          for (const p of ['x', 'y', 'scale', 'rotation'] as KfParam[]) {
+            const arr = kf[p];
+            if (!arr?.length) continue;
+            const part = side === 'l' ? arr.filter((k) => k.t <= offset + 1e-4).map((k) => ({ ...k })) : arr.filter((k) => k.t >= offset - 1e-4).map((k) => ({ ...k, t: k.t - offset }));
+            if (part.length) out[p] = part;
+          }
+          return Object.keys(out).length ? out : undefined;
+        };
         const right: ProClip = {
-          ...c,
+          ...cloneClip(c),
           id: rightId,
           timelineStart: atTime,
           inPoint: c.inPoint + offset,
           duration: c.duration - offset,
           effects: rightEffects.length ? rightEffects : undefined,
+          transition: undefined, // переход относится к стыку левой половины
+          keyframes: splitKf('r'),
         };
         c.duration = offset;
         c.effects = leftEffects.length ? leftEffects : undefined;
+        c.keyframes = splitKf('l');
         s.doc.clips.push(right);
       }),
 
@@ -473,7 +521,7 @@ export const useProStore = create<ProState>()(
 
     copyClips: (ids) =>
       set((s) => {
-        s.clipboard = s.doc.clips.filter((c) => ids.includes(c.id)).map((c) => ({ ...c }));
+        s.clipboard = s.doc.clips.filter((c) => ids.includes(c.id)).map((c) => cloneClip(c));
       }),
     pasteClips: (atTime) =>
       set((s) => {
@@ -483,7 +531,7 @@ export const useProStore = create<ProState>()(
         for (const c of s.clipboard) {
           if (!s.doc.tracks.some((t) => t.id === c.trackId)) continue; // дорожки нет — пропускаем
           const id = nextClipId();
-          s.doc.clips.push({ ...c, id, locked: false, timelineStart: Math.max(0, atTime + (c.timelineStart - minStart)) });
+          s.doc.clips.push({ ...cloneClip(c), id, locked: false, timelineStart: Math.max(0, atTime + (c.timelineStart - minStart)) });
           newIds.push(id);
         }
         s.selectedClipIds = newIds;
@@ -498,7 +546,7 @@ export const useProStore = create<ProState>()(
         const newIds: string[] = [];
         for (const c of sel) {
           const id = nextClipId();
-          s.doc.clips.push({ ...c, id, locked: false, timelineStart: c.timelineStart + offset });
+          s.doc.clips.push({ ...cloneClip(c), id, locked: false, timelineStart: c.timelineStart + offset });
           newIds.push(id);
         }
         s.selectedClipIds = newIds;
