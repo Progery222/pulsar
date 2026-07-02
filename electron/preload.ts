@@ -16,6 +16,9 @@ const electronAPI = {
   ): Promise<{ entries: { name: string; path: string; isDir: boolean }[]; parent: string | null; home: string; error?: string }> =>
     ipcRenderer.invoke('fs:listDir', dir),
 
+  // Список системных шрифтов (семейства).
+  listFonts: (): Promise<string[]> => ipcRenderer.invoke('fonts:list'),
+
   // Анализ аудио (beat detection через Python) — §9.1.
   analyzeAudio: (audioPath: string): Promise<BeatData | { error: string }> =>
     ipcRenderer.invoke('analyze-audio', audioPath),

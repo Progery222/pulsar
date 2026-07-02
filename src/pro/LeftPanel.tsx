@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, KF_EASE_LABEL, KF_EASES, KF_PARAM_LABEL, KF_PARAMS, LOOK_PRESETS, TEXT_FONTS, TEXT_PRESETS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type ClipText, type KfEase, type KfParam, type ProClip, type TransitionKind } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, KF_EASE_LABEL, KF_EASES, KF_PARAM_LABEL, KF_PARAMS, LOOK_PRESETS, TEXT_FONTS, TEXT_PRESETS, TRANSITION_ALIGN_LABEL, TRANSITION_ALIGNS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type KfEase, type KfParam, type ProClip, type TransitionAlign, type TransitionKind } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -232,6 +232,7 @@ function InspectorTab() {
   const updateText = useProStore((s) => s.updateClipText);
   const setBlend = useProStore((s) => s.setClipBlend);
   const setTransitionKind = useProStore((s) => s.setTransitionKind);
+  const setTransAlign = useProStore((s) => s.setTransitionAlign);
   const setSpeed = useProStore((s) => s.setClipSpeed);
   const addKeyframe = useProStore((s) => s.addKeyframe);
   const removeKeyframe = useProStore((s) => s.removeKeyframe);
@@ -241,6 +242,7 @@ function InspectorTab() {
   const playhead = useProStore((s) => s.playhead);
   const setPlayhead = useProStore((s) => s.setPlayhead);
   const push = useProStore((s) => s.pushHistory);
+  const sysFonts = useSystemFonts();
 
   if (!clip) return <Empty text="Выделите клип на таймлайне, чтобы редактировать его параметры." />;
 
@@ -281,6 +283,7 @@ function InspectorTab() {
             <>
               <Row><NumField label="Длина, с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTr(v > 0 ? v : null)} /></Row>
               {clip.transition && <TransKindSelect id={id} value={clip.transition.kind ?? 'dissolve'} onPick={(k) => { push(); setTransitionKind(id, k); }} />}
+              {clip.transition && <TransAlignSelect value={clip.transition.align ?? 'center'} onPick={(a) => { push(); setTransAlign(id, a); }} />}
             </>
           ) : (
             <div style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>Нужен смежный клип слева.</div>
@@ -342,8 +345,15 @@ function InspectorTab() {
         <Section title="Шрифт">
           <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, fontSize: 12.5, color: 'var(--text-secondary)' }}>
             <span>Гарнитура</span>
-            <select value={tt.font} onChange={(e) => txt({ font: e.target.value as ClipText['font'] })} style={{ flex: 1, maxWidth: 150, padding: '4px 6px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}>
-              {TEXT_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+            <select value={tt.font} onChange={(e) => txt({ font: e.target.value })} style={{ flex: 1, maxWidth: 160, padding: '4px 6px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 6, color: 'var(--text-primary)' }}>
+              <optgroup label="Встроенные">
+                {TEXT_FONTS.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
+              </optgroup>
+              {sysFonts.length > 0 && (
+                <optgroup label="Системные">
+                  {sysFonts.map((f) => <option key={f} value={f}>{f}</option>)}
+                </optgroup>
+              )}
             </select>
           </label>
           <div style={{ display: 'flex', gap: 5 }}>
@@ -474,6 +484,7 @@ function InspectorTab() {
       </Section>
       <Section title="Переход">
         {findPrevAdjacent(clips, clip) && clip.transition && <TransKindSelect id={id} value={clip.transition.kind ?? 'dissolve'} onPick={(k) => { push(); setTransitionKind(id, k); }} />}
+        {findPrevAdjacent(clips, clip) && clip.transition && <TransAlignSelect value={clip.transition.align ?? 'center'} onPick={(a) => { push(); setTransAlign(id, a); }} />}
         {findPrevAdjacent(clips, clip) ? (
           <Row>
             <NumField label="Длина, с" value={clip.transition?.duration ?? 0} step={0.1} onChange={(v) => setTr(v > 0 ? v : null)} />
@@ -569,6 +580,31 @@ function TransKindSelect({ value, onPick }: { id: string; value: TransitionKind;
       </select>
     </label>
   );
+}
+
+function TransAlignSelect({ value, onPick }: { value: TransitionAlign; onPick: (a: TransitionAlign) => void }) {
+  return (
+    <div style={{ display: 'flex', gap: 4 }}>
+      {TRANSITION_ALIGNS.map((a) => (
+        <button key={a} onClick={() => onPick(a)} title="С какой стороны реза лежит переход" style={{ flex: 1, padding: '4px 3px', fontSize: 11, borderRadius: 6, cursor: 'pointer', border: '1px solid var(--border)', background: value === a ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: value === a ? 'var(--bg-primary)' : 'var(--text-primary)' }}>
+          {TRANSITION_ALIGN_LABEL[a]}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// Системные шрифты (грузим один раз).
+let fontsCache: string[] | null = null;
+function useSystemFonts(): string[] {
+  const [fonts, setFonts] = useState<string[]>(fontsCache ?? []);
+  useEffect(() => {
+    if (fontsCache) return;
+    let alive = true;
+    window.electronAPI.listFonts?.().then((f) => { fontsCache = f; if (alive) setFonts(f); }).catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  return fonts;
 }
 
 // Кнопка «поставить ключ» на конкретный параметр (рядом с полем).

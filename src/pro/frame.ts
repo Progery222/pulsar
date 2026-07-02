@@ -28,9 +28,13 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
     // Переход центрирован на стыке [start-d/2, start+d/2] — нахлёст в обе стороны.
     for (const B of doc.clips) {
       if (B.trackId !== t.id || B.text || !B.transition) continue;
+      const A = findPrevAdjacent(doc.clips, B);
+      if (!A) continue; // нет смежного слева — переход не применяется (не «вылазит» в пустоту)
       const d = B.transition.duration;
-      const s = B.timelineStart - d / 2;
-      const e = B.timelineStart + d / 2;
+      const align = B.transition.align || 'center';
+      // Окно перехода относительно реза (B.timelineStart) по выравниванию.
+      const s = align === 'left' ? B.timelineStart : align === 'right' ? B.timelineStart - d : B.timelineStart - d / 2;
+      const e = s + d;
       if (ph < s || ph >= e) continue;
       const f = Math.max(0, Math.min(1, (ph - s) / d));
       const kind = B.transition.kind || 'dissolve';
@@ -41,15 +45,12 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
       // Входящий проигрывается непрерывно, с пред-роллом до реза (не «замороженный» первый кадр).
       const bTime = Math.max(0, B.inPoint + (ph - B.timelineStart) * bSpeed);
       map.set(B.id, { clip: B, sourceTime: bTime, alpha: inA, xf: transformAt(B, ph - B.timelineStart) });
-      const A = findPrevAdjacent(doc.clips, B);
-      if (A) {
-        const aSpeed = A.speed || 1;
-        // Уходящий продолжает крутиться за резом (запас исходника), иначе — рывок в центре перехода.
-        let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed;
-        if (A.sourceDuration) aTime = Math.min(aTime, A.sourceDuration - 0.03);
-        aTime = Math.max(0, aTime);
-        map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true, xf: transformAt(A, ph - A.timelineStart) });
-      }
+      const aSpeed = A.speed || 1;
+      // Уходящий продолжает крутиться за резом (запас исходника), иначе — рывок в центре перехода.
+      let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed;
+      if (A.sourceDuration) aTime = Math.min(aTime, A.sourceDuration - 0.03);
+      aTime = Math.max(0, aTime);
+      map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true, xf: transformAt(A, ph - A.timelineStart) });
     }
     const arr = [...map.values()].sort((a, b) => (a.out ? 0 : 1) - (b.out ? 0 : 1));
     out.push(...arr);

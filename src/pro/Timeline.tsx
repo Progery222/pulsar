@@ -790,7 +790,13 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
     let moved = false;
     const move = (ev: PointerEvent) => {
       moved = true;
-      useProStore.getState().setClipTransition(c.id, Math.max(0.1, Math.abs(timeAt(ev.clientX) - c.timelineStart) * 2));
+      // Куда тянешь — там и переход: вправо (в правый клип) = 'left', влево (в левый) = 'right', клик = 'center'.
+      const dx = timeAt(ev.clientX) - c.timelineStart;
+      const align = dx > 0.02 ? 'left' : dx < -0.02 ? 'right' : 'center';
+      const dur = align === 'center' ? Math.abs(dx) * 2 : Math.abs(dx);
+      const st = useProStore.getState();
+      st.setClipTransition(c.id, Math.max(0.1, dur));
+      st.setTransitionAlign(c.id, align);
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -812,8 +818,10 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
         useProStore.getState().pushHistory();
         pushed = true;
       }
-      const half = Math.abs(timeAt(ev.clientX) - c.timelineStart);
-      useProStore.getState().setClipTransition(c.id, Math.max(0.1, half * 2));
+      const align = c.transition?.align || 'center';
+      const dx = Math.abs(timeAt(ev.clientX) - c.timelineStart);
+      const dur = align === 'center' ? dx * 2 : dx;
+      useProStore.getState().setClipTransition(c.id, Math.max(0.1, dur));
     };
     const up = () => {
       window.removeEventListener('pointermove', move);
@@ -882,14 +890,16 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
 
       {/* Переходы по центру стыка (поверх клипов, нахлёст в обе стороны). */}
       {clips.map((c) => {
-        const hasPrev = clips.some((o) => o.id !== c.id && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.02);
-        if (!hasPrev && !c.transition) return null;
+        const hasPrev = clips.some((o) => o.id !== c.id && o.trackId === c.trackId && Math.abs(o.timelineStart + o.duration - c.timelineStart) < 0.05);
+        if (!hasPrev) return null; // без смежного слева перехода нет (не рисуем «висящий» блок)
         const bx = c.timelineStart * pxPerSec - scrollX;
         if (vpW > 0 && (bx < -60 || bx > vpW + 60)) return null;
         if (c.transition) {
           const w = c.transition.duration * pxPerSec;
+          const align = c.transition.align || 'center';
+          const left = align === 'left' ? bx : align === 'right' ? bx - w : bx - w / 2;
           return (
-            <div key={'tr' + c.id} style={{ position: 'absolute', left: bx - w / 2, top: 3, height: track.height - 6, width: w, background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.30), rgba(204,255,0,0.30) 4px, transparent 4px, transparent 8px)', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 5 }}>
+            <div key={'tr' + c.id} style={{ position: 'absolute', left, top: 3, height: track.height - 6, width: w, background: 'repeating-linear-gradient(45deg, rgba(204,255,0,0.30), rgba(204,255,0,0.30) 4px, transparent 4px, transparent 8px)', border: '1px solid var(--accent-green)', borderRadius: 4, zIndex: 5 }}>
               <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', left: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize' }} title="Длина перехода" />
               <div onPointerDown={(e) => onTransitionResize(e, c)} style={{ position: 'absolute', right: -4, top: 0, bottom: 0, width: 8, cursor: 'ew-resize' }} title="Длина перехода" />
               <button onPointerDown={(e) => { e.stopPropagation(); e.preventDefault(); useProStore.getState().pushHistory(); useProStore.getState().setClipTransition(c.id, null); }} title="Убрать переход" style={{ position: 'absolute', left: '50%', top: '50%', transform: 'translate(-50%,-50%)', width: 16, height: 16, borderRadius: '50%', border: 'none', background: 'rgba(0,0,0,0.6)', color: '#fff', fontSize: 10, cursor: 'pointer', padding: 0 }}>✕</button>

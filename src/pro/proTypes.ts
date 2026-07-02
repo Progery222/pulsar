@@ -46,13 +46,18 @@ export interface ProClip {
   linkId?: string; // связка видео+аудио одного источника (двигаются вместе)
   speed?: number; // скорость воспроизведения (1 = норма, 2 = вдвое быстрее)
   keyframes?: Keyframes; // анимация Transform: отдельная дорожка ключей на параметр
-  transition?: { duration: number; kind?: TransitionKind }; // переход у стыка с предыдущим клипом (§5 ТЗ)
+  transition?: { duration: number; kind?: TransitionKind; align?: TransitionAlign }; // переход у стыка с предыдущим клипом (§5 ТЗ)
   adjust?: { filter: AdjustFilter; intensity: number }; // блок корр. слоя (для дорожки Adjustment)
   audio?: ClipAudio; // параметры аудио-клипа
   color?: ClipColor; // цветокоррекция видео-клипа
   text?: ClipText; // текстовый/титровый клип (sourceFile пустой)
   blend?: BlendMode; // режим наложения на нижние слои (виден в экспорте)
 }
+
+// Выравнивание перехода относительно реза: по центру / у левого клипа (кончается на резе) / у правого (начинается с реза).
+export type TransitionAlign = 'center' | 'left' | 'right';
+export const TRANSITION_ALIGNS: TransitionAlign[] = ['left', 'center', 'right'];
+export const TRANSITION_ALIGN_LABEL: Record<TransitionAlign, string> = { center: 'По центру', left: 'У левого', right: 'У правого' };
 
 export type TransitionKind = 'dissolve' | 'fadeblack';
 export const TRANSITION_KINDS: TransitionKind[] = ['dissolve', 'fadeblack'];
@@ -72,8 +77,12 @@ export const TEXT_FONTS: { id: TextFont; label: string; css: string }[] = [
   { id: 'display', label: 'Дисплей', css: '"Impact", "Arial Black", sans-serif' },
   { id: 'hand', label: 'Рукопись', css: '"Comic Sans MS", "Segoe Print", cursive' },
 ];
-export function fontCss(f?: TextFont): string {
-  return (TEXT_FONTS.find((x) => x.id === f) ?? TEXT_FONTS[0]).css;
+// f — либо id встроенного стека, либо имя системного семейства.
+export function fontCss(f?: string): string {
+  const b = TEXT_FONTS.find((x) => x.id === f);
+  if (b) return b.css;
+  if (f) return `"${f}", system-ui, sans-serif`;
+  return TEXT_FONTS[0].css;
 }
 
 export interface ClipText {
@@ -83,7 +92,7 @@ export interface ClipText {
   x: number;
   y: number;
   bg: boolean; // подложка-плашка под текстом
-  font?: TextFont;
+  font?: string; // id встроенного стека ('sans'…) или имя системного шрифта
   bold?: boolean;
   italic?: boolean;
   align?: TextAlign;

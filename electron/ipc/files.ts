@@ -29,8 +29,39 @@ function listDrives(): DirEntry[] {
   return out;
 }
 
+// Список установленных в системе шрифтов (Windows-реестр) — семейства без стилевых суффиксов.
+function listSystemFonts(): Promise<string[]> {
+  if (process.platform !== 'win32') return Promise.resolve([]);
+  const read = (root: string) =>
+    new Promise<string>((resolve) => {
+      const ch = spawn('reg', ['query', root], { windowsHide: true });
+      let out = '';
+      ch.stdout.on('data', (d: Buffer) => (out += d.toString()));
+      ch.on('close', () => resolve(out));
+      ch.on('error', () => resolve(''));
+    });
+  const roots = ['HKLM\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts', 'HKCU\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\\Fonts'];
+  const STYLE = /\s+(Bold|Italic|Oblique|Light|Semibold|Demibold|Medium|Black|Thin|Heavy|Regular|Condensed|Narrow|Extrabold|Extralight|Book|Hairline)\b/gi;
+  return Promise.all(roots.map(read)).then((texts) => {
+    const fams = new Set<string>();
+    for (const txt of texts) {
+      for (const line of txt.split(/\r?\n/)) {
+        const m = /^\s{4,}(.+?)\s+REG_SZ\s+/.exec(line);
+        if (!m) continue;
+        const raw = m[1].replace(/\s*\((TrueType|OpenType|VDMX|All res)\)\s*$/i, '').trim();
+        for (let part of raw.split('&')) {
+          part = part.replace(STYLE, '').replace(/\s+/g, ' ').trim();
+          if (part && !/^[0-9]/.test(part) && part.length <= 40) fams.add(part);
+        }
+      }
+    }
+    return [...fams].sort((a, b) => a.localeCompare(b));
+  });
+}
+
 // IPC-обработчики для файловой системы: системные диалоги выбора файлов.
 export function registerFileHandlers() {
+  ipcMain.handle('fonts:list', () => listSystemFonts());
   // Листинг директории для бокового проводника. dir пустой -> диски (Windows) / home.
   ipcMain.handle('fs:listDir', async (_e, dir: string | null) => {
     try {
