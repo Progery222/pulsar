@@ -18,6 +18,8 @@ try {
 // иначе WebGL-компоновщик Viewer в Pulsar Pro не инициализируется (createShader → null).
 try {
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
+  // WebGPU для Студии (Dawn -> D3D12 на Windows; Vulkan НЕ форсим — он ронял GPU).
+  app.commandLine.appendSwitch('enable-unsafe-webgpu');
 } catch {
   /* noop */
 }
@@ -46,9 +48,6 @@ app.on('render-process-gone', (_e, _wc, details) => {
 });
 app.on('child-process-gone', (_e, details) => {
   console.error('[CRASH] child-process-gone:', JSON.stringify(details));
-});
-app.on('gpu-process-crashed', (_e, killed) => {
-  console.error('[CRASH] gpu-process-crashed, killed=', killed);
 });
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
