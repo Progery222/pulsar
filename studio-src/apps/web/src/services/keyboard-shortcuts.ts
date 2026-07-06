@@ -545,8 +545,10 @@ class KeyboardShortcutsManager {
       if (!shortcut.enabled) continue;
 
       const combo = parseKeyCombo(shortcut.currentKey);
+      // Раскладконезависимо: KeyS -> "s", Digit1 -> "1" (иначе на кириллице e.key="ы" не матчится).
+      const codeKey = e.code.replace(/^Key/, "").replace(/^Digit/, "").toLowerCase();
       const keyMatches =
-        e.key.toLowerCase() === combo.key || e.code.toLowerCase() === combo.key;
+        e.key.toLowerCase() === combo.key || e.code.toLowerCase() === combo.key || codeKey === combo.key;
       const metaMatches = (combo.meta || combo.ctrl) === isMeta;
       const shiftMatches = combo.shift === e.shiftKey;
       const altMatches = combo.alt === e.altKey;

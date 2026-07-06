@@ -103,20 +103,6 @@ export default function ModeSelector() {
         />
         <ModeCard
           index={1}
-          title="Студия"
-          description="Проф. редактор: WebGPU-превью, цветокор, эффекты, экспорт до 4K"
-          onClick={() => setAppMode('studio')}
-          icon={
-            <svg {...I(38)}>
-              <rect x="2" y="3" width="20" height="14" rx="2" />
-              <line x1="8" y1="21" x2="16" y2="21" />
-              <line x1="12" y1="17" x2="12" y2="21" />
-              <polygon points="10 8 15 10.5 10 13" fill="currentColor" stroke="none" />
-            </svg>
-          }
-        />
-        <ModeCard
-          index={2}
           title="Уникализатор (VUB)"
           description="Массовая уникализация видео для обхода алгоритмов"
           onClick={() => setAppMode('vub')}
@@ -261,7 +247,7 @@ export default function ModeSelector() {
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 22 }}>
               Выберите способ работы над роликом
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
               <ChooserCard
                 title="Быстрый"
                 sub="beat-sync"
@@ -273,6 +259,12 @@ export default function ModeSelector() {
                 sub="мульти-трек"
                 description="Полноценный NLE: дорожки V/A, таймлайн, Transform/Crop, Undo/Redo."
                 onClick={() => setAppMode('pro')}
+              />
+              <ChooserCard
+                title="Студия"
+                sub="WebGPU"
+                description="Проф. редактор: цветокор, эффекты, маски, ключи, экспорт до 4K."
+                onClick={() => setAppMode('studio')}
               />
             </div>
           </div>

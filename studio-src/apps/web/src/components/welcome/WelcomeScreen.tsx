@@ -254,7 +254,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ initialTab }) => {
                 <OpenReelLogo className="w-full h-full" />
               </div>
               <span className="text-xl font-semibold text-text-primary tracking-tight">
-                Open Reel Video
+                Студия
               </span>
             </div>
 
