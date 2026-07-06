@@ -10,10 +10,13 @@ import {
   Film,
   Image,
   ArrowLeftToLine,
+  Blend,
 } from "lucide-react";
 import type { Clip, Track } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
+import { getTransitionBridge } from "../../../bridges/transition-bridge";
+import { toast } from "../../../stores/notification-store";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -48,8 +51,45 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
     pasteEffects,
     copiedEffects,
     closeGapBeforeClip,
+    addClipTransition,
   } = useProjectStore();
   const { playheadPosition } = useTimelineStore();
+
+  const neighbors = React.useMemo(() => {
+    const sorted = [...track.clips].sort((a, b) => a.startTime - b.startTime);
+    const idx = sorted.findIndex((c) => c.id === clip.id);
+    return {
+      prev: idx > 0 ? sorted[idx - 1] : null,
+      next: idx >= 0 && idx < sorted.length - 1 ? sorted[idx + 1] : null,
+    };
+  }, [track.clips, clip.id]);
+
+  const applyCrossfade = (clipA: Clip, clipB: Clip) => {
+    const bridge = getTransitionBridge();
+    const settings = useProjectStore.getState().project.settings;
+    bridge.initialize(settings.width, settings.height);
+    const a = { ...clipA, trackId: track.id };
+    const b = { ...clipB, trackId: track.id };
+    const dur = Math.min(0.5, clipA.duration / 2, clipB.duration / 2);
+    const result = bridge.createTransition(
+      a,
+      b,
+      "crossfade",
+      dur,
+      bridge.getDefaultParams("crossfade"),
+    );
+    if (result.success && result.transitionId) {
+      const t = bridge.getTransition(result.transitionId);
+      if (t) {
+        addClipTransition(t);
+        toast.success("Кроссфейд добавлен", `${dur.toFixed(1)} c на стыке`);
+        onClose?.();
+        return;
+      }
+    }
+    toast.error("Кроссфейд", result.error || "Не удалось добавить переход");
+    onClose?.();
+  };
 
   const isPlayheadOnClip =
     playheadPosition >= clip.startTime &&
@@ -167,6 +207,22 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
       <ContextMenuItem onClick={handleCloseGap} disabled={!hasGapBeforeClip}>
         <ArrowLeftToLine className="mr-2 h-4 w-4" />
         Close Gap to Previous
+      </ContextMenuItem>
+
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        onClick={() => neighbors.next && applyCrossfade(clip, neighbors.next)}
+        disabled={!neighbors.next}
+      >
+        <Blend className="mr-2 h-4 w-4" />
+        Кроссфейд со следующим
+      </ContextMenuItem>
+      <ContextMenuItem
+        onClick={() => neighbors.prev && applyCrossfade(neighbors.prev, clip)}
+        disabled={!neighbors.prev}
+      >
+        <Blend className="mr-2 h-4 w-4" />
+        Кроссфейд с предыдущим
       </ContextMenuItem>
 
       {(isVideo || isImage) && (
