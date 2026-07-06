@@ -18,8 +18,11 @@ try {
 // иначе WebGL-компоновщик Viewer в Pulsar Pro не инициализируется (createShader → null).
 try {
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
-  // WebGPU для Студии (Dawn -> D3D12 на Windows; Vulkan НЕ форсим — он ронял GPU).
-  app.commandLine.appendSwitch('enable-unsafe-webgpu');
+  // WebGPU на этом железе роняет GPU-процесс (весь экран в чёрный) даже после драйвера —
+  // держим стабильную связку: Студия на Canvas2D + программный композитинг (падение GPU
+  // тогда не чернит окно).
+  app.commandLine.appendSwitch('disable-accelerated-2d-canvas');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
 } catch {
   /* noop */
 }
