@@ -1171,6 +1171,12 @@ export const Timeline: React.FC = () => {
             onWheel={(e) => {
               const el = tracksRef.current;
               if (!el) return;
+              if (e.altKey || e.ctrlKey) {
+                e.preventDefault();
+                if ((e.deltaY || e.deltaX) < 0) zoomIn();
+                else zoomOut();
+                return;
+              }
               if (e.shiftKey) {
                 el.scrollLeft += e.deltaY || e.deltaX;
                 setScrollX(el.scrollLeft);
