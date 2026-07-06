@@ -116,7 +116,13 @@ function TransTile({ kind, f, active, onApply }: { kind: TransitionKind; f: numb
     <div style={{ position: 'absolute', inset: 0, background: bg, borderRadius: 3, opacity: fx.alpha, transform: `translate(${fx.dx * 100}%, ${fx.dy * 100}%) scale(${fx.scale}) rotate(${fx.rot}deg)`, transformOrigin: 'center', zIndex: z }} />
   );
   return (
-    <button onClick={onApply} title={TRANSITION_LABEL[kind]} style={{ padding: 5, borderRadius: 8, cursor: 'pointer', background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)', border: `1px solid ${active ? 'var(--accent-green)' : 'var(--border)'}`, display: 'flex', flexDirection: 'column', gap: 4 }}>
+    <button
+      onClick={onApply}
+      draggable
+      onDragStart={(e) => { e.dataTransfer.setData('application/x-pulsar-transition', kind); e.dataTransfer.effectAllowed = 'copy'; }}
+      title={`${TRANSITION_LABEL[kind]} — клик применить к выделенному, или перетащи на стык`}
+      style={{ padding: 5, borderRadius: 8, cursor: 'grab', background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)', border: `1px solid ${active ? 'var(--accent-green)' : 'var(--border)'}`, display: 'flex', flexDirection: 'column', gap: 4 }}
+    >
       <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 10', overflow: 'hidden', borderRadius: 4, background: '#0b0b0b' }}>
         {layer(L.a, 'linear-gradient(135deg,#3b82f6,#1e3a8a)', 1)}
         {layer(L.b, 'linear-gradient(135deg,#f59e0b,#9a3412)', 2)}

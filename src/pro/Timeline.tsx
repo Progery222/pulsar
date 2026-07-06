@@ -265,6 +265,35 @@ export default function Timeline() {
 
   // Приём файла, перетащенного из Media, на таймлайн.
   const onDrop = async (e: React.DragEvent) => {
+    // Перетаскивание перехода из вкладки «Переходы» на стык/клип.
+    const transKind = e.dataTransfer.getData('application/x-pulsar-transition');
+    if (transKind) {
+      e.preventDefault();
+      const st = useProStore.getState();
+      const trackId = trackAtClientY(e.clientY);
+      if (!trackId) return;
+      const dropT = timeAtClientX(e.clientX);
+      const tc = st.doc.clips.filter((c) => c.trackId === trackId && !c.text);
+      if (!tc.length) return;
+      const under = tc.find((c) => dropT >= c.timelineStart && dropT < c.timelineStart + c.duration);
+      let targetId: string;
+      if (under) {
+        const distL = Math.abs(dropT - under.timelineStart);
+        const distR = Math.abs(dropT - (under.timelineStart + under.duration));
+        if (distR < distL) {
+          const next = tc.find((o) => o.id !== under.id && Math.abs(o.timelineStart - (under.timelineStart + under.duration)) < 0.06);
+          targetId = next ? next.id : under.id; // ближе к правому краю — переход на следующий клип (стык справа)
+        } else targetId = under.id;
+      } else {
+        targetId = tc.reduce((best, c) => (Math.abs(c.timelineStart - dropT) < Math.abs(best.timelineStart - dropT) ? c : best)).id;
+      }
+      st.pushHistory();
+      const tgt = st.doc.clips.find((c) => c.id === targetId)!;
+      if (!tgt.transition) st.setClipTransition(targetId, 0.5);
+      st.setTransitionKind(targetId, transKind as import('./proTypes').TransitionKind);
+      st.setSelection([targetId]);
+      return;
+    }
     const path = e.dataTransfer.getData('application/x-pulsar-path');
     if (!path) return;
     e.preventDefault();
@@ -323,7 +352,7 @@ export default function Timeline() {
         <div
           ref={rightRef}
           onPointerDown={onAreaPointerDown}
-          onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-pulsar-path')) e.preventDefault(); }}
+          onDragOver={(e) => { if (e.dataTransfer.types.includes('application/x-pulsar-path') || e.dataTransfer.types.includes('application/x-pulsar-transition')) e.preventDefault(); }}
           onDrop={onDrop}
           style={{ flex: 1, minWidth: 0, position: 'relative', overflow: 'hidden', background: 'var(--bg-primary)' }}
         >
