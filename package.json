@@ -1,6 +1,6 @@
 {
   "name": "pulsar-windows",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Pulsar — Desktop video editor with beat auto-sync",
   "author": "Pulsar",
   "main": "dist-electron/main.js",
