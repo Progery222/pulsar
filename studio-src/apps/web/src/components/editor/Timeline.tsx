@@ -99,6 +99,7 @@ export const Timeline: React.FC = () => {
   } = useTimelineStore();
 
   const [showLayersPanel, setShowLayersPanel] = useState(false);
+  const [bladeCursorTime, setBladeCursorTime] = useState<number | null>(null);
 
   const {
     select,
@@ -117,6 +118,21 @@ export const Timeline: React.FC = () => {
     toggleBladeMode,
   } = useUIStore();
   const selectedClipIds = getSelectedClipIds();
+
+  // Клавиша B — переключить инструмент «Лезвие» (раскладконезависимо).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.code === "KeyB") {
+        e.preventDefault();
+        toggleBladeMode();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleBladeMode]);
 
   const { getTitleEngine, getGraphicsEngine } = useEngineStore();
   const titleEngine = getTitleEngine();
@@ -773,7 +789,7 @@ export const Timeline: React.FC = () => {
         <TLTool
           onClick={toggleBladeMode}
           active={bladeMode}
-          title="Лезвие — клик по клипу режет его в точке клика"
+          title="Лезвие (B) — клик по клипу режет его в точке клика"
         >
           <span className="text-[13px] leading-none">🔪</span>
         </TLTool>
@@ -1049,7 +1065,19 @@ export const Timeline: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex-1 flex overflow-hidden">
+        <div
+          className="flex-1 flex overflow-hidden"
+          onMouseMove={
+            bladeMode
+              ? (e) => {
+                  const r = e.currentTarget.getBoundingClientRect();
+                  const t = (e.clientX - r.left - 128 + scrollX) / pixelsPerSecond;
+                  setBladeCursorTime(t >= 0 ? t : null);
+                }
+              : undefined
+          }
+          onMouseLeave={bladeMode ? () => setBladeCursorTime(null) : undefined}
+        >
           <div className="w-32 bg-bg-1 border-r border-border shrink-0 z-20 overflow-hidden">
             <div
               className="flex flex-col"
@@ -1269,6 +1297,21 @@ export const Timeline: React.FC = () => {
           scrollX={scrollX}
           headerOffset={128}
         />
+        {bladeMode && bladeCursorTime != null && (
+          <div
+            style={{
+              position: "absolute",
+              top: 26,
+              bottom: 0,
+              left: `${bladeCursorTime * pixelsPerSecond - scrollX + 128}px`,
+              width: 2,
+              background:
+                "repeating-linear-gradient(to bottom, #c8ff00 0 6px, transparent 6px 9px, #c8ff00 9px 11px, transparent 11px 17px)",
+              pointerEvents: "none",
+              zIndex: 40,
+            }}
+          />
+        )}
       </div>
     </div>
   );
