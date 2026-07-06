@@ -13,6 +13,7 @@ import MusicPickerScreen from './screens/MusicPickerScreen';
 import ProcessingScreen from './screens/ProcessingScreen';
 import EditorScreen from './screens/EditorScreen';
 import ProEditor from './pro/ProEditor';
+import StudioHost from './studio/StudioHost';
 import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
@@ -144,6 +145,19 @@ function App() {
       <>
         <div className="screen-fade" style={{ height: '100vh' }}>
           <ProEditor />
+        </div>
+        <TopBar />
+        <Overlays />
+      </>
+    );
+  }
+
+  // Студия — встроенный WebGPU/WebCodecs-редактор (OpenReel, ребренд).
+  if (appMode === 'studio') {
+    return (
+      <>
+        <div className="screen-fade" style={{ height: '100vh' }}>
+          <StudioHost />
         </div>
         <TopBar />
         <Overlays />

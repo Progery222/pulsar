@@ -103,6 +103,20 @@ export default function ModeSelector() {
         />
         <ModeCard
           index={1}
+          title="Студия"
+          description="Проф. редактор: WebGPU-превью, цветокор, эффекты, экспорт до 4K"
+          onClick={() => setAppMode('studio')}
+          icon={
+            <svg {...I(38)}>
+              <rect x="2" y="3" width="20" height="14" rx="2" />
+              <line x1="8" y1="21" x2="16" y2="21" />
+              <line x1="12" y1="17" x2="12" y2="21" />
+              <polygon points="10 8 15 10.5 10 13" fill="currentColor" stroke="none" />
+            </svg>
+          }
+        />
+        <ModeCard
+          index={2}
           title="Уникализатор (VUB)"
           description="Массовая уникализация видео для обхода алгоритмов"
           onClick={() => setAppMode('vub')}
