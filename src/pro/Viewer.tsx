@@ -5,7 +5,7 @@ import { activeTexts, buildFrame } from './frame';
 import { runProExport, type ExportSettings } from './exporter';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
-import { colorToCss, crossfadeAlpha, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, fontCss, textOpacityAt, transformAt, type ProClip, type ProDocument } from './proTypes';
+import { colorToCss, crossfadeAlpha, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, fontCss, textOpacityAt, transformAt, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
 
 // Viewer (§4 ТЗ). Живое превью — DOM <video> (надёжно, без GPU); WebGL-компоновщик
 // используется для экспорта (exporter.ts). Оверлеи Transform/Crop поверх кадра.
@@ -153,15 +153,15 @@ export default function Viewer() {
     return () => cancelAnimationFrame(raf);
   }, []);
 
-  function applyVisual(el: HTMLElement, clip: ProClip, d: ProDocument, localSec: number) {
-    const t = transformAt(clip, localSec);
+  function applyVisual(el: HTMLElement, clip: ProClip, d: ProDocument, localSec: number, xf?: ClipTransform) {
+    const t = xf ?? transformAt(clip, localSec); // xf из buildFrame несёт движение перехода (сдвиг/зум/поворот)
     const cr = { ...DEFAULT_CROP, ...clip.crop };
     const s = el.offsetWidth / (d.width || 1) || 1;
     el.style.transform = `translate(${t.x * s}px, ${t.y * s}px) rotate(${t.rotation}deg) scale(${t.scale})`;
     el.style.clipPath = `inset(${cr.top * 100}% ${cr.right * 100}% ${cr.bottom * 100}% ${cr.left * 100}%)`;
     el.style.filter = colorToCss(clip.color);
   }
-  function syncOne(el: HTMLVideoElement, clip: ProClip, srcRef: React.MutableRefObject<string>, srcTime: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>, d: ProDocument, localSec: number) {
+  function syncOne(el: HTMLVideoElement, clip: ProClip, srcRef: React.MutableRefObject<string>, srcTime: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>, d: ProDocument, localSec: number, xf?: ClipTransform) {
     // Прокси используется автоматически, как только он готов (даже без ручного тумблера).
     void proxy;
     const base = proxyMap[clip.sourceFile] || clip.sourceFile;
@@ -170,7 +170,7 @@ export default function Viewer() {
     el.playbackRate = Math.min(16, Math.max(0.0625, clip.speed || 1));
     if (playing) { if (el.paused) el.play().catch(() => {}); if (Math.abs(el.currentTime - st) > 0.3) el.currentTime = st; }
     else { if (!el.paused) el.pause(); if (Math.abs(el.currentTime - st) > 0.05) el.currentTime = st; }
-    applyVisual(el, clip, d, localSec);
+    applyVisual(el, clip, d, localSec, xf);
   }
   function syncVideo(d: ProDocument, ph: number, playing: boolean, proxy: boolean, proxyMap: Record<string, string>) {
     const el = videoRef.current;
@@ -202,7 +202,7 @@ export default function Viewer() {
       if (el.readyState >= 1 && Math.abs(el.currentTime - wt) > 0.4) el.currentTime = wt;
       // В кроссфейде показываем доминирующий по альфе слой (иначе «замороженный» первый кадр входящего клипа часто чёрный).
       const dom = items.reduce((m, it) => (it.alpha > m.alpha ? it : m), items[0]);
-      applyVisual(thumb, dom.clip, d, ph - dom.clip.timelineStart);
+      applyVisual(thumb, dom.clip, d, ph - dom.clip.timelineStart, dom.xf);
       const base = proxyMap[dom.clip.sourceFile] || dom.clip.sourceFile;
       const key = base + '@' + Math.round(Math.max(0, dom.sourceTime) * 2);
       if (curThumbKey.current !== key) {
@@ -215,12 +215,12 @@ export default function Viewer() {
     curThumbKey.current = '';
     el.style.display = 'block';
     el.style.opacity = String(top.alpha);
-    syncOne(el, top.clip, curVideoSrc, top.sourceTime, playing, proxy, proxyMap, d, ph - top.clip.timelineStart);
+    syncOne(el, top.clip, curVideoSrc, top.sourceTime, playing, proxy, proxyMap, d, ph - top.clip.timelineStart, top.xf);
     const outItem = items.find((it) => it.out && it.clip.id !== top.clip.id);
     if (outItem && el2) {
       el2.style.display = 'block';
       el2.style.opacity = String(outItem.alpha);
-      syncOne(el2, outItem.clip, curVideoSrc2, outItem.sourceTime, playing, proxy, proxyMap, d, ph - outItem.clip.timelineStart);
+      syncOne(el2, outItem.clip, curVideoSrc2, outItem.sourceTime, playing, proxy, proxyMap, d, ph - outItem.clip.timelineStart, outItem.xf);
     } else {
       hideEl2();
     }

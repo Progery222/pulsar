@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
-import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, KF_EASE_LABEL, KF_EASES, KF_PARAM_LABEL, KF_PARAMS, LOOK_PRESETS, TEXT_FONTS, TEXT_PRESETS, TRANSITION_ALIGN_LABEL, TRANSITION_ALIGNS, TRANSITION_KINDS, TRANSITION_LABEL, type AdjustFilter, type BlendMode, type KfEase, type KfParam, type ProClip, type TransitionAlign, type TransitionKind } from './proTypes';
+import { ADJUST_FILTERS, ADJUST_LABEL, BLEND_LABEL, BLEND_MODES, DEFAULT_AUDIO, DEFAULT_COLOR, DEFAULT_CROP, DEFAULT_TEXT, DEFAULT_TRANSFORM, findPrevAdjacent, KF_EASE_LABEL, KF_EASES, KF_PARAM_LABEL, KF_PARAMS, LOOK_PRESETS, TEXT_FONTS, TEXT_PRESETS, TRANSITION_ALIGN_LABEL, TRANSITION_ALIGNS, TRANSITION_KINDS, TRANSITION_LABEL, transitionLayers, type AdjustFilter, type BlendMode, type KfEase, type KfParam, type ProClip, type TransitionAlign, type TransitionKind } from './proTypes';
 import { fileName, isAudioFile, isVideoFile, mediaUrl } from '../utils/media';
 
 // Метаданные медиа (длительность + размеры) через скрытый элемент.
@@ -52,17 +52,77 @@ async function addFileToProject(path: string) {
 // Левая панель (§2 ТЗ): Media (бин источников) / Inspector (параметры клипа).
 
 export default function LeftPanel() {
-  const [tab, setTab] = useState<'media' | 'inspector'>('inspector');
+  const [tab, setTab] = useState<'media' | 'inspector' | 'transitions'>('inspector');
   return (
     <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-secondary)' }}>
       <div className="flex" style={{ borderBottom: '1px solid var(--border)' }}>
         <TabBtn active={tab === 'media'} onClick={() => setTab('media')}>Media</TabBtn>
         <TabBtn active={tab === 'inspector'} onClick={() => setTab('inspector')}>Inspector</TabBtn>
+        <TabBtn active={tab === 'transitions'} onClick={() => setTab('transitions')}>Переходы</TabBtn>
       </div>
       <div className="flex flex-1 flex-col" style={{ minHeight: 0, overflow: 'auto' }}>
-        {tab === 'media' ? <MediaTab /> : <InspectorTab />}
+        {tab === 'media' ? <MediaTab /> : tab === 'transitions' ? <TransitionsTab /> : <InspectorTab />}
       </div>
     </div>
+  );
+}
+
+// Вкладка «Переходы»: живые превью (та же математика transitionLayers, что и реальный эффект) + применение к клипу.
+function TransitionsTab() {
+  const selected = useProStore((s) => s.selectedClipIds);
+  const clips = useProStore((s) => s.doc.clips);
+  const clip = clips.find((c) => selected.includes(c.id)) ?? null;
+  const [f, setF] = useState(0);
+  useEffect(() => {
+    let raf = 0;
+    let start = 0;
+    const loop = (ts: number) => {
+      if (!start) start = ts;
+      const p = ((ts - start) % 1700) / 1200; // 1.2с анимация + 0.5с пауза
+      setF(Math.min(1, p));
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, []);
+  const apply = (kind: TransitionKind) => {
+    if (!clip) {
+      showToast('Выделите клип на таймлайне');
+      return;
+    }
+    const st = useProStore.getState();
+    st.pushHistory();
+    if (!clip.transition) st.setClipTransition(clip.id, 0.5);
+    st.setTransitionKind(clip.id, kind);
+    showToast('Переход: ' + TRANSITION_LABEL[kind]);
+  };
+  return (
+    <div style={{ padding: 10 }}>
+      <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 8 }}>
+        {clip ? 'Клик по переходу — применить к выделенному клипу (на стыке слева / как появление).' : 'Выделите клип на таймлайне.'}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+        {TRANSITION_KINDS.map((k) => (
+          <TransTile key={k} kind={k} f={f} active={clip?.transition?.kind === k} onApply={() => apply(k)} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TransTile({ kind, f, active, onApply }: { kind: TransitionKind; f: number; active: boolean; onApply: () => void }) {
+  const L = transitionLayers(kind, f);
+  const layer = (fx: { alpha: number; dx: number; dy: number; scale: number; rot: number }, bg: string, z: number) => (
+    <div style={{ position: 'absolute', inset: 0, background: bg, borderRadius: 3, opacity: fx.alpha, transform: `translate(${fx.dx * 100}%, ${fx.dy * 100}%) scale(${fx.scale}) rotate(${fx.rot}deg)`, transformOrigin: 'center', zIndex: z }} />
+  );
+  return (
+    <button onClick={onApply} title={TRANSITION_LABEL[kind]} style={{ padding: 5, borderRadius: 8, cursor: 'pointer', background: active ? 'var(--accent-green)' : 'var(--bg-tertiary)', border: `1px solid ${active ? 'var(--accent-green)' : 'var(--border)'}`, display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div style={{ position: 'relative', width: '100%', aspectRatio: '16 / 10', overflow: 'hidden', borderRadius: 4, background: '#0b0b0b' }}>
+        {layer(L.a, 'linear-gradient(135deg,#3b82f6,#1e3a8a)', 1)}
+        {layer(L.b, 'linear-gradient(135deg,#f59e0b,#9a3412)', 2)}
+      </div>
+      <span style={{ fontSize: 11, color: active ? 'var(--bg-primary)' : 'var(--text-primary)', fontWeight: active ? 600 : 400 }}>{TRANSITION_LABEL[kind]}</span>
+    </button>
   );
 }
 

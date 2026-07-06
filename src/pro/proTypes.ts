@@ -60,9 +60,54 @@ export type TransitionAlign = 'center' | 'left' | 'right';
 export const TRANSITION_ALIGNS: TransitionAlign[] = ['left', 'center', 'right'];
 export const TRANSITION_ALIGN_LABEL: Record<TransitionAlign, string> = { center: 'По центру', left: 'У левого', right: 'У правого' };
 
-export type TransitionKind = 'dissolve' | 'fadeblack';
-export const TRANSITION_KINDS: TransitionKind[] = ['dissolve', 'fadeblack'];
-export const TRANSITION_LABEL: Record<TransitionKind, string> = { dissolve: 'Растворение', fadeblack: 'Через чёрный' };
+export type TransitionKind = 'dissolve' | 'fadeblack' | 'slideL' | 'slideR' | 'slideU' | 'slideD' | 'push' | 'zoom' | 'spin';
+export const TRANSITION_KINDS: TransitionKind[] = ['dissolve', 'fadeblack', 'slideL', 'slideR', 'slideU', 'slideD', 'push', 'zoom', 'spin'];
+export const TRANSITION_LABEL: Record<TransitionKind, string> = {
+  dissolve: 'Растворение',
+  fadeblack: 'Через чёрный',
+  slideL: 'Сдвиг ←',
+  slideR: 'Сдвиг →',
+  slideU: 'Сдвиг ↑',
+  slideD: 'Сдвиг ↓',
+  push: 'Выталкивание',
+  zoom: 'Зум',
+  spin: 'Вращение',
+};
+
+// Эффект слоя в момент f (0..1) перехода: альфа + смещение (доля кадра) + масштаб + поворот.
+export interface TransFx {
+  alpha: number;
+  dx: number;
+  dy: number;
+  scale: number;
+  rot: number;
+}
+const idFx = (alpha = 1): TransFx => ({ alpha, dx: 0, dy: 0, scale: 1, rot: 0 });
+
+// Раскладка перехода на входящий (b) и уходящий (a) слои. dx/dy — доля кадра.
+export function transitionLayers(kind: TransitionKind, f: number): { a: TransFx; b: TransFx } {
+  const e = f * f * (3 - 2 * f); // smoothstep для плавности движения
+  switch (kind) {
+    case 'fadeblack':
+      return { a: idFx(Math.max(0, 1 - 2 * f)), b: idFx(Math.max(0, 2 * f - 1)) };
+    case 'slideL':
+      return { a: idFx(1), b: { alpha: 1, dx: (1 - e), dy: 0, scale: 1, rot: 0 } };
+    case 'slideR':
+      return { a: idFx(1), b: { alpha: 1, dx: -(1 - e), dy: 0, scale: 1, rot: 0 } };
+    case 'slideU':
+      return { a: idFx(1), b: { alpha: 1, dx: 0, dy: (1 - e), scale: 1, rot: 0 } };
+    case 'slideD':
+      return { a: idFx(1), b: { alpha: 1, dx: 0, dy: -(1 - e), scale: 1, rot: 0 } };
+    case 'push':
+      return { a: { alpha: 1, dx: -e, dy: 0, scale: 1, rot: 0 }, b: { alpha: 1, dx: (1 - e), dy: 0, scale: 1, rot: 0 } };
+    case 'zoom':
+      return { a: idFx(1), b: { alpha: f, dx: 0, dy: 0, scale: 0.3 + 0.7 * e, rot: 0 } };
+    case 'spin':
+      return { a: idFx(1), b: { alpha: f, dx: 0, dy: 0, scale: 0.2 + 0.8 * e, rot: (1 - e) * 200 } };
+    default:
+      return { a: idFx(1 - f), b: idFx(f) }; // dissolve
+  }
+}
 
 export type BlendMode = 'normal' | 'add' | 'screen' | 'multiply';
 export const BLEND_MODES: BlendMode[] = ['normal', 'add', 'screen', 'multiply'];

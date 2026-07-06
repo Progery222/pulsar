@@ -1,4 +1,4 @@
-import { ADJUST_CODE, crossfadeAlpha, findPrevAdjacent, transformAt, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
+import { ADJUST_CODE, crossfadeAlpha, findPrevAdjacent, transformAt, transitionLayers, transitionSpan, type ClipTransform, type ProClip, type ProDocument } from './proTypes';
 
 // Сборка кадра под плейхедом — общая для Viewer (превью) и экспорта.
 
@@ -34,26 +34,29 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
         map.set(c.id, { clip: c, sourceTime: c.inPoint + (ph - c.timelineStart) * (c.speed || 1), alpha, xf: transformAt(c, ph - c.timelineStart) });
       }
     }
-    // Переход центрирован на стыке [start-d/2, start+d/2] — нахлёст в обе стороны.
+    // Переход на стыке: библиотека (растворение/чёрный/сдвиг/выталкивание/зум/вращение).
     for (const B of doc.clips) {
       if (B.trackId !== t.id || B.text || !B.transition) continue;
       const A = findPrevAdjacent(doc.clips, B);
-      const cf = crossfadeAlpha(B, ph);
-      if (!cf) continue;
-      const { inA, outA } = cf;
+      const sp = transitionSpan(B);
+      if (!sp || ph < sp.s || ph >= sp.e) continue;
+      const f = Math.max(0, Math.min(1, (ph - sp.s) / sp.d));
+      const L = transitionLayers(B.transition.kind || 'dissolve', f);
+      const W = doc.width;
+      const H = doc.height;
       const bSpeed = B.speed || 1;
-      // Входящий проигрывается непрерывно, с пред-роллом до реза (не «замороженный» первый кадр).
-      const bTime = Math.max(0, B.inPoint + (ph - B.timelineStart) * bSpeed);
-      map.set(B.id, { clip: B, sourceTime: bTime, alpha: inA, xf: transformAt(B, ph - B.timelineStart) });
+      const bTime = Math.max(0, B.inPoint + (ph - B.timelineStart) * bSpeed); // непрерывный пред-ролл
+      const baseB = transformAt(B, ph - B.timelineStart);
+      map.set(B.id, { clip: B, sourceTime: bTime, alpha: L.b.alpha, xf: { x: baseB.x + L.b.dx * W, y: baseB.y + L.b.dy * H, scale: baseB.scale * L.b.scale, rotation: baseB.rotation + L.b.rot } });
       if (A) {
-        // Кроссфейд: уходящий крутится за резом (запас исходника), иначе — рывок в центре перехода.
         const aSpeed = A.speed || 1;
-        let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed;
+        let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed; // уходящий крутится за резом (запас исходника)
         if (A.sourceDuration) aTime = Math.min(aTime, A.sourceDuration - 0.03);
         aTime = Math.max(0, aTime);
-        map.set(A.id, { clip: A, sourceTime: aTime, alpha: outA, out: true, xf: transformAt(A, ph - A.timelineStart) });
+        const baseA = transformAt(A, ph - A.timelineStart);
+        map.set(A.id, { clip: A, sourceTime: aTime, alpha: L.a.alpha, out: true, xf: { x: baseA.x + L.a.dx * W, y: baseA.y + L.a.dy * H, scale: baseA.scale * L.a.scale, rotation: baseA.rotation + L.a.rot } });
       }
-      // Без смежного слева A — B просто проявляется от чёрного/нижнего слоя (fade in).
+      // Без смежного слева A — B просто проявляется/въезжает поверх чёрного/нижнего слоя.
     }
     const arr = [...map.values()].sort((a, b) => (a.out ? 0 : 1) - (b.out ? 0 : 1));
     out.push(...arr);
