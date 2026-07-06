@@ -1,4 +1,4 @@
-import { RU_DICT } from "./ru-dict";
+import { RU_DICT, RU_REGEX } from "./ru-dict";
 
 // Рантайм-локализация вендоренной Студии: обходим текстовые узлы и атрибуты
 // (title/placeholder/aria-label) и заменяем известные английские строки на
@@ -20,8 +20,14 @@ function lookup(raw: string): string | null {
   const t = raw.trim();
   if (!t) return null;
   const hit = dict.get(t) ?? dictLower.get(t.toLowerCase());
-  if (hit === undefined || hit === t) return null;
-  return raw.replace(t, hit);
+  if (hit !== undefined && hit !== t) return raw.replace(t, hit);
+  for (const rule of RU_REGEX) {
+    if (rule.re.test(t)) {
+      const ru = t.replace(rule.re, rule.replace);
+      if (ru !== t) return raw.replace(t, ru);
+    }
+  }
+  return null;
 }
 
 function translateTextNode(node: Text): void {
