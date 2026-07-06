@@ -18,8 +18,11 @@ try {
 // иначе WebGL-компоновщик Viewer в Pulsar Pro не инициализируется (createShader → null).
 try {
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
-  // WebGPU/Vulkan НЕ включаем: на проблемных драйверах Vulkan роняет GPU-процесс
-  // (весь экран в чёрный). Студия форсит Canvas2D-рендер, WebGPU ей не нужен.
+  // WebGPU/Vulkan НЕ включаем: на проблемных драйверах Vulkan роняет GPU-процесс.
+  // Студия рендерит превью в 2D-канвас; на нестабильных драйверах непрерывная GPU-загрузка
+  // 2D-канваса при play роняет GPU-процесс (весь экран в чёрный) — уводим 2D-канвас в софт.
+  app.commandLine.appendSwitch('disable-accelerated-2d-canvas');
+  app.commandLine.appendSwitch('disable-gpu-compositing');
 } catch {
   /* noop */
 }
