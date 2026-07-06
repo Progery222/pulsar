@@ -23,6 +23,7 @@ import {
   ArrowLeftToLine,
   ChevronsRight,
   ChevronsLeft,
+  Blend,
   Plus,
   ChevronDown as ChevronDownIcon,
   Magnet,
@@ -35,6 +36,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { toast } from "../../stores/notification-store";
 import { useEngineStore } from "../../stores/engine-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
+import { getTransitionBridge } from "../../bridges/transition-bridge";
 import {
   Popover,
   PopoverTrigger,
@@ -426,6 +428,38 @@ export const Timeline: React.FC = () => {
     },
     [selectedClipIds, playheadPosition],
   );
+
+  // Кроссфейд (cross-dissolve) на стыке выделенного клипа и следующего на дорожке.
+  const handleCrossfadeAtCut = useCallback(() => {
+    if (selectedClipIds.length !== 1) return;
+    const selId = selectedClipIds[0];
+    const track = tracks.find((t) => t.clips.some((c) => c.id === selId));
+    if (!track) return;
+    const sorted = [...track.clips].sort((a, b) => a.startTime - b.startTime);
+    const idx = sorted.findIndex((c) => c.id === selId);
+    const clipA = sorted[idx];
+    const clipB = sorted[idx + 1];
+    if (!clipB) {
+      toast.error("Кроссфейд", "Справа нет соседнего клипа на этой дорожке");
+      return;
+    }
+    const bridge = getTransitionBridge();
+    bridge.initialize(project.settings.width, project.settings.height);
+    const a = { ...clipA, trackId: track.id };
+    const b = { ...clipB, trackId: track.id };
+    const dur = Math.min(0.5, clipA.duration / 2, clipB.duration / 2);
+    const params = bridge.getDefaultParams("crossfade");
+    const result = bridge.createTransition(a, b, "crossfade", dur, params);
+    if (result.success && result.transitionId) {
+      const t = bridge.getTransition(result.transitionId);
+      if (t) {
+        useProjectStore.getState().addClipTransition(t);
+        toast.success("Кроссфейд добавлен", `${dur.toFixed(1)} c на стыке`);
+        return;
+      }
+    }
+    toast.error("Кроссфейд", result.error || "Не удалось добавить переход");
+  }, [selectedClipIds, tracks, project.settings.width, project.settings.height]);
 
   const handleBackgroundClick = useCallback(() => {
     clearSelection();
@@ -842,6 +876,13 @@ export const Timeline: React.FC = () => {
           title="Обрезать конец клипа до плейхеда (W)"
         >
           <ChevronsLeft size={14} />
+        </TLTool>
+        <TLTool
+          onClick={handleCrossfadeAtCut}
+          disabled={selectedClipIds.length !== 1}
+          title="Кроссфейд (cross-dissolve) на стыке со следующим клипом"
+        >
+          <Blend size={14} />
         </TLTool>
 
         <div className="w-px h-4 bg-border mx-1.5" />
