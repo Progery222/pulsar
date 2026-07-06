@@ -384,12 +384,20 @@ export class RenderBridge {
         continue;
       }
 
-      // Check if the current time is within this transition
-      if (this.transitionEngine.isTimeInTransition(transition, clipA, time)) {
-        const progress = this.transitionEngine.calculateTransitionProgress(
-          transition,
-          clipA,
-          time,
+      // Окно перехода (overlap-aware): при перехлёсте clipB под конец clipA
+      // окно = [clipB.start, clipAEnd] — реальные кадры обоих; иначе центр
+      // на стыке ±dur/2 (старая модель).
+      const clipAEnd = clipA.startTime + clipA.duration;
+      const isOverlap = clipB.startTime < clipAEnd - 0.0001;
+      const tStart = isOverlap
+        ? clipB.startTime
+        : clipAEnd - transition.duration / 2;
+      const tEnd = isOverlap ? clipAEnd : tStart + transition.duration;
+
+      if (time >= tStart && time <= tEnd && tEnd > tStart) {
+        const progress = Math.min(
+          1,
+          Math.max(0, (time - tStart) / (tEnd - tStart)),
         );
         return { transition, clipA, clipB, progress };
       }

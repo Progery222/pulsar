@@ -36,7 +36,7 @@ import { useUIStore } from "../../stores/ui-store";
 import { toast } from "../../stores/notification-store";
 import { useEngineStore } from "../../stores/engine-store";
 import { getPlaybackBridge } from "../../bridges/playback-bridge";
-import { getTransitionBridge } from "../../bridges/transition-bridge";
+import { applyCrossfadeOverlap } from "./timeline/crossfade";
 import {
   Popover,
   PopoverTrigger,
@@ -429,7 +429,7 @@ export const Timeline: React.FC = () => {
     [selectedClipIds, playheadPosition],
   );
 
-  // Кроссфейд (cross-dissolve) на стыке выделенного клипа и следующего на дорожке.
+  // Кроссфейд (cross-dissolve) с перехлёстом между выделенным клипом и следующим.
   const handleCrossfadeAtCut = useCallback(() => {
     if (selectedClipIds.length !== 1) return;
     const selId = selectedClipIds[0];
@@ -437,29 +437,13 @@ export const Timeline: React.FC = () => {
     if (!track) return;
     const sorted = [...track.clips].sort((a, b) => a.startTime - b.startTime);
     const idx = sorted.findIndex((c) => c.id === selId);
-    const clipA = sorted[idx];
     const clipB = sorted[idx + 1];
     if (!clipB) {
       toast.error("Кроссфейд", "Справа нет соседнего клипа на этой дорожке");
       return;
     }
-    const bridge = getTransitionBridge();
-    bridge.initialize(project.settings.width, project.settings.height);
-    const a = { ...clipA, trackId: track.id };
-    const b = { ...clipB, trackId: track.id };
-    const dur = Math.min(0.5, clipA.duration / 2, clipB.duration / 2);
-    const params = bridge.getDefaultParams("crossfade");
-    const result = bridge.createTransition(a, b, "crossfade", dur, params);
-    if (result.success && result.transitionId) {
-      const t = bridge.getTransition(result.transitionId);
-      if (t) {
-        useProjectStore.getState().addClipTransition(t);
-        toast.success("Кроссфейд добавлен", `${dur.toFixed(1)} c на стыке`);
-        return;
-      }
-    }
-    toast.error("Кроссфейд", result.error || "Не удалось добавить переход");
-  }, [selectedClipIds, tracks, project.settings.width, project.settings.height]);
+    void applyCrossfadeOverlap(selId, clipB.id, track.id);
+  }, [selectedClipIds, tracks]);
 
   const handleBackgroundClick = useCallback(() => {
     clearSelection();

@@ -15,8 +15,7 @@ import {
 import type { Clip, Track } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
 import { useTimelineStore } from "../../../stores/timeline-store";
-import { getTransitionBridge } from "../../../bridges/transition-bridge";
-import { toast } from "../../../stores/notification-store";
+import { applyCrossfadeOverlap } from "./crossfade";
 import {
   ContextMenuContent,
   ContextMenuItem,
@@ -51,7 +50,6 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
     pasteEffects,
     copiedEffects,
     closeGapBeforeClip,
-    addClipTransition,
   } = useProjectStore();
   const { playheadPosition } = useTimelineStore();
 
@@ -65,29 +63,7 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
   }, [track.clips, clip.id]);
 
   const applyCrossfade = (clipA: Clip, clipB: Clip) => {
-    const bridge = getTransitionBridge();
-    const settings = useProjectStore.getState().project.settings;
-    bridge.initialize(settings.width, settings.height);
-    const a = { ...clipA, trackId: track.id };
-    const b = { ...clipB, trackId: track.id };
-    const dur = Math.min(0.5, clipA.duration / 2, clipB.duration / 2);
-    const result = bridge.createTransition(
-      a,
-      b,
-      "crossfade",
-      dur,
-      bridge.getDefaultParams("crossfade"),
-    );
-    if (result.success && result.transitionId) {
-      const t = bridge.getTransition(result.transitionId);
-      if (t) {
-        addClipTransition(t);
-        toast.success("Кроссфейд добавлен", `${dur.toFixed(1)} c на стыке`);
-        onClose?.();
-        return;
-      }
-    }
-    toast.error("Кроссфейд", result.error || "Не удалось добавить переход");
+    void applyCrossfadeOverlap(clipA.id, clipB.id, track.id);
     onClose?.();
   };
 

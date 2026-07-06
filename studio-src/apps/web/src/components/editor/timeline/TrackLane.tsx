@@ -260,14 +260,24 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
           ))}
         {(track.transitions ?? []).map((tr) => {
           const clipA = track.clips.find((c) => c.id === tr.clipAId);
+          const clipB = track.clips.find((c) => c.id === tr.clipBId);
           if (!clipA) return null;
-          const seamX = (clipA.startTime + clipA.duration) * pixelsPerSecond;
-          const w = Math.max((tr.duration ?? 0.5) * pixelsPerSecond, 16);
+          const clipAEnd = clipA.startTime + clipA.duration;
+          const isOverlap = clipB ? clipB.startTime < clipAEnd - 0.0001 : false;
+          // Зона перехлёста [clipB.start, clipAEnd]; иначе центр на стыке.
+          const tStart =
+            isOverlap && clipB
+              ? clipB.startTime
+              : clipAEnd - (tr.duration ?? 0.5) / 2;
+          const tEnd =
+            isOverlap && clipB ? clipAEnd : tStart + (tr.duration ?? 0.5);
+          const left = tStart * pixelsPerSecond;
+          const w = Math.max((tEnd - tStart) * pixelsPerSecond, 16);
           return (
             <div
               key={tr.id}
               className="absolute top-0 bottom-0 z-30 pointer-events-none flex items-start justify-center"
-              style={{ left: seamX - w / 2, width: w }}
+              style={{ left, width: w }}
             >
               <div
                 className="absolute top-1 bottom-1 left-0 right-0 rounded-sm border border-primary/70"

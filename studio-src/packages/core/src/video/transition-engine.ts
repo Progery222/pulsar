@@ -459,13 +459,17 @@ export class TransitionEngine {
     duration: number,
   ): TransitionValidationResult {
     const clipAEnd = clipA.startTime + clipA.duration;
-    const gap = Math.abs(clipB.startTime - clipAEnd);
 
-    // Allow small tolerance for floating point errors
-    if (gap > 0.001) {
+    // Разрешаем как встык (gap≈0), так и перехлёст (clipB заходит под конец
+    // clipA) — перехлёст нужен для настоящего cross-dissolve с реальными
+    // кадрами обоих клипов.
+    if (
+      clipB.startTime > clipAEnd + 0.001 ||
+      clipB.startTime < clipA.startTime - 0.001
+    ) {
       return {
         valid: false,
-        error: "Clips must be adjacent to add a transition",
+        error: "Clips must be adjacent or overlapping to add a transition",
       };
     }
     if (clipA.trackId !== clipB.trackId) {

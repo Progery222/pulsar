@@ -2050,17 +2050,20 @@ export const getTransitionAtTime = (
 
         if (!clipA || !clipB) continue;
 
-        if (
-          transitionBridge.isTimeInTransition(
-            transition,
-            clipA as Parameters<typeof transitionBridge.isTimeInTransition>[1],
-            time,
-          )
-        ) {
-          const progress = transitionBridge.calculateProgress(
-            transition,
-            clipA as Parameters<typeof transitionBridge.calculateProgress>[1],
-            time,
+        // Окно перехода. Если clipB заходит под конец clipA (перехлёст) —
+        // окно = зона перехлёста [clipB.start, clipAEnd], где оба клипа дают
+        // реальные кадры. Иначе — старая модель «центр на стыке» ±dur/2.
+        const clipAEnd = clipA.startTime + clipA.duration;
+        const isOverlap = clipB.startTime < clipAEnd - 0.0001;
+        const tStart = isOverlap
+          ? clipB.startTime
+          : clipAEnd - transition.duration / 2;
+        const tEnd = isOverlap ? clipAEnd : tStart + transition.duration;
+
+        if (time >= tStart && time <= tEnd && tEnd > tStart) {
+          const progress = Math.min(
+            1,
+            Math.max(0, (time - tStart) / (tEnd - tStart)),
           );
           return {
             clipA: {
