@@ -6,7 +6,7 @@
 let lastTs = 0;
 let emaMs = 0; // экспоненциальное скользящее среднее времени кадра
 let el: HTMLDivElement | null = null;
-let visible = true;
+let visible = false;
 let lastPaint = 0;
 let keyBound = false;
 
