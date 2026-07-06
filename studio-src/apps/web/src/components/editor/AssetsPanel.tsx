@@ -1509,7 +1509,7 @@ export const AssetsPanel: React.FC = () => {
       className="w-full min-w-0 bg-bg-1 flex flex-col h-full relative"
     >
       {/* ── Horizontal tool nav (icon + label, top) ──────────── */}
-      <div className="flex items-stretch gap-0.5 px-2 pt-2 pb-1 border-b border-border bg-bg-1 overflow-x-auto scrollbar-none shrink-0">
+      <div className="flex flex-wrap items-stretch gap-0.5 px-2 pt-2 pb-1 border-b border-border bg-bg-1 shrink-0">
         {ASSETS_TABS.map((tab) => {
           const Icon = TAB_ICONS[tab.value];
           const isActive = activeTab === tab.value;
