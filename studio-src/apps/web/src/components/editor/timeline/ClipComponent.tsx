@@ -590,19 +590,22 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       const deltaTime = deltaX / pixelsPerSecond;
 
       if (trimEdge === "left") {
-        const newStartTime = Math.max(
+        let newStartTime = Math.max(
           0,
           trimStartRef.current.startTime + deltaTime,
         );
+        // Магнит: край клипа липнет к стыкам/плейхеду/сетке (как и перемещение).
+        newStartTime = calculateSnap(newStartTime, clip.id, allTracks, playheadPosition, snapSettings, pixelsPerSecond).time;
         const maxStartTime =
           trimStartRef.current.startTime + trimStartRef.current.duration - 0.1;
         const clampedStartTime = Math.min(newStartTime, maxStartTime);
         onTrimClip(clip.id, "left", clampedStartTime);
       } else {
-        const newEndTime =
+        let newEndTime =
           trimStartRef.current.startTime +
           trimStartRef.current.duration +
           deltaTime;
+        newEndTime = calculateSnap(newEndTime, clip.id, allTracks, playheadPosition, snapSettings, pixelsPerSecond).time;
         const minEndTime = trimStartRef.current.startTime + 0.1;
         const clampedEndTime = Math.max(newEndTime, minEndTime);
         onTrimClip(clip.id, "right", clampedEndTime);
@@ -622,7 +625,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
     };
-  }, [isTrimming, trimEdge, clip.id, pixelsPerSecond, onTrimClip]);
+  }, [isTrimming, trimEdge, clip.id, pixelsPerSecond, onTrimClip, allTracks, playheadPosition, snapSettings]);
 
   const thumbnailCount = Math.max(1, Math.floor(width / 60));
   const clipName = mediaItem?.name || clip.mediaId.slice(0, 8);
