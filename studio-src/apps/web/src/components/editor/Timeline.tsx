@@ -409,7 +409,7 @@ export const Timeline: React.FC = () => {
   const handleRippleDelete = useCallback(async () => {
     if (selectedClipIds.length === 0) return;
     // Снимок: по каждой дорожке — удаляемые интервалы и оставшиеся клипы для сдвига.
-    const plan = allTracks
+    const plan = tracks
       .map((t) => {
         const removed = t.clips
           .filter((c) => selectedClipIds.includes(c.id))
@@ -434,7 +434,7 @@ export const Timeline: React.FC = () => {
         }
       }
     }
-  }, [selectedClipIds, allTracks, handleDelete]);
+  }, [selectedClipIds, tracks, handleDelete]);
 
   // Shift+Delete — ripple-удаление.
   useEffect(() => {
