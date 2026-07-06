@@ -63,6 +63,7 @@ export interface UIState {
   effectApplicationClipId: string | null;
   effectApplicationLabel: string | null;
   snapSettings: SnapSettings;
+  exportRange: { in: number | null; out: number | null };
   panels: Record<PanelId, PanelState>;
   shortcuts: KeyboardShortcuts;
   theme: "light" | "dark" | "system";
@@ -97,6 +98,9 @@ export interface UIState {
   isSelected: (itemId: string) => boolean;
   getSelectedClipIds: () => string[];
   getSelectedTrackIds: () => string[];
+  setExportIn: (t: number | null) => void;
+  setExportOut: (t: number | null) => void;
+  clearExportRange: () => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSnapToGrid: (enabled: boolean) => void;
   setSnapToClips: (enabled: boolean) => void;
@@ -203,6 +207,8 @@ export const useUIStore = create<UIState>()(
         effectApplicationLabel: null,
 
         snapSettings: DEFAULT_SNAP_SETTINGS,
+
+        exportRange: { in: null, out: null },
 
         panels: DEFAULT_PANELS,
 
@@ -338,6 +344,17 @@ export const useUIStore = create<UIState>()(
             .map((s) => s.id);
         },
 
+        setExportIn: (t) =>
+          set((state) => {
+            const out = state.exportRange.out;
+            return { exportRange: { in: t, out: out != null && t != null && out <= t ? null : out } };
+          }),
+        setExportOut: (t) =>
+          set((state) => {
+            const inn = state.exportRange.in;
+            return { exportRange: { in: inn != null && t != null && inn >= t ? null : inn, out: t } };
+          }),
+        clearExportRange: () => set({ exportRange: { in: null, out: null } }),
         setSnapEnabled: (enabled: boolean) => {
           set((state) => ({
             snapSettings: { ...state.snapSettings, enabled },

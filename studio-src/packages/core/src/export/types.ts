@@ -27,6 +27,9 @@ export interface VideoExportSettings {
   colorDepth?: 8 | 10 | 12;
   pixelFormat?: "yuv420" | "yuv422" | "yuv444" | "rgb";
   upscaling?: UpscalingSettings;
+  // Диапазон экспорта (in/out, сек). Пусто -> весь таймлайн.
+  rangeStart?: number;
+  rangeEnd?: number;
 }
 
 export interface AudioExportSettings {

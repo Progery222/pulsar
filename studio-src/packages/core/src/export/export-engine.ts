@@ -246,11 +246,19 @@ export class ExportEngine {
     const { timeline } = project;
     const timelineDuration = this.calculateTimelineDuration(timeline);
 
+    // Диапазон экспорта (in/out): рендерим только [renderStart, renderEnd].
+    const renderStart = Math.max(0, settings.rangeStart ?? 0);
+    const renderEnd =
+      settings.rangeEnd != null && settings.rangeEnd > renderStart
+        ? Math.min(settings.rangeEnd, timelineDuration)
+        : timelineDuration;
+    const renderDuration = Math.max(0, renderEnd - renderStart);
+
     const isMemoryIntensiveCodec =
       fullSettings.codec === "vp9" ||
       fullSettings.codec === "av1" ||
       fullSettings.codec === "h265";
-    const isLongVideo = timelineDuration > 120;
+    const isLongVideo = renderDuration > 120;
 
     let maxW = isMemoryIntensiveCodec ? 1920 : 3840;
     let maxH = isMemoryIntensiveCodec ? 1080 : 2160;
@@ -302,7 +310,7 @@ export class ExportEngine {
       };
     }
 
-    const totalFrames = Math.ceil(timelineDuration * fullSettings.frameRate);
+    const totalFrames = Math.ceil(renderDuration * fullSettings.frameRate);
     let bytesWritten = 0;
 
     try {
@@ -395,7 +403,7 @@ export class ExportEngine {
       await output.start();
 
       try {
-        await this.encodeTimelineAudioToSource(project, audioSource);
+        await this.encodeTimelineAudioToSource(project, audioSource, renderStart, renderEnd);
       } finally {
         this.audioEngine?.clearCache();
       }
@@ -431,7 +439,8 @@ export class ExportEngine {
           );
         }
 
-        const time = frame / fullSettings.frameRate;
+        const outTime = frame / fullSettings.frameRate; // время в выходном файле (с 0)
+        const time = renderStart + outTime; // время на таймлайне (со сдвигом in-точки)
         const rendered = await this.videoEngine!.renderFrame(
           project,
           time,
@@ -453,7 +462,7 @@ export class ExportEngine {
         }
 
         const videoSample = new VideoSample(frameImage, {
-          timestamp: time,
+          timestamp: outTime,
           duration: 1 / fullSettings.frameRate,
         });
 
@@ -1097,17 +1106,21 @@ export class ExportEngine {
   private async encodeTimelineAudioToSource(
     project: Project,
     audioSource: InstanceType<typeof import("mediabunny").AudioBufferSource>,
+    renderStart = 0,
+    renderEnd?: number,
   ): Promise<void> {
     const timelineDuration = this.calculateTimelineDuration(project.timeline);
     if (timelineDuration <= 0) {
       return;
     }
+    // Диапазон экспорта (in/out): рендерим аудио только [renderStart, rangeEnd].
+    const rangeEnd = renderEnd != null && renderEnd > renderStart ? Math.min(renderEnd, timelineDuration) : timelineDuration;
 
     const chunkDuration = ExportEngine.AUDIO_EXPORT_CHUNK_DURATION_SECONDS;
 
     for (
-      let startTime = 0;
-      startTime < timelineDuration;
+      let startTime = renderStart;
+      startTime < rangeEnd;
       startTime += chunkDuration
     ) {
       if (this.abortController?.signal.aborted) {
@@ -1120,7 +1133,7 @@ export class ExportEngine {
 
       const currentChunkDuration = Math.min(
         chunkDuration,
-        timelineDuration - startTime,
+        rangeEnd - startTime,
       );
       const audioBuffer = await this.renderTimelineAudio(
         project,

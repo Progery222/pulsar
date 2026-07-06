@@ -109,6 +109,10 @@ export const Timeline: React.FC = () => {
     toggleSnap,
     timelineMaximized,
     toggleTimelineMaximized,
+    exportRange,
+    setExportIn,
+    setExportOut,
+    clearExportRange,
   } = useUIStore();
   const selectedClipIds = getSelectedClipIds();
 
@@ -774,6 +778,28 @@ export const Timeline: React.FC = () => {
 
         <div className="w-px h-4 bg-border mx-1.5" />
 
+        <TLTool
+          onClick={() => setExportIn(playheadPosition)}
+          active={exportRange.in != null}
+          title="Начало области экспорта (I) — рендерить только выделенное"
+        >
+          <span className="text-[11px] font-semibold leading-none">In</span>
+        </TLTool>
+        <TLTool
+          onClick={() => setExportOut(playheadPosition)}
+          active={exportRange.out != null}
+          title="Конец области экспорта (O)"
+        >
+          <span className="text-[11px] font-semibold leading-none">Out</span>
+        </TLTool>
+        {(exportRange.in != null || exportRange.out != null) && (
+          <TLTool onClick={clearExportRange} title="Сбросить область экспорта">
+            <span className="text-[13px] leading-none">✕</span>
+          </TLTool>
+        )}
+
+        <div className="w-px h-4 bg-border mx-1.5" />
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button
@@ -993,6 +1019,23 @@ export const Timeline: React.FC = () => {
                   bridge.endScrubbing();
                 }}
               />
+              {(exportRange.in != null || exportRange.out != null) && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    bottom: 0,
+                    left: `${(exportRange.in ?? 0) * pixelsPerSecond}px`,
+                    width: `${Math.max(0, ((exportRange.out ?? timelineDuration) - (exportRange.in ?? 0)) * pixelsPerSecond)}px`,
+                    background: "rgba(200,255,0,0.18)",
+                    borderLeft: exportRange.in != null ? "2px solid #c8ff00" : "none",
+                    borderRight: exportRange.out != null ? "2px solid #c8ff00" : "none",
+                    pointerEvents: "none",
+                    zIndex: 5,
+                  }}
+                  title="Область экспорта"
+                />
+              )}
             </div>
           </div>
         </div>

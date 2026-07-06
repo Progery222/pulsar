@@ -213,7 +213,14 @@ export const Toolbar: React.FC = () => {
       const engine = getExportEngine();
       await engine.initialize();
 
-      const generator = engine.exportVideo(project, videoSettings, writableStream);
+      // Диапазон экспорта (in/out) с таймлайна.
+      const { exportRange } = useUIStore.getState();
+      const rangedSettings: Partial<VideoExportSettings> = {
+        ...videoSettings,
+        rangeStart: exportRange.in ?? undefined,
+        rangeEnd: exportRange.out ?? undefined,
+      };
+      const generator = engine.exportVideo(project, rangedSettings, writableStream);
       let finalResult: ExportResult | undefined;
 
       while (true) {
