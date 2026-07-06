@@ -7,6 +7,7 @@ import type {
   StickerClip,
 } from "@openreel/core";
 import { Blend } from "lucide-react";
+import { TransitionParamsPanel } from "./TransitionParamsPanel";
 import { ClipComponent } from "./ClipComponent";
 import { TextClipComponent } from "./TextClipComponent";
 import { ShapeClipComponent } from "./ShapeClipComponent";
@@ -91,6 +92,11 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
   const { snapSettings } = useUIStore();
   const [isDragOver, setIsDragOver] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [openTr, setOpenTr] = useState<{
+    id: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const laneRef = useRef<HTMLDivElement>(null);
   const resizeStartY = useRef<number>(0);
   const resizeStartHeight = useRef<number>(0);
@@ -349,16 +355,97 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
               )}
               <button
                 type="button"
-                className="pointer-events-auto relative mt-0.5 flex items-center justify-center rounded bg-background/85 px-1 py-0.5 text-primary hover:text-red-400 shadow"
-                title={`Переход: ${tr.type} • ${(tr.duration ?? 0).toFixed(1)} c — клик, чтобы удалить`}
+                className="pointer-events-auto relative mt-0.5 flex items-center justify-center rounded bg-background/85 px-1 py-0.5 text-primary hover:text-accent shadow"
+                title={`Переход: ${tr.type} • ${(tEnd - tStart).toFixed(1)} c — клик: параметры`}
                 onClick={(e) => {
                   e.stopPropagation();
-                  useProjectStore.getState().removeClipTransition(tr.id);
-                  toast.info("Переход удалён");
+                  const rect = (
+                    e.currentTarget as HTMLElement
+                  ).getBoundingClientRect();
+                  setOpenTr((cur) =>
+                    cur?.id === tr.id
+                      ? null
+                      : {
+                          id: tr.id,
+                          x: Math.min(rect.left, window.innerWidth - 244),
+                          y: Math.min(rect.bottom + 4, window.innerHeight - 330),
+                        },
+                  );
                 }}
               >
                 <Blend size={11} />
               </button>
+              {openTr?.id === tr.id && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[99] pointer-events-auto"
+                    onMouseDown={() => setOpenTr(null)}
+                  />
+                  <div
+                    className="fixed z-[100] pointer-events-none"
+                    style={{ left: openTr.x, top: openTr.y }}
+                  >
+                    <TransitionParamsPanel
+                    transition={tr}
+                    duration={tEnd - tStart}
+                    maxDuration={
+                      clipB
+                        ? Math.min(clipA.duration, clipB.duration)
+                        : clipA.duration
+                    }
+                    onClose={() => setOpenTr(null)}
+                    onRemove={() => {
+                      useProjectStore.getState().removeClipTransition(tr.id);
+                      toast.info("Переход удалён");
+                      setOpenTr(null);
+                    }}
+                    onSetLength={(dur) => {
+                      if (!clipB) return;
+                      const maxDur = Math.min(clipA.duration, clipB.duration);
+                      const d = Math.max(0.1, Math.min(maxDur, dur));
+                      const newBStart = clipAEnd - d;
+                      const delta = newBStart - clipB.startTime;
+                      const snapshot = track.clips
+                        .filter((c) => c.startTime >= clipB.startTime - 0.0001)
+                        .map((c) => ({ id: c.id, start: c.startTime }));
+                      useProjectStore.setState((state) => ({
+                        project: {
+                          ...state.project,
+                          timeline: {
+                            ...state.project.timeline,
+                            tracks: state.project.timeline.tracks.map((t) =>
+                              t.id === track.id
+                                ? {
+                                    ...t,
+                                    clips: t.clips.map((c) => {
+                                      const snap = snapshot.find(
+                                        (s) => s.id === c.id,
+                                      );
+                                      return snap
+                                        ? {
+                                            ...c,
+                                            startTime: Math.max(
+                                              0,
+                                              snap.start + delta,
+                                            ),
+                                          }
+                                        : c;
+                                    }),
+                                  }
+                                : t,
+                            ),
+                          },
+                          modifiedAt: Date.now(),
+                        },
+                      }));
+                      useProjectStore
+                        .getState()
+                        .updateClipTransition(tr.id, { duration: d });
+                    }}
+                  />
+                  </div>
+                </>
+              )}
             </div>
           );
         })}
