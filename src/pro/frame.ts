@@ -8,6 +8,17 @@ export interface DrawItem {
   alpha: number; // для crossfade
   out?: boolean; // уходящий слой перехода — нужен отдельный video-элемент
   xf?: ClipTransform; // разрешённый Transform (с учётом ключей)
+  blur?: { x: number; y: number; rad: number }; // моушен-блюр перехода (UV-доли)
+}
+
+// TransFx.blur -> вектор блюра (направленный вдоль движения или радиальный).
+function blurVec(fx: { blur?: number; radial?: boolean; dx: number; dy: number }): { x: number; y: number; rad: number } | undefined {
+  if (!fx.blur) return undefined;
+  if (fx.radial) return { x: 0, y: 0, rad: fx.blur };
+  const ax = Math.abs(fx.dx);
+  const ay = Math.abs(fx.dy);
+  if (ax < 1e-4 && ay < 1e-4) return { x: 0, y: 0, rad: fx.blur }; // без движения — радиальный (blur dissolve)
+  return { x: ax >= ay ? fx.blur : 0, y: ay > ax ? fx.blur : 0, rad: 0 };
 }
 
 // Видео-слои под плейхедом, снизу вверх (hidden/solo + crossfade, §5 ТЗ).
@@ -47,14 +58,14 @@ export function buildFrame(doc: ProDocument, ph: number): DrawItem[] {
       const bSpeed = B.speed || 1;
       const bTime = Math.max(0, B.inPoint + (ph - B.timelineStart) * bSpeed); // непрерывный пред-ролл
       const baseB = transformAt(B, ph - B.timelineStart);
-      map.set(B.id, { clip: B, sourceTime: bTime, alpha: L.b.alpha, xf: { x: baseB.x + L.b.dx * W, y: baseB.y + L.b.dy * H, scale: baseB.scale * L.b.scale, rotation: baseB.rotation + L.b.rot } });
+      map.set(B.id, { clip: B, sourceTime: bTime, alpha: L.b.alpha, xf: { x: baseB.x + L.b.dx * W, y: baseB.y + L.b.dy * H, scale: baseB.scale * L.b.scale, rotation: baseB.rotation + L.b.rot }, blur: blurVec(L.b) });
       if (A) {
         const aSpeed = A.speed || 1;
         let aTime = A.inPoint + (ph - A.timelineStart) * aSpeed; // уходящий крутится за резом (запас исходника)
         if (A.sourceDuration) aTime = Math.min(aTime, A.sourceDuration - 0.03);
         aTime = Math.max(0, aTime);
         const baseA = transformAt(A, ph - A.timelineStart);
-        map.set(A.id, { clip: A, sourceTime: aTime, alpha: L.a.alpha, out: true, xf: { x: baseA.x + L.a.dx * W, y: baseA.y + L.a.dy * H, scale: baseA.scale * L.a.scale, rotation: baseA.rotation + L.a.rot } });
+        map.set(A.id, { clip: A, sourceTime: aTime, alpha: L.a.alpha, out: true, xf: { x: baseA.x + L.a.dx * W, y: baseA.y + L.a.dy * H, scale: baseA.scale * L.a.scale, rotation: baseA.rotation + L.a.rot }, blur: blurVec(L.a) });
       }
       // Без смежного слева A — B просто проявляется/въезжает поверх чёрного/нижнего слоя.
     }

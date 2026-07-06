@@ -60,8 +60,8 @@ export type TransitionAlign = 'center' | 'left' | 'right';
 export const TRANSITION_ALIGNS: TransitionAlign[] = ['left', 'center', 'right'];
 export const TRANSITION_ALIGN_LABEL: Record<TransitionAlign, string> = { center: 'По центру', left: 'У левого', right: 'У правого' };
 
-export type TransitionKind = 'dissolve' | 'fadeblack' | 'slideL' | 'slideR' | 'slideU' | 'slideD' | 'push' | 'zoom' | 'spin';
-export const TRANSITION_KINDS: TransitionKind[] = ['dissolve', 'fadeblack', 'slideL', 'slideR', 'slideU', 'slideD', 'push', 'zoom', 'spin'];
+export type TransitionKind = 'dissolve' | 'fadeblack' | 'slideL' | 'slideR' | 'slideU' | 'slideD' | 'push' | 'zoom' | 'spin' | 'whipL' | 'whipR' | 'zoomblur' | 'blurdissolve';
+export const TRANSITION_KINDS: TransitionKind[] = ['dissolve', 'fadeblack', 'slideL', 'slideR', 'slideU', 'slideD', 'push', 'zoom', 'spin', 'whipL', 'whipR', 'zoomblur', 'blurdissolve'];
 export const TRANSITION_LABEL: Record<TransitionKind, string> = {
   dissolve: 'Растворение',
   fadeblack: 'Через чёрный',
@@ -72,17 +72,24 @@ export const TRANSITION_LABEL: Record<TransitionKind, string> = {
   push: 'Выталкивание',
   zoom: 'Зум',
   spin: 'Вращение',
+  whipL: 'Whip ← (смаз)',
+  whipR: 'Whip → (смаз)',
+  zoomblur: 'Zoom Blur',
+  blurdissolve: 'Blur Dissolve',
 };
 
-// Эффект слоя в момент f (0..1) перехода: альфа + смещение (доля кадра) + масштаб + поворот.
+// Эффект слоя в момент f (0..1) перехода: альфа + смещение (доля кадра) + масштаб + поворот + блюр.
 export interface TransFx {
   alpha: number;
   dx: number;
   dy: number;
   scale: number;
   rot: number;
+  blur?: number; // магнитуда моушен-блюра (доля кадра)
+  radial?: boolean; // радиальный (zoom) вместо направленного
 }
 const idFx = (alpha = 1): TransFx => ({ alpha, dx: 0, dy: 0, scale: 1, rot: 0 });
+const bell = (f: number) => Math.sin(Math.PI * Math.max(0, Math.min(1, f))); // 0→1→0, пик в центре
 
 // Раскладка перехода на входящий (b) и уходящий (a) слои. dx/dy — доля кадра.
 export function transitionLayers(kind: TransitionKind, f: number): { a: TransFx; b: TransFx } {
@@ -104,6 +111,22 @@ export function transitionLayers(kind: TransitionKind, f: number): { a: TransFx;
       return { a: idFx(1), b: { alpha: f, dx: 0, dy: 0, scale: 0.3 + 0.7 * e, rot: 0 } };
     case 'spin':
       return { a: idFx(1), b: { alpha: f, dx: 0, dy: 0, scale: 0.2 + 0.8 * e, rot: (1 - e) * 200 } };
+    case 'whipL': {
+      const fast = Math.pow(f, 0.7);
+      const bl = 0.16 * bell(f);
+      return { a: { alpha: 1, dx: -fast, dy: 0, scale: 1, rot: 0, blur: bl }, b: { alpha: 1, dx: (1 - fast), dy: 0, scale: 1, rot: 0, blur: bl } };
+    }
+    case 'whipR': {
+      const fast = Math.pow(f, 0.7);
+      const bl = 0.16 * bell(f);
+      return { a: { alpha: 1, dx: fast, dy: 0, scale: 1, rot: 0, blur: bl }, b: { alpha: 1, dx: -(1 - fast), dy: 0, scale: 1, rot: 0, blur: bl } };
+    }
+    case 'zoomblur':
+      return { a: idFx(1), b: { alpha: f, dx: 0, dy: 0, scale: 0.5 + 0.5 * e, rot: 0, blur: 0.12 * bell(f), radial: true } };
+    case 'blurdissolve': {
+      const bl = 0.06 * bell(f);
+      return { a: { alpha: 1 - f, dx: 0, dy: 0, scale: 1, rot: 0, blur: bl }, b: { alpha: f, dx: 0, dy: 0, scale: 1, rot: 0, blur: bl } };
+    }
     default:
       return { a: idFx(1 - f), b: idFx(f) }; // dissolve
   }
