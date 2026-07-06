@@ -18,8 +18,6 @@ try {
 // иначе WebGL-компоновщик Viewer в Pulsar Pro не инициализируется (createShader → null).
 try {
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
-  // Прим.: WebGPU/GPU-флаги под Студию убраны — её WebCodecs-плеер роняет рендер на части
-  // машин; ускорение здесь не трогаем, чтобы не замедлять остальные режимы.
 } catch {
   /* noop */
 }
@@ -41,6 +39,17 @@ import { registerFeedbackHandlers } from './ipc/feedback';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
+
+// Диагностика краша Студии: логируем причину гибели рендер/дочерних процессов.
+app.on('render-process-gone', (_e, _wc, details) => {
+  console.error('[CRASH] render-process-gone:', JSON.stringify(details));
+});
+app.on('child-process-gone', (_e, details) => {
+  console.error('[CRASH] child-process-gone:', JSON.stringify(details));
+});
+app.on('gpu-process-crashed', (_e, killed) => {
+  console.error('[CRASH] gpu-process-crashed, killed=', killed);
+});
 
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron');
