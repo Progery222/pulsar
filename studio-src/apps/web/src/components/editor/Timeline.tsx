@@ -21,6 +21,8 @@ import {
   ChevronDown,
   Trash2,
   ArrowLeftToLine,
+  ChevronsRight,
+  ChevronsLeft,
   Plus,
   ChevronDown as ChevronDownIcon,
   Magnet,
@@ -408,53 +410,22 @@ export const Timeline: React.FC = () => {
 
   const handleRippleDelete = useCallback(async () => {
     if (selectedClipIds.length === 0) return;
-    // Снимок: по каждой дорожке — удаляемые интервалы и оставшиеся клипы для сдвига.
-    const plan = tracks
-      .map((t) => {
-        const removed = t.clips
-          .filter((c) => selectedClipIds.includes(c.id))
-          .map((c) => ({ start: c.startTime, duration: c.duration }));
-        const keep = t.clips
-          .filter((c) => !selectedClipIds.includes(c.id))
-          .map((c) => ({ id: c.id, start: c.startTime }));
-        return { trackId: t.id, removed, keep };
-      })
-      .filter((p) => p.removed.length > 0);
-
-    await handleDelete();
-
     const store = useProjectStore.getState();
-    for (const p of plan) {
-      for (const k of p.keep) {
-        const shift = p.removed
-          .filter((r) => r.start < k.start)
-          .reduce((s, r) => s + r.duration, 0);
-        if (shift > 0) {
-          await store.moveClip(k.id, Math.max(0, k.start - shift), p.trackId);
-        }
-      }
+    for (const id of selectedClipIds) {
+      await store.rippleDeleteClip(id);
     }
-  }, [selectedClipIds, tracks, handleDelete]);
+    clearSelection();
+  }, [selectedClipIds, clearSelection]);
 
-  // Shift+Delete — ripple-удаление.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const el = e.target as HTMLElement;
-      if (
-        el &&
-        (el.tagName === "INPUT" ||
-          el.tagName === "TEXTAREA" ||
-          el.isContentEditable)
-      )
-        return;
-      if (e.shiftKey && (e.code === "Delete" || e.code === "Backspace")) {
-        e.preventDefault();
-        handleRippleDelete();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [handleRippleDelete]);
+  const handleTrimToPlayhead = useCallback(
+    (isStart: boolean) => {
+      if (selectedClipIds.length !== 1) return;
+      useProjectStore
+        .getState()
+        .trimToPlayhead(selectedClipIds[0], playheadPosition, isStart);
+    },
+    [selectedClipIds, playheadPosition],
+  );
 
   const handleBackgroundClick = useCallback(() => {
     clearSelection();
@@ -854,9 +825,23 @@ export const Timeline: React.FC = () => {
         <TLTool
           onClick={handleRippleDelete}
           disabled={selectedClipIds.length === 0}
-          title="Ripple-удаление — убрать клип и сдвинуть остальные влево (закрыть зазор)"
+          title="Ripple-удаление — убрать клип и сдвинуть остальные влево (Shift+Del)"
         >
           <ArrowLeftToLine size={14} />
+        </TLTool>
+        <TLTool
+          onClick={() => handleTrimToPlayhead(true)}
+          disabled={selectedClipIds.length !== 1}
+          title="Обрезать начало клипа до плейхеда (Q)"
+        >
+          <ChevronsRight size={14} />
+        </TLTool>
+        <TLTool
+          onClick={() => handleTrimToPlayhead(false)}
+          disabled={selectedClipIds.length !== 1}
+          title="Обрезать конец клипа до плейхеда (W)"
+        >
+          <ChevronsLeft size={14} />
         </TLTool>
 
         <div className="w-px h-4 bg-border mx-1.5" />
