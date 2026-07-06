@@ -286,6 +286,67 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
                     "repeating-linear-gradient(45deg, rgba(200,255,0,0.30) 0 3px, transparent 3px 6px)",
                 }}
               />
+              {clipB && (
+                <div
+                  className="pointer-events-auto absolute top-1 bottom-1 left-0 w-2 cursor-ew-resize rounded-l-sm bg-primary/50 hover:bg-primary/80"
+                  title="Тянуть — изменить длину кроссфейда"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const startX = e.clientX;
+                    const origBStart = clipB.startTime;
+                    const maxDur = Math.min(clipA.duration, clipB.duration);
+                    const snapshot = track.clips
+                      .filter((c) => c.startTime >= clipB.startTime - 0.0001)
+                      .map((c) => ({ id: c.id, start: c.startTime }));
+                    const move = (ev: MouseEvent) => {
+                      const dt = (ev.clientX - startX) / pixelsPerSecond;
+                      let newBStart = origBStart + dt;
+                      newBStart = Math.min(
+                        clipAEnd - 0.1,
+                        Math.max(clipAEnd - maxDur, newBStart),
+                      );
+                      const shift = newBStart - origBStart;
+                      useProjectStore.setState((state) => ({
+                        project: {
+                          ...state.project,
+                          timeline: {
+                            ...state.project.timeline,
+                            tracks: state.project.timeline.tracks.map((t) =>
+                              t.id === track.id
+                                ? {
+                                    ...t,
+                                    clips: t.clips.map((c) => {
+                                      const snap = snapshot.find(
+                                        (s) => s.id === c.id,
+                                      );
+                                      return snap
+                                        ? {
+                                            ...c,
+                                            startTime: Math.max(
+                                              0,
+                                              snap.start + shift,
+                                            ),
+                                          }
+                                        : c;
+                                    }),
+                                  }
+                                : t,
+                            ),
+                          },
+                          modifiedAt: Date.now(),
+                        },
+                      }));
+                    };
+                    const up = () => {
+                      window.removeEventListener("mousemove", move);
+                      window.removeEventListener("mouseup", up);
+                    };
+                    window.addEventListener("mousemove", move);
+                    window.addEventListener("mouseup", up);
+                  }}
+                />
+              )}
               <button
                 type="button"
                 className="pointer-events-auto relative mt-0.5 flex items-center justify-center rounded bg-background/85 px-1 py-0.5 text-primary hover:text-red-400 shadow"
