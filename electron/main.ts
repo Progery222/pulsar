@@ -18,9 +18,8 @@ try {
 // иначе WebGL-компоновщик Viewer в Pulsar Pro не инициализируется (createShader → null).
 try {
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
-  // Студия (OpenReel) использует WebGPU — включаем на случай, если не активен по умолчанию.
-  app.commandLine.appendSwitch('enable-unsafe-webgpu');
-  app.commandLine.appendSwitch('enable-features', 'Vulkan');
+  // WebGPU/Vulkan НЕ включаем: на проблемных драйверах Vulkan роняет GPU-процесс
+  // (весь экран в чёрный). Студия форсит Canvas2D-рендер, WebGPU ей не нужен.
 } catch {
   /* noop */
 }
