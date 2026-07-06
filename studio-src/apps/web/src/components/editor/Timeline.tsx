@@ -20,6 +20,7 @@ import {
   ChevronUp,
   ChevronDown,
   Trash2,
+  ArrowLeftToLine,
   Plus,
   ChevronDown as ChevronDownIcon,
   Magnet,
@@ -99,7 +100,7 @@ export const Timeline: React.FC = () => {
   } = useTimelineStore();
 
   const [showLayersPanel, setShowLayersPanel] = useState(false);
-  const [bladeCursorTime, setBladeCursorTime] = useState<number | null>(null);
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
 
   const {
     select,
@@ -404,6 +405,56 @@ export const Timeline: React.FC = () => {
     deleteShapeClip,
     deleteSVGClip,
   ]);
+
+  const handleRippleDelete = useCallback(async () => {
+    if (selectedClipIds.length === 0) return;
+    // Снимок: по каждой дорожке — удаляемые интервалы и оставшиеся клипы для сдвига.
+    const plan = allTracks
+      .map((t) => {
+        const removed = t.clips
+          .filter((c) => selectedClipIds.includes(c.id))
+          .map((c) => ({ start: c.startTime, duration: c.duration }));
+        const keep = t.clips
+          .filter((c) => !selectedClipIds.includes(c.id))
+          .map((c) => ({ id: c.id, start: c.startTime }));
+        return { trackId: t.id, removed, keep };
+      })
+      .filter((p) => p.removed.length > 0);
+
+    await handleDelete();
+
+    const store = useProjectStore.getState();
+    for (const p of plan) {
+      for (const k of p.keep) {
+        const shift = p.removed
+          .filter((r) => r.start < k.start)
+          .reduce((s, r) => s + r.duration, 0);
+        if (shift > 0) {
+          await store.moveClip(k.id, Math.max(0, k.start - shift), p.trackId);
+        }
+      }
+    }
+  }, [selectedClipIds, allTracks, handleDelete]);
+
+  // Shift+Delete — ripple-удаление.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target as HTMLElement;
+      if (
+        el &&
+        (el.tagName === "INPUT" ||
+          el.tagName === "TEXTAREA" ||
+          el.isContentEditable)
+      )
+        return;
+      if (e.shiftKey && (e.code === "Delete" || e.code === "Backspace")) {
+        e.preventDefault();
+        handleRippleDelete();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleRippleDelete]);
 
   const handleBackgroundClick = useCallback(() => {
     clearSelection();
@@ -800,6 +851,13 @@ export const Timeline: React.FC = () => {
         >
           <Trash2 size={14} />
         </TLTool>
+        <TLTool
+          onClick={handleRippleDelete}
+          disabled={selectedClipIds.length === 0}
+          title="Ripple-удаление — убрать клип и сдвинуть остальные влево (закрыть зазор)"
+        >
+          <ArrowLeftToLine size={14} />
+        </TLTool>
 
         <div className="w-px h-4 bg-border mx-1.5" />
 
@@ -1067,16 +1125,12 @@ export const Timeline: React.FC = () => {
 
         <div
           className="flex-1 flex overflow-hidden"
-          onMouseMove={
-            bladeMode
-              ? (e) => {
-                  const r = e.currentTarget.getBoundingClientRect();
-                  const t = (e.clientX - r.left - 128 + scrollX) / pixelsPerSecond;
-                  setBladeCursorTime(t >= 0 ? t : null);
-                }
-              : undefined
-          }
-          onMouseLeave={bladeMode ? () => setBladeCursorTime(null) : undefined}
+          onMouseMove={(e) => {
+            const r = e.currentTarget.getBoundingClientRect();
+            const t = (e.clientX - r.left - 128 + scrollX) / pixelsPerSecond;
+            setHoverTime(t >= 0 ? t : null);
+          }}
+          onMouseLeave={() => setHoverTime(null)}
         >
           <div className="w-32 bg-bg-1 border-r border-border shrink-0 z-20 overflow-hidden">
             <div
@@ -1114,7 +1168,39 @@ export const Timeline: React.FC = () => {
               setScrollX(e.currentTarget.scrollLeft);
               setScrollY(e.currentTarget.scrollTop);
             }}
-            onMouseDown={handleBoxSelectionStart}
+            onWheel={(e) => {
+              const el = tracksRef.current;
+              if (!el) return;
+              if (e.shiftKey) {
+                el.scrollLeft += e.deltaY || e.deltaX;
+                setScrollX(el.scrollLeft);
+              }
+            }}
+            onMouseDown={(e) => {
+              if (e.button === 1) {
+                e.preventDefault();
+                const el = tracksRef.current;
+                if (!el) return;
+                const startX = e.clientX;
+                const startY = e.clientY;
+                const sl = el.scrollLeft;
+                const st = el.scrollTop;
+                const move = (ev: MouseEvent) => {
+                  el.scrollLeft = sl - (ev.clientX - startX);
+                  el.scrollTop = st - (ev.clientY - startY);
+                  setScrollX(el.scrollLeft);
+                  setScrollY(el.scrollTop);
+                };
+                const up = () => {
+                  window.removeEventListener("mousemove", move);
+                  window.removeEventListener("mouseup", up);
+                };
+                window.addEventListener("mousemove", move);
+                window.addEventListener("mouseup", up);
+                return;
+              }
+              handleBoxSelectionStart(e);
+            }}
             onMouseMove={handleBoxSelectionMove}
             onDragOver={(e) => {
               e.preventDefault();
@@ -1297,16 +1383,17 @@ export const Timeline: React.FC = () => {
           scrollX={scrollX}
           headerOffset={128}
         />
-        {bladeMode && bladeCursorTime != null && (
+        {hoverTime != null && (
           <div
             style={{
               position: "absolute",
               top: 26,
               bottom: 0,
-              left: `${bladeCursorTime * pixelsPerSecond - scrollX + 128}px`,
-              width: 2,
-              background:
-                "repeating-linear-gradient(to bottom, #c8ff00 0 6px, transparent 6px 9px, #c8ff00 9px 11px, transparent 11px 17px)",
+              left: `${hoverTime * pixelsPerSecond - scrollX + 128}px`,
+              width: bladeMode ? 2 : 1,
+              background: bladeMode
+                ? "repeating-linear-gradient(to bottom, #c8ff00 0 6px, transparent 6px 9px, #c8ff00 9px 11px, transparent 11px 17px)"
+                : "rgba(255,255,255,0.35)",
               pointerEvents: "none",
               zIndex: 40,
             }}
