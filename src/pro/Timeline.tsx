@@ -726,7 +726,14 @@ function Lane({ track, y, vpW, pxPerSec, scrollX, timeAt, snap, trackAt }: { tra
       const raw = origPrimary + dt;
       const snapStart = snap(raw, exclude);
       const snapEnd = snap(raw + dur, exclude) - dur;
-      const target = Math.abs(snapEnd - raw) < Math.abs(snapStart - raw) ? snapEnd : snapStart;
+      // Берём тот край, который РЕАЛЬНО прилип (ненулевой сдвиг); из двух — с меньшим сдвигом.
+      const dS = Math.abs(snapStart - raw);
+      const dE = Math.abs(snapEnd - raw);
+      let target: number;
+      if (dS < 1e-6 && dE < 1e-6) target = raw;
+      else if (dS < 1e-6) target = snapEnd;
+      else if (dE < 1e-6) target = snapStart;
+      else target = dS <= dE ? snapStart : snapEnd;
       let applied = target - origPrimary;
       applied = Math.max(applied, -minOrig); // не левее нуля
       const cur = useProStore.getState();
