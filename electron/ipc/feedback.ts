@@ -44,4 +44,25 @@ export function registerFeedbackHandlers(): void {
       return { error: (e as Error).message };
     }
   });
+
+  // Отправка скриншота (base64 PNG/JPEG) с подписью -> Telegram sendPhoto.
+  ipcMain.handle('feedback:sendPhoto', async (_e, text: string, base64: string) => {
+    const cfg = loadConfig();
+    if (!cfg) return { error: 'Обратная связь не настроена (нет токена)' };
+    try {
+      const buf = Buffer.from(String(base64).replace(/^data:[^;]+;base64,/, ''), 'base64');
+      if (!buf.length) return { error: 'Пустое изображение' };
+      const caption = `🐞 Pulsar feedback\nВерсия: ${app.getVersion()}\nОС: ${os.platform()} ${os.release()}\n————\n${(text || '').trim()}`.slice(0, 1000);
+      const form = new FormData();
+      form.append('chat_id', cfg.chatId);
+      form.append('caption', caption);
+      form.append('photo', new Blob([buf], { type: 'image/png' }), 'screenshot.png');
+      const r = await fetch(`https://api.telegram.org/bot${cfg.token}/sendPhoto`, { method: 'POST', body: form });
+      if (!r.ok) return { error: `Telegram ${r.status}` };
+      const j = (await r.json()) as { ok?: boolean; description?: string };
+      return j.ok ? { ok: true } : { error: j.description || 'Ошибка Telegram' };
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
+  });
 }

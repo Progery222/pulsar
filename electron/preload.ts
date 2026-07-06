@@ -73,6 +73,7 @@ const electronAPI = {
 
   // Обратная связь (баг-репорт) -> Telegram.
   sendFeedback: (text: string): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('feedback:send', text),
+  sendFeedbackPhoto: (text: string, base64: string): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('feedback:sendPhoto', text, base64),
 
   // Показать файл в проводнике с выделением.
   showItemInFolder: (filePath: string): Promise<{ ok: true }> =>

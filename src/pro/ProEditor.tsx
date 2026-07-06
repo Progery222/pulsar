@@ -587,7 +587,7 @@ function ProToolbar() {
         {subbing ? 'Распознаю…' : '＋Авто-титры'}
       </ToolBtn>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
-        <FeedbackButton />
+        <FeedbackWidget />
         <WorkspacePresets />
         <ToolBtn active={snapping} onClick={toggleSnapping} title="Прилипание (N)">
           Snap
@@ -597,47 +597,83 @@ function ProToolbar() {
   );
 }
 
-// Кнопка «Сообщить о проблеме» -> модалка -> отправка в Telegram разработчику.
-function FeedbackButton() {
+// Чат обратной связи: история отправленного (локально) + вставка скринов (Ctrl+V) -> Telegram.
+interface FbMsg { id: number; time: number; text: string; img?: string; status: 'sent' | 'failed' }
+const FB_KEY = 'pulsar-feedback-history';
+function loadFb(): FbMsg[] {
+  try { return JSON.parse(localStorage.getItem(FB_KEY) || '[]'); } catch { return []; }
+}
+function FeedbackWidget() {
   const [open, setOpen] = useState(false);
   const [text, setText] = useState('');
+  const [img, setImg] = useState<string | null>(null); // dataURL прикреплённого скрина
   const [sending, setSending] = useState(false);
+  const [hist, setHist] = useState<FbMsg[]>(loadFb);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (open) scrollRef.current?.scrollTo({ top: 1e9 }); }, [open, hist]);
+  const persist = (h: FbMsg[]) => { setHist(h); try { localStorage.setItem(FB_KEY, JSON.stringify(h.slice(-100))); } catch { /* noop */ } };
+
+  const readImageFile = (file: File) => {
+    const r = new FileReader();
+    r.onload = () => setImg(String(r.result));
+    r.readAsDataURL(file);
+  };
+  const onPaste = (e: React.ClipboardEvent) => {
+    for (const it of e.clipboardData.items) {
+      if (it.type.startsWith('image/')) { const f = it.getAsFile(); if (f) { readImageFile(f); e.preventDefault(); return; } }
+    }
+  };
   const send = async () => {
-    if (!text.trim() || sending) return;
+    if ((!text.trim() && !img) || sending) return;
     setSending(true);
     try {
-      const r = await window.electronAPI.sendFeedback(text);
-      if ('ok' in r) {
-        showToast('Спасибо! Отправлено разработчику');
-        setText('');
-        setOpen(false);
-      } else {
-        showToast('Не отправилось: ' + r.error);
-      }
-    } finally {
-      setSending(false);
-    }
+      const r = img ? await window.electronAPI.sendFeedbackPhoto(text, img) : await window.electronAPI.sendFeedback(text);
+      const ok = 'ok' in r;
+      persist([...hist, { id: Date.now(), time: Date.now(), text: text.trim(), img: img || undefined, status: ok ? 'sent' : 'failed' }]);
+      if (ok) { setText(''); setImg(null); } else showToast('Не отправилось: ' + (r as { error: string }).error);
+    } finally { setSending(false); }
   };
   return (
     <>
-      <ToolBtn onClick={() => setOpen(true)} title="Сообщить о баге/проблеме — уйдёт разработчику">🐞 Проблема</ToolBtn>
+      <ToolBtn onClick={() => setOpen((v) => !v)} title="Чат обратной связи — баги/пожелания разработчику">💬 Отзыв</ToolBtn>
       {open && (
-        <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
-          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 'min(460px, 92vw)' }}>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>Сообщить о проблеме</div>
-            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Опиши баг или пожелание — придёт разработчику (версия и ОС приложатся автоматически).</div>
+        <div style={{ position: 'fixed', right: 12, bottom: 12, width: 360, height: 460, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, display: 'flex', flexDirection: 'column', zIndex: 1100, boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Обратная связь</span>
+            <button onClick={() => setOpen(false)} style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 15 }}>✕</button>
+          </div>
+          <div ref={scrollRef} style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {!hist.length && <div style={{ fontSize: 12, color: 'var(--text-secondary)', textAlign: 'center', marginTop: 20 }}>Здесь история отправленного. Опиши баг/идею, можно вставить скрин (Ctrl+V).</div>}
+            {hist.map((m) => (
+              <div key={m.id} style={{ alignSelf: 'flex-end', maxWidth: '85%', background: m.status === 'sent' ? 'var(--bg-tertiary)' : 'rgba(255,80,80,0.18)', border: '1px solid var(--border)', borderRadius: 10, padding: 8 }}>
+                {m.img && <img src={m.img} alt="" style={{ width: '100%', borderRadius: 6, marginBottom: m.text ? 6 : 0 }} />}
+                {m.text && <div style={{ fontSize: 12.5, color: 'var(--text-primary)', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{m.text}</div>}
+                <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 4, textAlign: 'right' }}>{new Date(m.time).toLocaleString()} · {m.status === 'sent' ? '✓ отправлено' : '✗ не ушло'}</div>
+              </div>
+            ))}
+          </div>
+          {img && (
+            <div style={{ padding: '6px 10px', borderTop: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <img src={img} alt="" style={{ height: 40, borderRadius: 4 }} />
+              <span style={{ fontSize: 11.5, color: 'var(--text-secondary)', flex: 1 }}>Скрин прикреплён</span>
+              <button onClick={() => setImg(null)} style={{ background: 'none', border: 'none', color: '#ff8080', cursor: 'pointer', fontSize: 13 }}>убрать</button>
+            </div>
+          )}
+          <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'flex-end' }}>
+            <label title="Прикрепить изображение" style={{ cursor: 'pointer', fontSize: 18, padding: '4px 2px', color: 'var(--text-secondary)' }}>
+              📎
+              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { const f = e.target.files?.[0]; if (f) readImageFile(f); e.currentTarget.value = ''; }} />
+            </label>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              autoFocus
-              rows={5}
-              placeholder="Что случилось / что хотелось бы…"
-              style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', resize: 'vertical' }}
+              onPaste={onPaste}
+              onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); } }}
+              rows={2}
+              placeholder="Сообщение… (Ctrl+V — вставить скрин, Ctrl+Enter — отправить)"
+              style={{ flex: 1, minWidth: 0, padding: '6px 8px', fontSize: 12.5, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', resize: 'none' }}
             />
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-              <button onClick={() => setOpen(false)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
-              <button onClick={send} disabled={!text.trim() || sending} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--accent-green)', color: 'var(--bg-primary)', cursor: text.trim() && !sending ? 'pointer' : 'default', opacity: text.trim() && !sending ? 1 : 0.6, fontSize: 13, fontWeight: 600 }}>{sending ? 'Отправка…' : 'Отправить'}</button>
-            </div>
+            <button onClick={send} disabled={(!text.trim() && !img) || sending} style={{ padding: '7px 12px', borderRadius: 8, border: 'none', background: 'var(--accent-green)', color: 'var(--bg-primary)', cursor: (text.trim() || img) && !sending ? 'pointer' : 'default', opacity: (text.trim() || img) && !sending ? 1 : 0.6, fontSize: 12.5, fontWeight: 600 }}>{sending ? '…' : '➤'}</button>
           </div>
         </div>
       )}
