@@ -12,6 +12,8 @@ export async function applyCrossfadeOverlap(
   clipAId: string,
   clipBId: string,
   trackId: string,
+  type = "crossfade",
+  label = "Кроссфейд",
 ): Promise<void> {
   const store = useProjectStore.getState();
   const project = store.project;
@@ -50,9 +52,11 @@ export async function applyCrossfadeOverlap(
   const result = bridge.createTransition(
     a,
     b,
-    "crossfade",
+    type as Parameters<typeof bridge.createTransition>[2],
     dur,
-    bridge.getDefaultParams("crossfade"),
+    bridge.getDefaultParams(
+      type as Parameters<typeof bridge.getDefaultParams>[0],
+    ),
   );
 
   if (result.success && result.transitionId) {
@@ -60,10 +64,10 @@ export async function applyCrossfadeOverlap(
     if (t) {
       store.addClipTransition(t);
       store.endHistoryGroup?.();
-      toast.success("Кроссфейд добавлен", `${dur.toFixed(1)} c, перехлёст`);
+      toast.success(`${label} добавлен`, `${dur.toFixed(1)} c, перехлёст`);
       return;
     }
   }
   store.endHistoryGroup?.();
-  toast.error("Кроссфейд", result.error || "Не удалось добавить переход");
+  toast.error(label, result.error || "Не удалось добавить переход");
 }

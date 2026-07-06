@@ -610,7 +610,13 @@ export type TransitionType =
   | "wipe"
   | "slide"
   | "zoom"
-  | "push";
+  | "push"
+  // FilmImpact-подобные переходы с motion-blur
+  | "impactBlur"
+  | "impactZoomBlur"
+  | "impactSlide"
+  | "impactFlash"
+  | "impactShake";
 
 // Curve point for color grading
 export interface CurvePoint {
@@ -788,5 +794,30 @@ export interface TransitionParams {
   push: {
     duration: number;
     direction: "left" | "right" | "up" | "down";
+  };
+  impactBlur: {
+    duration: number;
+    curve: "linear" | "ease" | "ease-in" | "ease-out";
+    maxBlur: number; // px
+  };
+  impactZoomBlur: {
+    duration: number;
+    curve: "linear" | "ease" | "ease-in" | "ease-out";
+    maxBlur: number;
+    zoom: number;
+  };
+  impactSlide: {
+    duration: number;
+    direction: "left" | "right" | "up" | "down";
+    curve: "linear" | "ease" | "ease-in" | "ease-out";
+  };
+  impactFlash: {
+    duration: number;
+    curve: "linear" | "ease" | "ease-in" | "ease-out";
+  };
+  impactShake: {
+    duration: number;
+    curve: "linear" | "ease" | "ease-in" | "ease-out";
+    intensity: number; // 0..1
   };
 }

@@ -401,6 +401,41 @@ export class TransitionBridge {
         hasDirection: true,
         hasCustomParams: false,
       },
+      {
+        type: "impactBlur",
+        name: "Impact Blur Dissolve",
+        description: "FilmImpact: раствор с motion-blur",
+        hasDirection: false,
+        hasCustomParams: true,
+      },
+      {
+        type: "impactZoomBlur",
+        name: "Impact Zoom Blur",
+        description: "FilmImpact: наезд с размытием",
+        hasDirection: false,
+        hasCustomParams: true,
+      },
+      {
+        type: "impactSlide",
+        name: "Impact Slide",
+        description: "FilmImpact: сдвиг с motion-blur",
+        hasDirection: true,
+        hasCustomParams: true,
+      },
+      {
+        type: "impactFlash",
+        name: "Impact Flash",
+        description: "FilmImpact: вспышка на стыке",
+        hasDirection: false,
+        hasCustomParams: false,
+      },
+      {
+        type: "impactShake",
+        name: "Impact Shake",
+        description: "FilmImpact: тряска (землетрясение)",
+        hasDirection: false,
+        hasCustomParams: true,
+      },
     ];
   }
 

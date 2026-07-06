@@ -247,6 +247,42 @@ export class TransitionEngine {
           (transition.params.direction as string) || "left",
         );
         break;
+      case "impactBlur":
+        await this.renderImpactBlur(
+          outgoing,
+          incoming,
+          easedProgress,
+          (transition.params.maxBlur as number) || 40,
+        );
+        break;
+      case "impactZoomBlur":
+        await this.renderImpactZoomBlur(
+          outgoing,
+          incoming,
+          easedProgress,
+          (transition.params.maxBlur as number) || 28,
+          (transition.params.zoom as number) || 1.4,
+        );
+        break;
+      case "impactSlide":
+        await this.renderImpactSlide(
+          outgoing,
+          incoming,
+          easedProgress,
+          (transition.params.direction as string) || "left",
+        );
+        break;
+      case "impactFlash":
+        await this.renderImpactFlash(outgoing, incoming, easedProgress);
+        break;
+      case "impactShake":
+        await this.renderImpactShake(
+          outgoing,
+          incoming,
+          easedProgress,
+          (transition.params.intensity as number) || 0.5,
+        );
+        break;
       default:
         await this.renderCrossfade(outgoing, incoming, easedProgress);
     }
@@ -440,6 +476,153 @@ export class TransitionEngine {
     await this.renderSlide(outgoing, incoming, progress, direction, true);
   }
 
+  // Колоколообразная кривая: 0 на краях, 1 в середине — амплитуда motion-blur.
+  private bell(p: number): number {
+    return Math.sin(Math.PI * Math.max(0, Math.min(1, p)));
+  }
+
+  // FilmImpact «Blur Dissolve»: кроссфейд с гауссовым размытием, пик в центре.
+  private async renderImpactBlur(
+    outgoing: CanvasImageSource,
+    incoming: CanvasImageSource,
+    progress: number,
+    maxBlur: number,
+  ): Promise<void> {
+    const ctx = this.getContext();
+    const b = this.bell(progress) * maxBlur;
+    ctx.filter = b > 0.2 ? `blur(${b.toFixed(1)}px)` : "none";
+    ctx.globalAlpha = 1 - progress;
+    ctx.drawImage(outgoing, 0, 0, this.width, this.height);
+    ctx.globalAlpha = progress;
+    ctx.drawImage(incoming, 0, 0, this.width, this.height);
+    ctx.filter = "none";
+    ctx.globalAlpha = 1;
+  }
+
+  // FilmImpact «Motion Zoom Blur»: наезд/отъезд + размытие + кроссфейд.
+  private async renderImpactZoomBlur(
+    outgoing: CanvasImageSource,
+    incoming: CanvasImageSource,
+    progress: number,
+    maxBlur: number,
+    zoom: number,
+  ): Promise<void> {
+    const ctx = this.getContext();
+    const cx = this.width / 2;
+    const cy = this.height / 2;
+    const b = this.bell(progress) * maxBlur;
+    ctx.filter = b > 0.2 ? `blur(${b.toFixed(1)}px)` : "none";
+
+    const outScale = 1 + (zoom - 1) * progress;
+    ctx.save();
+    ctx.globalAlpha = 1 - progress;
+    ctx.translate(cx, cy);
+    ctx.scale(outScale, outScale);
+    ctx.translate(-cx, -cy);
+    ctx.drawImage(outgoing, 0, 0, this.width, this.height);
+    ctx.restore();
+
+    const inScale = zoom - (zoom - 1) * progress;
+    ctx.save();
+    ctx.globalAlpha = progress;
+    ctx.translate(cx, cy);
+    ctx.scale(inScale, inScale);
+    ctx.translate(-cx, -cy);
+    ctx.drawImage(incoming, 0, 0, this.width, this.height);
+    ctx.restore();
+
+    ctx.filter = "none";
+    ctx.globalAlpha = 1;
+  }
+
+  // FilmImpact «Impact Slide»: сдвиг обоих кадров с направленным motion-blur
+  // (несколько подкадров вдоль движения с дробной прозрачностью).
+  private async renderImpactSlide(
+    outgoing: CanvasImageSource,
+    incoming: CanvasImageSource,
+    progress: number,
+    direction: string,
+  ): Promise<void> {
+    const ctx = this.getContext();
+    const W = this.width;
+    const H = this.height;
+    const samples = 6;
+    const spread = 0.09 * this.bell(progress);
+
+    const offsets = (p: number) => {
+      switch (direction) {
+        case "right":
+          return { inX: -W * (1 - p), inY: 0, outX: W * p, outY: 0 };
+        case "up":
+          return { inX: 0, inY: H * (1 - p), outX: 0, outY: -H * p };
+        case "down":
+          return { inX: 0, inY: -H * (1 - p), outX: 0, outY: H * p };
+        case "left":
+        default:
+          return { inX: W * (1 - p), inY: 0, outX: -W * p, outY: 0 };
+      }
+    };
+
+    ctx.globalAlpha = 1 / samples;
+    for (let k = 0; k < samples; k++) {
+      const t = progress + (k / (samples - 1) - 0.5) * spread;
+      const p = Math.max(0, Math.min(1, t));
+      const o = offsets(p);
+      ctx.drawImage(outgoing, o.outX, o.outY, W, H);
+      ctx.drawImage(incoming, o.inX, o.inY, W, H);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // FilmImpact «Impact Flash»: кроссфейд + белая вспышка в момент стыка.
+  private async renderImpactFlash(
+    outgoing: CanvasImageSource,
+    incoming: CanvasImageSource,
+    progress: number,
+  ): Promise<void> {
+    const ctx = this.getContext();
+    ctx.globalAlpha = 1 - progress;
+    ctx.drawImage(outgoing, 0, 0, this.width, this.height);
+    ctx.globalAlpha = progress;
+    ctx.drawImage(incoming, 0, 0, this.width, this.height);
+    ctx.globalAlpha = 1;
+
+    const flash = Math.pow(this.bell(progress), 1.6);
+    if (flash > 0.01) {
+      ctx.fillStyle = "white";
+      ctx.globalAlpha = flash;
+      ctx.fillRect(0, 0, this.width, this.height);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  // FilmImpact «Impact Earthquake»: тряска кадров + кроссфейд.
+  private async renderImpactShake(
+    outgoing: CanvasImageSource,
+    incoming: CanvasImageSource,
+    progress: number,
+    intensity: number,
+  ): Promise<void> {
+    const ctx = this.getContext();
+    const W = this.width;
+    const H = this.height;
+    const amp = this.bell(progress) * Math.min(W, H) * 0.06 * intensity;
+    // Детерминированный джиттер (без Math.random — воспроизводимо при экспорте).
+    const jx = Math.sin(progress * 84.0) * amp;
+    const jy = Math.cos(progress * 97.0) * amp;
+
+    ctx.save();
+    ctx.translate(jx, jy);
+    // Оверскан, чтобы тряска не показывала пустые края.
+    const ox = amp + 2;
+    ctx.globalAlpha = 1 - progress;
+    ctx.drawImage(outgoing, -ox, -ox, W + 2 * ox, H + 2 * ox);
+    ctx.globalAlpha = progress;
+    ctx.drawImage(incoming, -ox, -ox, W + 2 * ox, H + 2 * ox);
+    ctx.restore();
+    ctx.globalAlpha = 1;
+  }
+
   private applyEasing(progress: number, curve?: string): number {
     const easingFunctions: Record<string, EasingFunction> = {
       linear: (t) => t,
@@ -584,6 +767,16 @@ export class TransitionEngine {
         return { scale: 2, center: { x: 0.5, y: 0.5 } };
       case "push":
         return { direction: "left" };
+      case "impactBlur":
+        return { curve: "ease", maxBlur: 40 };
+      case "impactZoomBlur":
+        return { curve: "ease", maxBlur: 28, zoom: 1.4 };
+      case "impactSlide":
+        return { curve: "ease-in-out", direction: "left" };
+      case "impactFlash":
+        return { curve: "ease" };
+      case "impactShake":
+        return { curve: "ease", intensity: 0.6 };
       default:
         return {};
     }
@@ -671,6 +864,11 @@ export class TransitionEngine {
       "slide",
       "zoom",
       "push",
+      "impactBlur",
+      "impactZoomBlur",
+      "impactSlide",
+      "impactFlash",
+      "impactShake",
     ];
   }
 

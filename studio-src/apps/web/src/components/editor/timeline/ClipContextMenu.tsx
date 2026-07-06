@@ -33,6 +33,14 @@ interface ClipContextMenuProps {
   onClose?: () => void;
 }
 
+const FILMIMPACT_TRANSITIONS: { type: string; label: string }[] = [
+  { type: "impactBlur", label: "Impact Blur Dissolve" },
+  { type: "impactZoomBlur", label: "Impact Zoom Blur" },
+  { type: "impactSlide", label: "Impact Slide" },
+  { type: "impactFlash", label: "Impact Flash" },
+  { type: "impactShake", label: "Impact Shake" },
+];
+
 export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
   clip,
   track,
@@ -200,6 +208,32 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
         <Blend className="mr-2 h-4 w-4" />
         Кроссфейд с предыдущим
       </ContextMenuItem>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger disabled={!neighbors.next}>
+          <Sparkles className="mr-2 h-4 w-4" />
+          Переход FilmImpact →
+        </ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          {FILMIMPACT_TRANSITIONS.map((ft) => (
+            <ContextMenuItem
+              key={ft.type}
+              disabled={!neighbors.next}
+              onClick={() =>
+                neighbors.next &&
+                applyCrossfadeOverlap(
+                  clip.id,
+                  neighbors.next.id,
+                  track.id,
+                  ft.type,
+                  ft.label,
+                )
+              }
+            >
+              {ft.label}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
 
       {(isVideo || isImage) && (
         <>
