@@ -2093,6 +2093,22 @@ export const getTransitionAtTime = (
   }
 };
 
+// Размер движка переходов должен совпадать с размером кадров (= размер
+// композиции), иначе drawImage(frame, 0,0,this.width,this.height) растянет/
+// сдвинет кадр (портрет в landscape-холст → «картинка уезжает»). Кэшируем,
+// чтобы не пересоздавать OffscreenCanvas каждый кадр.
+let _txEngineDims = { w: 0, h: 0 };
+const ensureTransitionEngineSize = (
+  bridge: ReturnType<typeof getTransitionBridge>,
+  w: number,
+  h: number,
+): void => {
+  if (w > 0 && h > 0 && (_txEngineDims.w !== w || _txEngineDims.h !== h)) {
+    bridge.resize(w, h);
+    _txEngineDims = { w, h };
+  }
+};
+
 export const renderTransitionFrame = async (
   transitionInfo: TransitionRenderInfo,
   outgoingFrame: ImageBitmap,
@@ -2103,6 +2119,11 @@ export const renderTransitionFrame = async (
     if (!transitionBridge.isInitialized()) {
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
+    ensureTransitionEngineSize(
+      transitionBridge,
+      outgoingFrame.width,
+      outgoingFrame.height,
+    );
 
     const transition = transitionBridge.getTransition(
       transitionInfo.transitionId,
@@ -2150,6 +2171,12 @@ export const renderTransitionCanvas = async (
     if (!transition) {
       return transitionInfo.progress < 0.5 ? outgoingFrame : incomingFrame;
     }
+
+    ensureTransitionEngineSize(
+      transitionBridge,
+      (outgoingFrame as { width?: number }).width ?? 0,
+      (outgoingFrame as { height?: number }).height ?? 0,
+    );
 
     const canvas = await transitionBridge.renderTransitionToCanvas(
       outgoingFrame,
