@@ -300,6 +300,120 @@ const TRANSITIONS: TransitionDef[] = [
       </>
     ),
   },
+  {
+    type: "impactBlur",
+    label: "Impact Blur Dissolve",
+    description: "FilmImpact: раствор с motion-blur",
+    renderPreview: (p, thumb) => (
+      <>
+        {renderThumb(
+          thumb,
+          { opacity: 1 - p, filter: `blur(${Math.sin(Math.PI * p) * 6}px)` },
+          "oklch(0.55 0.14 295)",
+        )}
+        {renderThumb(
+          thumb,
+          { opacity: p, filter: `blur(${Math.sin(Math.PI * p) * 6}px)` },
+          "oklch(0.72 0.16 162)",
+        )}
+      </>
+    ),
+  },
+  {
+    type: "impactZoomBlur",
+    label: "Impact Zoom Blur",
+    description: "FilmImpact: наезд с размытием",
+    renderPreview: (p, thumb) => (
+      <>
+        {renderThumb(
+          thumb,
+          {
+            transform: `scale(${1 + p * 0.4})`,
+            opacity: 1 - p,
+            filter: `blur(${Math.sin(Math.PI * p) * 5}px)`,
+          },
+          "oklch(0.55 0.14 295)",
+        )}
+        {renderThumb(
+          thumb,
+          {
+            transform: `scale(${1.4 - p * 0.4})`,
+            opacity: p,
+            filter: `blur(${Math.sin(Math.PI * p) * 5}px)`,
+          },
+          "oklch(0.72 0.16 162)",
+        )}
+      </>
+    ),
+  },
+  {
+    type: "impactSlide",
+    label: "Impact Slide",
+    description: "FilmImpact: сдвиг с motion-blur",
+    renderPreview: (p, thumb) => (
+      <>
+        {renderThumb(
+          thumb,
+          {
+            transform: `translateX(${-p * 100}%)`,
+            filter: `blur(${Math.sin(Math.PI * p) * 4}px)`,
+          },
+          "oklch(0.55 0.14 295)",
+        )}
+        {renderThumb(
+          thumb,
+          {
+            transform: `translateX(${(1 - p) * 100}%)`,
+            filter: `blur(${Math.sin(Math.PI * p) * 4}px)`,
+          },
+          "oklch(0.72 0.16 162)",
+        )}
+      </>
+    ),
+  },
+  {
+    type: "impactFlash",
+    label: "Impact Flash",
+    description: "FilmImpact: вспышка на стыке",
+    renderPreview: (p, thumb) => (
+      <>
+        {renderThumb(thumb, { opacity: 1 - p }, "oklch(0.55 0.14 295)")}
+        {renderThumb(thumb, { opacity: p }, "oklch(0.72 0.16 162)")}
+        <div
+          className="absolute inset-0 bg-white pointer-events-none"
+          style={{ opacity: Math.pow(Math.sin(Math.PI * p), 1.6) }}
+        />
+      </>
+    ),
+  },
+  {
+    type: "impactShake",
+    label: "Impact Shake",
+    description: "FilmImpact: тряска",
+    renderPreview: (p, thumb) => {
+      const a = Math.sin(Math.PI * p) * 6;
+      return (
+        <>
+          {renderThumb(
+            thumb,
+            {
+              opacity: 1 - p,
+              transform: `translate(${Math.sin(p * 84) * a}px, ${Math.cos(p * 97) * a}px)`,
+            },
+            "oklch(0.55 0.14 295)",
+          )}
+          {renderThumb(
+            thumb,
+            {
+              opacity: p,
+              transform: `translate(${Math.sin(p * 84) * a}px, ${Math.cos(p * 97) * a}px)`,
+            },
+            "oklch(0.72 0.16 162)",
+          )}
+        </>
+      );
+    },
+  },
 ];
 
 // ─── Drag payload helpers ──────────────────────────────────────────

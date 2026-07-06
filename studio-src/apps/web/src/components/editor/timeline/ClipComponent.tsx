@@ -9,6 +9,7 @@ import { ClipContextMenu } from "./ClipContextMenu";
 import { ContextMenu, ContextMenuTrigger } from "@openreel/ui";
 import { toast } from "../../../stores/notification-store";
 import { getTransitionBridge } from "../../../bridges/transition-bridge";
+import { applyCrossfadeOverlap } from "./crossfade";
 import type { VideoEffectType } from "../../../bridges/effects-bridge";
 import {
   EFFECT_DRAG_MIME,
@@ -268,34 +269,9 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         return;
       }
 
-      const bridge = getTransitionBridge();
-      if (!bridge.isInitialized()) {
-        toast.error("Transition engine not ready", "Try again in a moment.");
-        return;
-      }
-      const defaultParams = bridge.getDefaultParams(transitionType);
-      const result = bridge.createTransition(
-        clipA,
-        clipB,
-        transitionType,
-        1.0,
-        defaultParams,
-      );
-      if (result.success && result.transitionId) {
-        const transition = bridge.getTransition(result.transitionId);
-        if (transition) {
-          projectState.addClipTransition(transition);
-          toast.success(
-            "Transition applied",
-            `${transitionType} • 1.0s`,
-          );
-          return;
-        }
-      }
-      toast.error(
-        "Transition failed",
-        result.error || "Could not create transition",
-      );
+      // Ставим переход на перехлёсте (реальные кадры обоих клипов), как и
+      // кроссфейд из ПКМ/кнопки — единый качественный путь.
+      void applyCrossfadeOverlap(clipA.id, clipB.id, owningTrack.id, transitionType, transitionType);
     },
     [clip.id],
   );
