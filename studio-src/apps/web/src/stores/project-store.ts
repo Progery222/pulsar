@@ -1,0 +1,6110 @@
+import { create } from "zustand";
+import { subscribeWithSelector } from "zustand/middleware";
+import type {
+  Project,
+  ProjectSettings,
+  MediaItem,
+  Track,
+  Clip,
+  AutomationPoint,
+  Transition,
+  Action,
+  ActionResult,
+  TextClip,
+  TextStyle,
+  TextAnimation,
+  TextAnimationPreset,
+  TextAnimationParams,
+  ShapeClip,
+  ShapeType,
+  ShapeStyle,
+  SVGClip,
+  StickerClip,
+  PhotoProject,
+  CreateLayerOptions,
+  PhotoBlendMode,
+  Effect,
+  Keyframe,
+  Transform,
+  AppliedEditingTemplate,
+  EditingTemplate,
+  EditingTemplateApplicationSource,
+  EditingTemplatePrimitive,
+  ResolvedEditingTemplateApplication,
+} from "@openreel/core";
+import {
+  ActionExecutor,
+  ActionHistory,
+  getBuiltInEditingTemplate,
+  getBuiltInEditingTemplates,
+  resolveEditingTemplate,
+  textAnimationEngine,
+} from "@openreel/core";
+import { v4 as uuidv4 } from "uuid";
+import type {
+  VideoEffect,
+  VideoEffectType,
+  ColorGradingSettings,
+} from "../bridges/effects-bridge";
+import { getEffectsBridge } from "../bridges/effects-bridge";
+import { getTransitionBridge } from "../bridges/transition-bridge";
+import {
+  autoSaveManager,
+  initializeAutoSave,
+  type AutoSaveMetadata,
+} from "../services/auto-save";
+import { useEngineStore } from "./engine-store";
+import { getMediaBridge, initializeMediaBridge } from "../bridges/media-bridge";
+import {
+  createEmptyProject,
+  calculateTimelineDuration,
+  type AudioDuckingSettings,
+  type EditingTemplateApplicationState,
+  type ClipHistoryEntry,
+  type EditingTemplateHistoryEntry,
+} from "./project/index";
+import {
+  saveMediaBlob,
+  deleteMediaBlob,
+  loadProjectMedia,
+  loadFileHandle,
+  loadDirectoryHandle,
+} from "../services/media-storage";
+import { restoreMediaItem } from "../utils/media-recovery";
+import { projectManager } from "../services/project-manager";
+
+/**
+ * ProjectState - Complete state interface for project management
+ *
+ * Provides comprehensive API for:
+ * - Project CRUD operations
+ * - Media library management
+ * - Track and clip manipulation
+ * - Text clip and animation handling
+ * - Graphics (shapes, SVG, stickers) management
+ * - Video and audio effects
+ * - Subtitle handling
+ * - Photo editing
+ * - Undo/redo functionality
+ *
+ * All async methods return ActionResult with success status and error details.
+ */
+export interface ProjectState {
+  // Project data
+  project: Project;
+
+  // Photo projects
+  photoProjects: Map<string, PhotoProject>;
+
+  // Action system
+  actionExecutor: ActionExecutor;
+  actionHistory: ActionHistory;
+
+  // Clip history for graphics/text clips (outside main timeline)
+  clipUndoStack: ClipHistoryEntry[];
+  clipRedoStack: ClipHistoryEntry[];
+  templateUndoStack: EditingTemplateHistoryEntry[];
+  templateRedoStack: EditingTemplateHistoryEntry[];
+
+  // Loading state
+  isLoading: boolean;
+  error: string | null;
+
+  createNewProject: (
+    name?: string,
+    settings?: Partial<ProjectSettings>,
+  ) => void;
+  loadProject: (project: Project) => void;
+  renameProject: (name: string) => Promise<ActionResult>;
+  updateSettings: (settings: Partial<ProjectSettings>) => Promise<ActionResult>;
+
+  // Media library actions
+  importMedia: (file: File) => Promise<ActionResult>;
+  deleteMedia: (mediaId: string) => Promise<ActionResult>;
+  replaceMediaAsset: (mediaId: string, file: File, sourceFolder?: string) => Promise<ActionResult>;
+  renameMedia: (mediaId: string, name: string) => Promise<ActionResult>;
+  getMediaItem: (mediaId: string) => MediaItem | undefined;
+  /** Add a pending placeholder for a background KieAI task */
+  addPlaceholderMedia: (item: MediaItem) => void;
+  /** Replace a pending placeholder with the actual result blob */
+  replacePlaceholderMedia: (mediaId: string, blob: Blob, name: string) => Promise<void>;
+  /** Flip isPending / kieaiError flags on a placeholder without full replacement */
+  setKieAIItemState: (mediaId: string, isPending: boolean, kieaiError: boolean) => void;
+
+  // Track actions
+  addTrack: (
+    trackType: "video" | "audio" | "image" | "text" | "graphics",
+    position?: number,
+  ) => Promise<ActionResult>;
+  removeTrack: (trackId: string) => Promise<ActionResult>;
+  reorderTrack: (trackId: string, newPosition: number) => Promise<ActionResult>;
+  lockTrack: (trackId: string, locked: boolean) => Promise<ActionResult>;
+  hideTrack: (trackId: string, hidden: boolean) => Promise<ActionResult>;
+  muteTrack: (trackId: string, muted: boolean) => Promise<ActionResult>;
+  soloTrack: (trackId: string, solo: boolean) => Promise<ActionResult>;
+  renameTrack: (trackId: string, name: string) => void;
+  getTrack: (trackId: string) => Track | undefined;
+
+  // Clip actions
+  addClip: (
+    trackId: string,
+    mediaId: string,
+    startTime: number,
+  ) => Promise<ActionResult>;
+  addClipToNewTrack: (
+    mediaId: string,
+    startTime?: number,
+  ) => Promise<ActionResult>;
+  removeClip: (clipId: string) => Promise<ActionResult>;
+  moveClip: (
+    clipId: string,
+    startTime: number,
+    trackId?: string,
+  ) => Promise<ActionResult>;
+  moveClips: (
+    moves: Array<{ clipId: string; startTime: number; trackId?: string }>,
+  ) => Promise<ActionResult>;
+  beginHistoryGroup: (description?: string) => void;
+  endHistoryGroup: () => void;
+  closeGapBeforeClip: (clipId: string) => Promise<ActionResult>;
+  consolidateTrack: (trackId: string) => Promise<ActionResult>;
+  trimClip: (
+    clipId: string,
+    inPoint?: number,
+    outPoint?: number,
+  ) => Promise<ActionResult>;
+  splitClip: (clipId: string, time: number) => Promise<ActionResult>;
+  rippleDeleteClip: (clipId: string) => Promise<ActionResult>;
+  slipClip: (clipId: string, delta: number) => Promise<ActionResult>;
+  slideClip: (clipId: string, delta: number) => Promise<ActionResult>;
+  rollEdit: (
+    leftClipId: string,
+    rightClipId: string,
+    delta: number,
+  ) => Promise<ActionResult>;
+  trimToPlayhead: (
+    clipId: string,
+    playheadTime: number,
+    trimStart: boolean,
+  ) => Promise<ActionResult>;
+  getClip: (clipId: string) => Clip | undefined;
+  addClipTransition: (transition: Transition) => Transition | null;
+  updateClipTransition: (
+    transitionId: string,
+    updates: Partial<Pick<Transition, "type" | "duration" | "params">>,
+  ) => Transition | null;
+  removeClipTransition: (transitionId: string) => boolean;
+  getClipTransition: (transitionId: string) => Transition | undefined;
+  getClipTransitionBetweenClips: (
+    clipAId: string,
+    clipBId: string,
+  ) => Transition | undefined;
+  separateAudio: (clipId: string) => Promise<ActionResult>;
+  updateClipTransform: (
+    clipId: string,
+    transform: Partial<Transform>,
+  ) => boolean;
+  updateClipBlendMode: (
+    clipId: string,
+    blendMode: import("@openreel/core").BlendMode,
+  ) => boolean;
+  updateClipBlendOpacity: (clipId: string, opacity: number) => boolean;
+  updateClipRotate3D: (
+    clipId: string,
+    rotate3d: { x: number; y: number; z: number },
+  ) => boolean;
+  updateClipPerspective: (clipId: string, perspective: number) => boolean;
+  updateClipTransformStyle: (
+    clipId: string,
+    transformStyle: "flat" | "preserve-3d",
+  ) => boolean;
+  updateClipEmphasisAnimation: (
+    clipId: string,
+    emphasisAnimation: import("@openreel/core").EmphasisAnimation,
+  ) => boolean;
+
+  // Clipboard actions
+  clipboard: Clip[];
+  copyClips: (clipIds: string[]) => void;
+  pasteClips: (trackId: string, startTime: number) => Promise<ActionResult[]>;
+  duplicateClip: (clipId: string) => Promise<ActionResult>;
+  copyEffects: (clipId: string) => void;
+  pasteEffects: (clipId: string) => Promise<ActionResult>;
+  copiedEffects: Effect[];
+
+  getEditingTemplates: () => EditingTemplate[];
+  getEditingTemplate: (templateId: string) => EditingTemplate | undefined;
+  applyEditingTemplate: (
+    templateId: string,
+    clipId: string,
+    overrides?: Record<string, EditingTemplatePrimitive>,
+  ) => string | null;
+  updateEditingTemplateApplication: (
+    clipId: string,
+    applicationId: string,
+    overrides?: Record<string, EditingTemplatePrimitive>,
+  ) => boolean;
+  removeEditingTemplateApplication: (
+    clipId: string,
+    applicationId: string,
+  ) => boolean;
+
+  // Text clip actions
+  createTextClip: (
+    trackId: string,
+    startTime: number,
+    text: string,
+    duration?: number,
+    style?: Partial<TextStyle>,
+  ) => TextClip | null;
+  updateTextContent: (clipId: string, text: string) => TextClip | null;
+  updateTextStyle: (
+    clipId: string,
+    style: Partial<TextStyle>,
+  ) => TextClip | null;
+  updateTextAnimation: (
+    clipId: string,
+    animation: TextAnimation,
+  ) => TextClip | null;
+  updateTextTransform: (
+    clipId: string,
+    transform: Partial<Transform>,
+  ) => TextClip | null;
+  updateTextBehindSubject: (
+    clipId: string,
+    behindSubject: boolean,
+  ) => TextClip | null;
+  updateText3D: (
+    clipId: string,
+    text3d: import("@openreel/core").Text3DSettings | undefined,
+  ) => TextClip | null;
+  getTextClip: (clipId: string) => TextClip | undefined;
+  getAllTextClips: () => TextClip[];
+  updateTextClipKeyframes: (
+    clipId: string,
+    keyframes: Keyframe[],
+  ) => TextClip | null;
+
+  // Text animation actions
+  applyTextAnimationPreset: (
+    clipId: string,
+    preset: TextAnimationPreset,
+    inDuration?: number,
+    outDuration?: number,
+    params?: Partial<TextAnimationParams>,
+  ) => TextClip | null;
+  getAvailableAnimationPresets: () => TextAnimationPreset[];
+
+  // Subtitle actions - subtitles are created as text clips on a Captions track
+  addSubtitle: (subtitle: import("@openreel/core").Subtitle) => Promise<void>;
+  removeSubtitle: (subtitleId: string) => void;
+  updateSubtitle: (
+    subtitleId: string,
+    updates: Partial<import("@openreel/core").Subtitle>,
+  ) => void;
+  getSubtitle: (
+    subtitleId: string,
+  ) => import("@openreel/core").Subtitle | undefined;
+  importSRT: (
+    srtContent: string
+  ) => Promise<{ success: boolean; errors: string[] }>;
+  exportSRT: () => Promise<string>;
+  applySubtitleStylePreset: (presetName: string) => Promise<boolean>;
+  getSubtitleStylePresets: () => Promise<string[]>;
+
+  // Marker actions
+  addMarker: (time: number, label?: string, color?: string) => void;
+  removeMarker: (markerId: string) => void;
+  updateMarker: (
+    markerId: string,
+    updates: Partial<import("@openreel/core").Marker>,
+  ) => void;
+  getMarker: (markerId: string) => import("@openreel/core").Marker | undefined;
+  getMarkers: () => import("@openreel/core").Marker[];
+
+  // Graphics actions
+  createShapeClip: (
+    trackId: string,
+    startTime: number,
+    shapeType: ShapeType,
+    duration?: number,
+    style?: Partial<ShapeStyle>,
+  ) => ShapeClip | null;
+  updateShapeStyle: (
+    clipId: string,
+    style: Partial<ShapeStyle>,
+  ) => ShapeClip | null;
+  updateShapeTransform: (
+    clipId: string,
+    transform: Partial<Transform>,
+  ) => ShapeClip | SVGClip | StickerClip | null;
+  importSVG: (
+    svgContent: string,
+    trackId: string,
+    startTime: number,
+    duration?: number,
+  ) => SVGClip | null;
+  getShapeClip: (clipId: string) => ShapeClip | undefined;
+  deleteShapeClip: (clipId: string) => boolean;
+  getSVGClip: (clipId: string) => SVGClip | undefined;
+  getSVGClipById: (clipId: string) => SVGClip | undefined;
+  updateSVGClip: (
+    clipId: string,
+    updates: {
+      startTime?: number;
+      duration?: number;
+      transform?: Partial<Transform>;
+      entryAnimation?: import("@openreel/core").GraphicAnimation;
+      exitAnimation?: import("@openreel/core").GraphicAnimation;
+      colorStyle?: import("@openreel/core").SVGColorStyle;
+    },
+  ) => SVGClip | null;
+  deleteSVGClip: (clipId: string) => boolean;
+  createStickerClip: (clip: StickerClip) => StickerClip | null;
+  getStickerClip: (clipId: string) => StickerClip | undefined;
+  deleteStickerClip: (clipId: string) => boolean;
+  deleteTextClip: (clipId: string) => boolean;
+
+  // Photo editing actions
+  createPhotoProject: (
+    width?: number,
+    height?: number,
+    name?: string,
+  ) => PhotoProject | null;
+  importPhotoForEditing: (
+    image: ImageBitmap,
+    name?: string,
+  ) => PhotoProject | null;
+  addPhotoLayer: (
+    projectId: string,
+    options?: CreateLayerOptions,
+  ) => PhotoProject | null;
+  removePhotoLayer: (projectId: string, layerId: string) => PhotoProject | null;
+  reorderPhotoLayers: (
+    projectId: string,
+    fromIndex: number,
+    toIndex: number,
+  ) => PhotoProject | null;
+  setPhotoLayerVisibility: (
+    projectId: string,
+    layerId: string,
+    visible?: boolean,
+  ) => PhotoProject | null;
+  setPhotoLayerOpacity: (
+    projectId: string,
+    layerId: string,
+    opacity: number,
+  ) => PhotoProject | null;
+  setPhotoLayerBlendMode: (
+    projectId: string,
+    layerId: string,
+    blendMode: PhotoBlendMode,
+  ) => PhotoProject | null;
+  getPhotoProject: (projectId: string) => PhotoProject | null;
+
+  // Video effects actions
+  addVideoEffect: (
+    clipId: string,
+    effectType: VideoEffectType,
+    params?: Record<string, unknown>,
+  ) => VideoEffect | null;
+  updateVideoEffect: (
+    clipId: string,
+    effectId: string,
+    params: Record<string, unknown>,
+  ) => VideoEffect | null;
+  removeVideoEffect: (clipId: string, effectId: string) => boolean;
+  reorderVideoEffects: (clipId: string, effectIds: string[]) => boolean;
+  toggleVideoEffect: (
+    clipId: string,
+    effectId: string,
+    enabled: boolean,
+  ) => VideoEffect | null;
+  getVideoEffects: (clipId: string) => VideoEffect[];
+  getVideoEffect: (clipId: string, effectId: string) => VideoEffect | undefined;
+
+  // Color grading actions
+  updateColorGrading: (
+    clipId: string,
+    settings: Partial<ColorGradingSettings>,
+  ) => boolean;
+  getColorGrading: (clipId: string) => ColorGradingSettings;
+  resetColorGrading: (clipId: string) => boolean;
+
+  // Audio effects actions
+  addAudioEffect: (clipId: string, effect: Effect) => boolean;
+  updateAudioEffect: (
+    clipId: string,
+    effectId: string,
+    params: Record<string, unknown>,
+  ) => boolean;
+  removeAudioEffect: (clipId: string, effectId: string) => boolean;
+  toggleAudioEffect: (
+    clipId: string,
+    effectId: string,
+    enabled: boolean,
+  ) => boolean;
+  setAudioEffectPreviewBypass: (
+    clipId: string,
+    effectId: string,
+    bypassed: boolean,
+  ) => boolean;
+  getAudioEffects: (clipId: string) => Effect[];
+  setClipAudioDucking: (
+    clipId: string,
+    settings: AudioDuckingSettings,
+    points: AutomationPoint[],
+  ) => boolean;
+  clearClipAudioDucking: (clipId: string) => boolean;
+
+  // Keyframe actions
+  updateClipKeyframes: (clipId: string, keyframes: Keyframe[]) => boolean;
+
+  // Undo/Redo
+  undo: () => Promise<ActionResult>;
+  redo: () => Promise<ActionResult>;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
+
+  // Execute arbitrary action
+  executeAction: (action: Action) => Promise<ActionResult>;
+
+  // Computed values
+  getTimelineDuration: () => number;
+
+  // Auto-save
+  initializeAutoSave: () => Promise<void>;
+  checkForRecovery: () => Promise<AutoSaveMetadata[]>;
+  recoverFromAutoSave: (saveId: string) => Promise<boolean>;
+  forceSave: () => Promise<void>;
+}
+
+/**
+ * Create the project store
+ */
+export const useProjectStore = create<ProjectState>()(
+  subscribeWithSelector((set, get) => {
+    const actionHistory = new ActionHistory();
+    const actionExecutor = new ActionExecutor(actionHistory);
+
+    const getProjectClipIds = (project: Project): string[] =>
+      project.timeline.tracks.flatMap((track) =>
+        track.clips.map((clip) => clip.id),
+      );
+
+    const mapClipEffectsToVideoEffects = (effects: Effect[]): VideoEffect[] =>
+      effects.map((effect, order) => ({
+        id: effect.id,
+        type: effect.type as VideoEffectType,
+        enabled: effect.enabled,
+        params: effect.params,
+        order,
+      }));
+
+    const updateProjectClip = (
+      project: Project,
+      clipId: string,
+      updater: (clip: Clip) => Clip,
+    ): Project | null => {
+      let hasUpdatedClip = false;
+
+      const updatedTracks = project.timeline.tracks.map((track) => {
+        let trackUpdated = false;
+
+        const updatedClips = track.clips.map((clip) => {
+          if (clip.id !== clipId) {
+            return clip;
+          }
+
+          hasUpdatedClip = true;
+          trackUpdated = true;
+          return updater(clip);
+        });
+
+        return trackUpdated ? { ...track, clips: updatedClips } : track;
+      });
+
+      if (!hasUpdatedClip) {
+        return null;
+      }
+
+      return {
+        ...project,
+        timeline: { ...project.timeline, tracks: updatedTracks },
+        modifiedAt: Date.now(),
+      };
+    };
+
+    const buildSerializedColorGrading = (clipId: string) => {
+      const effectsBridge = getEffectsBridge();
+      if (!effectsBridge.isInitialized()) {
+        return {};
+      }
+
+      const colorGrading = effectsBridge.getColorGrading(clipId);
+
+      return {
+        ...(colorGrading.colorWheels
+          ? { colorWheels: colorGrading.colorWheels }
+          : {}),
+        ...(colorGrading.curves ? { curves: colorGrading.curves } : {}),
+        ...(colorGrading.lut
+          ? {
+              lut: {
+                data: Array.from(colorGrading.lut.data),
+                size: colorGrading.lut.size,
+                intensity: colorGrading.lut.intensity,
+              },
+            }
+          : {}),
+        ...(colorGrading.hsl ? { hsl: colorGrading.hsl } : {}),
+      };
+    };
+
+    const syncClipEffectsBridge = (project: Project, clipId: string): void => {
+      const effectsBridge = getEffectsBridge();
+      if (!effectsBridge.isInitialized()) {
+        return;
+      }
+
+      const clip = project.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((candidate) => candidate.id === clipId);
+
+      if (!clip) {
+        effectsBridge.clearEffects(clipId);
+        return;
+      }
+
+      const effects = mapClipEffectsToVideoEffects(clip.effects);
+      effectsBridge.deserializeEffects(clipId, {
+        effects: effects.map((effect) => ({
+          id: effect.id,
+          type: effect.type,
+          enabled: effect.enabled,
+          params: effect.params,
+          order: effect.order,
+        })),
+        colorGrading: buildSerializedColorGrading(clipId),
+      });
+    };
+
+    const syncProjectEffectsBridge = (
+      nextProject: Project,
+      previousProject?: Project,
+    ): void => {
+      const effectsBridge = getEffectsBridge();
+      if (!effectsBridge.isInitialized()) {
+        return;
+      }
+
+      const nextClipIds = new Set(getProjectClipIds(nextProject));
+
+      for (const clipId of previousProject ? getProjectClipIds(previousProject) : []) {
+        if (!nextClipIds.has(clipId)) {
+          effectsBridge.clearEffects(clipId);
+        }
+      }
+
+      for (const clipId of nextClipIds) {
+        syncClipEffectsBridge(nextProject, clipId);
+      }
+    };
+
+    const syncTrackTransitionsBridge = (
+      project: Project,
+      trackId: string,
+    ): void => {
+      const transitionBridge = getTransitionBridge();
+      if (!transitionBridge.isInitialized()) {
+        return;
+      }
+
+      const track = project.timeline.tracks.find(
+        (candidate) => candidate.id === trackId,
+      );
+
+      if (!track) {
+        transitionBridge.clearTransitionsForTrack(trackId);
+        return;
+      }
+
+      transitionBridge.setTransitionsForTrack(trackId, track.transitions);
+    };
+
+    const syncProjectTransitionsBridge = (
+      nextProject: Project,
+      previousProject?: Project,
+    ): void => {
+      const transitionBridge = getTransitionBridge();
+      if (!transitionBridge.isInitialized()) {
+        return;
+      }
+
+      const nextTrackIds = new Set(
+        nextProject.timeline.tracks.map((track) => track.id),
+      );
+
+      for (const trackId of previousProject
+        ? previousProject.timeline.tracks.map((track) => track.id)
+        : []) {
+        if (!nextTrackIds.has(trackId)) {
+          transitionBridge.clearTransitionsForTrack(trackId);
+        }
+      }
+
+      for (const track of nextProject.timeline.tracks) {
+        syncTrackTransitionsBridge(nextProject, track.id);
+      }
+    };
+
+    const buildEditingTemplateTrack = (
+      trackType: "text" | "graphics",
+    ): Track => ({
+      id: `track-${uuidv4()}`,
+      type: trackType,
+      name: trackType === "text" ? "Recipe Text" : "Recipe Graphics",
+      clips: [],
+      transitions: [],
+      locked: false,
+      hidden: false,
+      muted: false,
+      solo: false,
+    });
+
+    const insertEditingTemplateTrack = (
+      project: Project,
+      snapshot: EditingTemplateHistoryEntry["trackSnapshots"][number],
+    ): Project => {
+      if (project.timeline.tracks.some((track) => track.id === snapshot.track.id)) {
+        return project;
+      }
+
+      const tracks = [...project.timeline.tracks];
+      const position = Math.max(0, Math.min(snapshot.position, tracks.length));
+      tracks.splice(position, 0, snapshot.track);
+
+      return {
+        ...project,
+        timeline: { ...project.timeline, tracks },
+        modifiedAt: Date.now(),
+      };
+    };
+
+    const removeTrackFromProjectState = (
+      project: Project,
+      trackId: string,
+    ): Project => {
+      const nextTracks = project.timeline.tracks.filter((track) => track.id !== trackId);
+
+      if (nextTracks.length === project.timeline.tracks.length) {
+        return project;
+      }
+
+      return {
+        ...project,
+        timeline: { ...project.timeline, tracks: nextTracks },
+        modifiedAt: Date.now(),
+      };
+    };
+
+    const trackHasAnyClips = (project: Project, trackId: string): boolean => {
+      const track = project.timeline.tracks.find((candidate) => candidate.id === trackId);
+      if (!track) {
+        return false;
+      }
+
+      if (track.clips.length > 0) {
+        return true;
+      }
+
+      if (track.type === "text") {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        return titleEngine?.getAllTextClips().some((clip) => clip.trackId === trackId) ?? false;
+      }
+
+      if (track.type === "graphics") {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          return false;
+        }
+
+        return [
+          ...graphicsEngine.getAllShapeClips(),
+          ...graphicsEngine.getAllSVGClips(),
+          ...graphicsEngine.getAllStickerClips(),
+        ].some((clip) => clip.trackId === trackId);
+      }
+
+      return false;
+    };
+
+    const buildEditingTemplateKeyframes = (
+      prefix: string,
+      keyframes: readonly {
+        time: number;
+        property: string;
+        value: unknown;
+        easing: Keyframe["easing"];
+      }[],
+    ): Keyframe[] =>
+      keyframes.map((keyframe, index) => ({
+        id: `${prefix}-keyframe-${index + 1}`,
+        time: keyframe.time,
+        property: keyframe.property,
+        value: keyframe.value,
+        easing: keyframe.easing,
+      }));
+
+    const buildEditingTemplateSource = (
+      templateId: string,
+      applicationId: string,
+      ownerClipId: string,
+      ownerTrackId: string,
+      controlValues: Record<string, unknown> | undefined,
+    ): EditingTemplateApplicationSource => ({
+      templateId,
+      applicationId,
+      ownerClipId,
+      ownerTrackId,
+      controlValues,
+    });
+
+    const buildAppliedEditingTemplate = (
+      resolvedTemplate: ResolvedEditingTemplateApplication,
+      applicationId: string,
+      appliedAt: number = Date.now(),
+    ): AppliedEditingTemplate => ({
+      templateId: resolvedTemplate.template.id,
+      applicationId,
+      name: resolvedTemplate.template.name,
+      category: resolvedTemplate.template.category,
+      appliedAt,
+      controlValues: resolvedTemplate.controlValues,
+    });
+
+    const getEditingTemplateApplicationState = (
+      entry: EditingTemplateHistoryEntry,
+    ): EditingTemplateApplicationState => ({
+      ownerClipId: entry.ownerClipId,
+      templateId: entry.templateId,
+      applicationId: entry.applicationId,
+      appliedTemplate: entry.appliedTemplate,
+      addedEffects: entry.addedEffects,
+      addedAudioEffects: entry.addedAudioEffects,
+      addedKeyframes: entry.addedKeyframes,
+      overlays: entry.overlays,
+      trackSnapshots: entry.trackSnapshots,
+    });
+
+    const getEditingTemplatePreferredTrackIds = (
+      applicationState: EditingTemplateApplicationState,
+    ): Partial<Record<"text" | "graphics", string>> =>
+      applicationState.overlays.reduce<Partial<Record<"text" | "graphics", string>>>(
+        (trackIds, placement) => {
+          trackIds[placement.overlay.trackType] = placement.trackId;
+          return trackIds;
+        },
+        {},
+      );
+
+    const findEditingTemplateHistoryEntry = (
+      clipId: string,
+      applicationId: string,
+    ): EditingTemplateHistoryEntry | undefined => {
+      const { templateUndoStack, templateRedoStack } = get();
+
+      return [...templateUndoStack, ...templateRedoStack]
+        .reverse()
+        .find(
+          (entry) =>
+            entry.ownerClipId === clipId && entry.applicationId === applicationId,
+        );
+    };
+
+    const applyEditingTemplateApplicationToProject = (
+      project: Project,
+      templateId: string,
+      clipId: string,
+      overrides: Record<string, EditingTemplatePrimitive> = {},
+      options: {
+        applicationId?: string;
+        appliedAt?: number;
+        preferredTrackIds?: Partial<Record<"text" | "graphics", string>>;
+        preservedTrackSnapshots?: EditingTemplateApplicationState["trackSnapshots"];
+      } = {},
+    ):
+      | {
+          project: Project;
+          applicationState: EditingTemplateApplicationState;
+        }
+      | null => {
+      const template = getBuiltInEditingTemplate(templateId);
+      if (!template) {
+        return null;
+      }
+
+      const track = project.timeline.tracks.find((candidate) =>
+        candidate.clips.some((clip) => clip.id === clipId),
+      );
+      const ownerClip = track?.clips.find((clip) => clip.id === clipId);
+
+      if (!track || !ownerClip) {
+        return null;
+      }
+
+      const targetType =
+        track.type === "image"
+          ? "image"
+          : track.type === "video"
+            ? "video"
+            : null;
+
+      if (!targetType) {
+        return null;
+      }
+
+      if (
+        template.supportedTargets &&
+        !template.supportedTargets.includes(targetType)
+      ) {
+        return null;
+      }
+
+      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      const needsTextTrack = template.recipe.overlays.some(
+        (overlay) => overlay.trackType === "text",
+      );
+      const needsGraphicsTrack = template.recipe.overlays.some(
+        (overlay) => overlay.trackType === "graphics",
+      );
+
+      if (
+        (needsTextTrack && !titleEngine) ||
+        (needsGraphicsTrack && !graphicsEngine)
+      ) {
+        return null;
+      }
+
+      const mediaItem = project.mediaLibrary.items.find(
+        (item) => item.id === ownerClip.mediaId,
+      );
+      const assetUrls = project.mediaLibrary.items.reduce<Record<string, string>>(
+        (urls, item) => {
+          const url = item.originalUrl ?? item.thumbnailUrl ?? undefined;
+          if (url) {
+            urls[item.id] = url;
+          }
+          return urls;
+        },
+        {},
+      );
+
+      const resolvedTemplate = resolveEditingTemplate(
+        template,
+        {
+          clip: {
+            id: ownerClip.id,
+            startTime: ownerClip.startTime,
+            duration: ownerClip.duration,
+            name: mediaItem?.name,
+          },
+          assetUrls,
+        },
+        overrides,
+      );
+
+      const applicationId = options.applicationId || `editing-template-${uuidv4()}`;
+      const appliedTemplate = buildAppliedEditingTemplate(
+        resolvedTemplate,
+        applicationId,
+        options.appliedAt,
+      );
+      const templateSource = buildEditingTemplateSource(
+        template.id,
+        applicationId,
+        ownerClip.id,
+        ownerClip.trackId,
+        appliedTemplate.controlValues,
+      );
+
+      const addedEffects = resolvedTemplate.effects.map((effect, index) => ({
+        id: `template-effect-${applicationId}-${index + 1}-${effect.id}`,
+        type: effect.type,
+        params: effect.params,
+        enabled: effect.enabled,
+        metadata: { templateSource },
+      }));
+      const addedAudioEffects = resolvedTemplate.audioEffects.map((effect, index) => ({
+        id: `template-audio-effect-${applicationId}-${index + 1}-${effect.id}`,
+        type: effect.type,
+        params: effect.params,
+        enabled: effect.enabled,
+        metadata: { templateSource },
+      }));
+      const addedKeyframes = [
+        ...resolvedTemplate.effects.flatMap((effect, index) =>
+          buildEditingTemplateKeyframes(
+            `template-keyframe-${applicationId}-video-${index + 1}`,
+            effect.keyframes,
+          ),
+        ),
+        ...resolvedTemplate.audioEffects.flatMap((effect, index) =>
+          buildEditingTemplateKeyframes(
+            `template-keyframe-${applicationId}-audio-${index + 1}`,
+            effect.keyframes,
+          ),
+        ),
+      ];
+
+      let updatedProject = project;
+      const trackSnapshots = [
+        ...((options.preservedTrackSnapshots || []).filter((snapshot) =>
+          updatedProject.timeline.tracks.some((track) => track.id === snapshot.track.id),
+        )),
+      ];
+      const resolvedTrackIds: Partial<Record<"text" | "graphics", string>> = {};
+
+      for (const snapshot of trackSnapshots) {
+        if (snapshot.track.type === "text" || snapshot.track.type === "graphics") {
+          resolvedTrackIds[snapshot.track.type] = snapshot.track.id;
+        }
+      }
+
+      const ensureOverlayTrack = (trackType: "text" | "graphics"): string => {
+        const existingTrackId = resolvedTrackIds[trackType];
+        if (
+          existingTrackId &&
+          updatedProject.timeline.tracks.some((track) => track.id === existingTrackId)
+        ) {
+          return existingTrackId;
+        }
+
+        const preferredTrackId = options.preferredTrackIds?.[trackType];
+        if (
+          preferredTrackId &&
+          updatedProject.timeline.tracks.some((track) => track.id === preferredTrackId)
+        ) {
+          resolvedTrackIds[trackType] = preferredTrackId;
+          return preferredTrackId;
+        }
+
+        const existingTrack = updatedProject.timeline.tracks.find(
+          (candidate) => candidate.type === trackType,
+        );
+        if (existingTrack) {
+          resolvedTrackIds[trackType] = existingTrack.id;
+          return existingTrack.id;
+        }
+
+        const snapshot = {
+          track: buildEditingTemplateTrack(trackType),
+          position: 0,
+        };
+        trackSnapshots.push(snapshot);
+        updatedProject = insertEditingTemplateTrack(updatedProject, snapshot);
+        resolvedTrackIds[trackType] = snapshot.track.id;
+        return snapshot.track.id;
+      };
+
+      const overlays: EditingTemplateApplicationState["overlays"] =
+        resolvedTemplate.overlays.map((overlay, index) => ({
+          trackId: ensureOverlayTrack(overlay.trackType),
+          overlay: {
+            ...overlay,
+            id: `template-overlay-${applicationId}-${index + 1}-${overlay.id}`,
+          },
+        }));
+
+      const nextProject = updateProjectClip(updatedProject, clipId, (clip) => ({
+        ...clip,
+        effects: [...clip.effects, ...addedEffects],
+        audioEffects: [...clip.audioEffects, ...addedAudioEffects],
+        keyframes: [...clip.keyframes, ...addedKeyframes],
+        metadata: {
+          ...(clip.metadata || {}),
+          appliedTemplates: [
+            ...(clip.metadata?.appliedTemplates || []),
+            appliedTemplate,
+          ],
+        },
+      }));
+
+      if (!nextProject) {
+        return null;
+      }
+
+      updatedProject = nextProject;
+
+      for (const placement of overlays) {
+        if (!createEditingTemplateOverlay(placement, templateSource)) {
+          removeEditingTemplateApplicationFromProject(
+            updatedProject,
+            clipId,
+            applicationId,
+            trackSnapshots.map((snapshot) => snapshot.track.id),
+          );
+          return null;
+        }
+      }
+
+      syncClipEffectsBridge(updatedProject, clipId);
+
+      return {
+        project: {
+          ...updatedProject,
+          modifiedAt: Date.now(),
+        },
+        applicationState: {
+          ownerClipId: clipId,
+          templateId: template.id,
+          applicationId,
+          appliedTemplate,
+          addedEffects,
+          addedAudioEffects,
+          addedKeyframes,
+          overlays,
+          trackSnapshots,
+        },
+      };
+    };
+
+    const canRestoreEditingTemplateOverlays = (
+      overlays: EditingTemplateHistoryEntry["overlays"],
+    ): boolean => {
+      const titleEngine = useEngineStore.getState().getTitleEngine();
+      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+
+      for (const placement of overlays) {
+        if (placement.overlay.type === "text" && !titleEngine) {
+          return false;
+        }
+
+        if (placement.overlay.type !== "text" && !graphicsEngine) {
+          return false;
+        }
+
+        if (placement.overlay.type === "image" && !placement.overlay.content.imageUrl) {
+          return false;
+        }
+      }
+
+      return true;
+    };
+
+    const createEditingTemplateOverlay = (
+      placement: EditingTemplateHistoryEntry["overlays"][number],
+      source: EditingTemplateApplicationSource,
+    ): boolean => {
+      const metadata = {
+        templateSource: source,
+        templateManaged: true,
+        templateTrackType: placement.overlay.trackType,
+      };
+
+      if (placement.overlay.type === "text") {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          return false;
+        }
+
+        if (titleEngine.getTextClip(placement.overlay.id)) {
+          return true;
+        }
+
+        titleEngine.createTextClip({
+          id: placement.overlay.id,
+          trackId: placement.trackId,
+          startTime: placement.overlay.timing.startTime,
+          duration: placement.overlay.timing.duration,
+          text: placement.overlay.content.text,
+          style: placement.overlay.content.style,
+          transform: placement.overlay.transform,
+          animation: placement.overlay.content.animation
+            ? {
+                preset: placement.overlay.content.animation.preset,
+                params: placement.overlay.content.animation.params || {},
+                inDuration: placement.overlay.content.animation.inDuration,
+                outDuration: placement.overlay.content.animation.outDuration,
+                stagger: placement.overlay.content.animation.stagger,
+                unit: placement.overlay.content.animation.unit,
+              }
+            : undefined,
+          metadata,
+        });
+
+        return Boolean(
+          titleEngine.updateTextClip(placement.overlay.id, {
+            keyframes: buildEditingTemplateKeyframes(
+              placement.overlay.id,
+              placement.overlay.keyframes,
+            ),
+            blendMode: placement.overlay.blendMode,
+            blendOpacity: placement.overlay.blendOpacity,
+            emphasisAnimation: placement.overlay.emphasisAnimation,
+            metadata,
+          }),
+        );
+      }
+
+      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      if (!graphicsEngine) {
+        return false;
+      }
+
+      if (placement.overlay.type === "shape") {
+        if (graphicsEngine.getShapeClip(placement.overlay.id)) {
+          return true;
+        }
+
+        graphicsEngine.createShape(
+          {
+            id: placement.overlay.id,
+            shapeType: placement.overlay.content.shapeType,
+            width: placement.overlay.content.width,
+            height: placement.overlay.content.height,
+            style: placement.overlay.content.style,
+            metadata,
+          },
+          placement.trackId,
+          placement.overlay.timing.startTime,
+          placement.overlay.timing.duration,
+        );
+
+        return Boolean(
+          graphicsEngine.updateShapeClip(placement.overlay.id, {
+            transform: placement.overlay.transform,
+            keyframes: buildEditingTemplateKeyframes(
+              placement.overlay.id,
+              placement.overlay.keyframes,
+            ),
+            blendMode: placement.overlay.blendMode,
+            blendOpacity: placement.overlay.blendOpacity,
+            emphasisAnimation: placement.overlay.emphasisAnimation,
+          }),
+        );
+      }
+
+      if (graphicsEngine.getStickerClip(placement.overlay.id)) {
+        return true;
+      }
+
+      if (!placement.overlay.content.imageUrl) {
+        return false;
+      }
+
+      graphicsEngine.addStickerClip({
+        id: placement.overlay.id,
+        trackId: placement.trackId,
+        startTime: placement.overlay.timing.startTime,
+        duration: placement.overlay.timing.duration,
+        type: "sticker",
+        imageUrl: placement.overlay.content.imageUrl,
+        name: placement.overlay.content.name,
+        transform: placement.overlay.transform,
+        keyframes: buildEditingTemplateKeyframes(
+          placement.overlay.id,
+          placement.overlay.keyframes,
+        ),
+        blendMode: placement.overlay.blendMode,
+        blendOpacity: placement.overlay.blendOpacity,
+        emphasisAnimation: placement.overlay.emphasisAnimation,
+        metadata,
+      });
+
+      return true;
+    };
+
+    const hasEditingTemplateArtifacts = (
+      project: Project,
+      ownerClipId: string,
+      applicationId: string,
+    ): boolean => {
+      const ownerClip = project.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((clip) => clip.id === ownerClipId);
+
+      if (ownerClip) {
+        if ((ownerClip.metadata?.appliedTemplates || []).some(
+          (template) => template.applicationId === applicationId,
+        )) {
+          return true;
+        }
+
+        if (ownerClip.effects.some(
+          (effect) => effect.metadata?.templateSource?.applicationId === applicationId,
+        )) {
+          return true;
+        }
+
+        if (ownerClip.audioEffects.some(
+          (effect) => effect.metadata?.templateSource?.applicationId === applicationId,
+        )) {
+          return true;
+        }
+
+        if (ownerClip.keyframes.some(
+          (keyframe) => keyframe.id.startsWith(`template-keyframe-${applicationId}-`),
+        )) {
+          return true;
+        }
+      }
+
+      const titleEngine = useEngineStore.getState().getTitleEngine();
+      if (titleEngine?.getAllTextClips().some(
+        (clip) => clip.metadata?.templateSource?.applicationId === applicationId,
+      )) {
+        return true;
+      }
+
+      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      if (!graphicsEngine) {
+        return false;
+      }
+
+      return [
+        ...graphicsEngine.getAllShapeClips(),
+        ...graphicsEngine.getAllSVGClips(),
+        ...graphicsEngine.getAllStickerClips(),
+      ].some((clip) => clip.metadata?.templateSource?.applicationId === applicationId);
+    };
+
+    const removeEditingTemplateApplicationFromProject = (
+      project: Project,
+      ownerClipId: string,
+      applicationId: string,
+      trackIdsToRemoveIfEmpty: string[] = [],
+    ): Project => {
+      let updatedProject = project;
+      const currentOwnerClip = project.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((clip) => clip.id === ownerClipId);
+
+      if (currentOwnerClip) {
+        const nextProject = updateProjectClip(project, ownerClipId, (clip) => {
+          const appliedTemplates = (clip.metadata?.appliedTemplates || []).filter(
+            (template) => template.applicationId !== applicationId,
+          );
+          const metadata: Record<string, unknown> = {
+            ...(clip.metadata || {}),
+          };
+
+          if (appliedTemplates.length > 0) {
+            metadata.appliedTemplates = appliedTemplates;
+          } else {
+            delete metadata.appliedTemplates;
+          }
+
+          return {
+            ...clip,
+            effects: clip.effects.filter(
+              (effect) => effect.metadata?.templateSource?.applicationId !== applicationId,
+            ),
+            audioEffects: clip.audioEffects.filter(
+              (effect) => effect.metadata?.templateSource?.applicationId !== applicationId,
+            ),
+            keyframes: clip.keyframes.filter(
+              (keyframe) => !keyframe.id.startsWith(`template-keyframe-${applicationId}-`),
+            ),
+            metadata: Object.keys(metadata).length > 0 ? metadata : undefined,
+          };
+        });
+
+        if (nextProject) {
+          updatedProject = nextProject;
+        }
+      }
+
+      const titleEngine = useEngineStore.getState().getTitleEngine();
+      for (const textClip of titleEngine?.getAllTextClips() || []) {
+        if (textClip.metadata?.templateSource?.applicationId === applicationId) {
+          titleEngine?.deleteTextClip(textClip.id);
+        }
+      }
+
+      const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+      if (graphicsEngine) {
+        for (const shapeClip of graphicsEngine.getAllShapeClips()) {
+          if (shapeClip.metadata?.templateSource?.applicationId === applicationId) {
+            graphicsEngine.deleteShapeClip(shapeClip.id);
+          }
+        }
+
+        for (const svgClip of graphicsEngine.getAllSVGClips()) {
+          if (svgClip.metadata?.templateSource?.applicationId === applicationId) {
+            graphicsEngine.deleteSVGClip(svgClip.id);
+          }
+        }
+
+        for (const stickerClip of graphicsEngine.getAllStickerClips()) {
+          if (stickerClip.metadata?.templateSource?.applicationId === applicationId) {
+            graphicsEngine.deleteStickerClip(stickerClip.id);
+          }
+        }
+      }
+
+      for (const trackId of trackIdsToRemoveIfEmpty) {
+        if (!trackHasAnyClips(updatedProject, trackId)) {
+          updatedProject = removeTrackFromProjectState(updatedProject, trackId);
+        }
+      }
+
+      syncClipEffectsBridge(updatedProject, ownerClipId);
+
+      return {
+        ...updatedProject,
+        modifiedAt: Date.now(),
+      };
+    };
+
+    const removeEditingTemplateApplicationStateFromProject = (
+      project: Project,
+      applicationState: EditingTemplateApplicationState,
+      removeEmptyTracks: boolean = true,
+    ): Project =>
+      removeEditingTemplateApplicationFromProject(
+        project,
+        applicationState.ownerClipId,
+        applicationState.applicationId,
+        removeEmptyTracks
+          ? applicationState.trackSnapshots.map((snapshot) => snapshot.track.id)
+          : [],
+      );
+
+    const restoreEditingTemplateApplicationState = (
+      project: Project,
+      applicationState: EditingTemplateApplicationState,
+    ): Project | null => {
+      if (!canRestoreEditingTemplateOverlays(applicationState.overlays)) {
+        return null;
+      }
+
+      let updatedProject = project;
+      for (const snapshot of applicationState.trackSnapshots) {
+        updatedProject = insertEditingTemplateTrack(updatedProject, snapshot);
+      }
+
+      const ownerClip = updatedProject.timeline.tracks
+        .flatMap((track) => track.clips)
+        .find((clip) => clip.id === applicationState.ownerClipId);
+      if (!ownerClip) {
+        return null;
+      }
+
+      const templateSource = buildEditingTemplateSource(
+        applicationState.templateId,
+        applicationState.applicationId,
+        applicationState.ownerClipId,
+        ownerClip.trackId,
+        applicationState.appliedTemplate.controlValues,
+      );
+
+      const nextProject = updateProjectClip(
+        updatedProject,
+        applicationState.ownerClipId,
+        (clip) => {
+        const effectIds = new Set(clip.effects.map((effect) => effect.id));
+        const audioEffectIds = new Set(clip.audioEffects.map((effect) => effect.id));
+        const keyframeIds = new Set(clip.keyframes.map((keyframe) => keyframe.id));
+        const appliedTemplates = clip.metadata?.appliedTemplates || [];
+        const hasAppliedTemplate = appliedTemplates.some(
+          (template) =>
+            template.applicationId === applicationState.applicationId,
+        );
+
+        return {
+          ...clip,
+          effects: [
+            ...clip.effects,
+            ...applicationState.addedEffects.filter(
+              (effect) => !effectIds.has(effect.id),
+            ),
+          ],
+          audioEffects: [
+            ...clip.audioEffects,
+            ...applicationState.addedAudioEffects.filter(
+              (effect) => !audioEffectIds.has(effect.id),
+            ),
+          ],
+          keyframes: [
+            ...clip.keyframes,
+            ...applicationState.addedKeyframes.filter(
+              (keyframe) => !keyframeIds.has(keyframe.id),
+            ),
+          ],
+          metadata: {
+            ...(clip.metadata || {}),
+            appliedTemplates: hasAppliedTemplate
+              ? appliedTemplates
+              : [...appliedTemplates, applicationState.appliedTemplate],
+          },
+        };
+      },
+      );
+
+      if (!nextProject) {
+        return null;
+      }
+
+      updatedProject = nextProject;
+
+      for (const placement of applicationState.overlays) {
+        if (!createEditingTemplateOverlay(placement, templateSource)) {
+          return null;
+        }
+      }
+
+      syncClipEffectsBridge(updatedProject, applicationState.ownerClipId);
+
+      return {
+        ...updatedProject,
+        modifiedAt: Date.now(),
+      };
+    };
+
+    return {
+      // Initial state - create empty project (Requirement 1.1)
+      project: createEmptyProject(),
+      photoProjects: new Map(),
+      actionExecutor,
+      actionHistory,
+      clipUndoStack: [] as ClipHistoryEntry[],
+      clipRedoStack: [] as ClipHistoryEntry[],
+      templateUndoStack: [] as EditingTemplateHistoryEntry[],
+      templateRedoStack: [] as EditingTemplateHistoryEntry[],
+      isLoading: false,
+      error: null,
+      clipboard: [] as Clip[],
+      copiedEffects: [] as Effect[],
+
+      createNewProject: (
+        name?: string,
+        settings?: Partial<ProjectSettings>,
+      ) => {
+        const newHistory = new ActionHistory();
+        const newExecutor = new ActionExecutor(newHistory);
+        const previousProject = get().project;
+        const nextProject = createEmptyProject(name, settings);
+
+        syncProjectEffectsBridge(nextProject, previousProject);
+        syncProjectTransitionsBridge(nextProject, previousProject);
+
+        set({
+          project: nextProject,
+          actionHistory: newHistory,
+          actionExecutor: newExecutor,
+          clipUndoStack: [],
+          clipRedoStack: [],
+          templateUndoStack: [],
+          templateRedoStack: [],
+          error: null,
+        });
+      },
+
+      loadProject: (project: Project) => {
+        const previousProject = get().project;
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+
+        if (titleEngine && project.textClips) {
+          titleEngine.loadTextClips(project.textClips);
+        }
+        if (graphicsEngine) {
+          if (project.shapeClips) {
+            graphicsEngine.loadShapeClips(project.shapeClips);
+          }
+          if (project.svgClips) {
+            graphicsEngine.loadSVGClips(project.svgClips);
+          }
+          if (project.stickerClips) {
+            graphicsEngine.loadStickerClips(project.stickerClips);
+          }
+        }
+
+        const newHistory = new ActionHistory();
+        const newExecutor = new ActionExecutor(newHistory);
+
+        // Fix legacy projects where timeline.duration was never persisted
+        const computedDuration = project.timeline.tracks.reduce((max, track) =>
+          track.clips.reduce((m, c) => Math.max(m, c.startTime + c.duration), max), 0);
+        const fixedProject = computedDuration > 0 && project.timeline.duration === 0
+          ? { ...project, timeline: { ...project.timeline, duration: computedDuration } }
+          : project;
+
+        syncProjectEffectsBridge(fixedProject, previousProject);
+        syncProjectTransitionsBridge(fixedProject, previousProject);
+
+        set({
+          project: fixedProject,
+          actionHistory: newHistory,
+          actionExecutor: newExecutor,
+          clipUndoStack: [],
+          clipRedoStack: [],
+          templateUndoStack: [],
+          templateRedoStack: [],
+          error: null,
+        });
+
+        // Auto-restore placeholder assets from saved FileSystemFileHandles (same machine)
+        const placeholders = fixedProject.mediaLibrary.items.filter(
+          (item) => item.isPlaceholder && item.sourceFile,
+        );
+        if (placeholders.length > 0 && "FileSystemFileHandle" in window) {
+          (async () => {
+            let restored = 0;
+            const stillMissing: typeof placeholders = [];
+
+            // Tier 1: try individual file handles (follow file across folder moves)
+            for (const item of placeholders) {
+              if (!item.sourceFile) continue;
+              try {
+                const handle = await loadFileHandle(item.sourceFile.name, item.sourceFile.size);
+                if (!handle) { stillMissing.push(item); continue; }
+                const file = await handle.getFile();
+                await get().replaceMediaAsset(item.id, file, item.sourceFile.folder);
+                restored++;
+              } catch {
+                stillMissing.push(item); // stale handle
+              }
+            }
+
+            // Tier 2: scan the stored relink folder for files not found via handle
+            if (stillMissing.length > 0) {
+              try {
+                const dirInfo = await loadDirectoryHandle(fixedProject.id);
+                if (dirInfo) {
+                  const fileMap = new Map<string, { file: File; folder: string }>();
+                  const entries = (dirInfo.handle as unknown as { entries: () => AsyncIterableIterator<[string, FileSystemHandle]> }).entries();
+                  for await (const [, fh] of entries) {
+                    if ((fh as FileSystemHandle).kind === "file") {
+                      const f = await (fh as FileSystemFileHandle).getFile();
+                      fileMap.set(`${f.name.toLowerCase()}:${f.size}`, { file: f, folder: dirInfo.folderName });
+                    }
+                  }
+                  for (const item of stillMissing) {
+                    if (!item.sourceFile) continue;
+                    const entry = fileMap.get(`${item.sourceFile.name.toLowerCase()}:${item.sourceFile.size}`);
+                    if (entry) {
+                      try {
+                        await get().replaceMediaAsset(item.id, entry.file, entry.folder);
+                        restored++;
+                      } catch { /* skip */ }
+                    }
+                  }
+                }
+              } catch { /* dir handle stale or unavailable */ }
+            }
+
+            if (restored > 0) {
+              console.info(`[ProjectStore] Auto-restored ${restored} asset(s) from file handles`);
+            }
+          })();
+        }
+      },
+
+      // Rename project
+      renameProject: async (name: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "project/rename",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { name },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      // Update project settings
+      updateSettings: async (settings: Partial<ProjectSettings>) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "project/updateSettings",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: settings,
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      // Media library actions
+      importMedia: async (file: File) => {
+        const { project } = get();
+
+        try {
+          const mediaBridge = getMediaBridge();
+          if (!mediaBridge.isInitialized()) {
+            await initializeMediaBridge();
+          }
+
+          const isLargeFile = file.size > 50 * 1024 * 1024;
+          const importResult = await mediaBridge.importFile(file, true, isLargeFile);
+
+          if (!importResult.success || !importResult.media) {
+            return {
+              success: false,
+              error: {
+                code: "DECODE_ERROR" as const,
+                message: importResult.error || "Failed to import media",
+              },
+            };
+          }
+
+          // Create a MediaItem from the processed media
+          const processedMedia = importResult.media;
+
+          // Get thumbnail URL from the first thumbnail if available
+          // Also collect all thumbnails for filmstrip display
+          let thumbnailUrl: string | null = null;
+          const filmstripThumbnails: { timestamp: number; url: string }[] = [];
+
+          if (
+            processedMedia.thumbnails &&
+            processedMedia.thumbnails.length > 0
+          ) {
+            // Process all thumbnails for filmstrip display
+            for (const thumb of processedMedia.thumbnails) {
+              let thumbUrl: string | null = null;
+
+              // Check if dataUrl already exists
+              if (thumb.dataUrl) {
+                thumbUrl = thumb.dataUrl;
+              } else if (thumb.canvas) {
+                // Convert canvas to dataUrl
+                try {
+                  if (thumb.canvas instanceof OffscreenCanvas) {
+                    const blob = await thumb.canvas.convertToBlob({
+                      type: "image/jpeg",
+                      quality: 0.7,
+                    });
+                    thumbUrl = URL.createObjectURL(blob);
+                  } else if (thumb.canvas instanceof HTMLCanvasElement) {
+                    thumbUrl = thumb.canvas.toDataURL("image/jpeg", 0.7);
+                  }
+                } catch (e) {
+                  console.warn("Failed to convert thumbnail canvas to URL:", e);
+                }
+              }
+
+              if (thumbUrl) {
+                filmstripThumbnails.push({
+                  timestamp: thumb.timestamp,
+                  url: thumbUrl,
+                });
+              }
+            }
+
+            // Use first thumbnail as the main thumbnail
+            if (filmstripThumbnails.length > 0) {
+              thumbnailUrl = filmstripThumbnails[0].url;
+            }
+          }
+
+          // Determine media type - check file MIME type first for images
+          let mediaType: "video" | "audio" | "image";
+          if (file.type.startsWith("image/")) {
+            mediaType = "image";
+          } else if (processedMedia.metadata.hasVideo) {
+            mediaType = "video";
+          } else if (processedMedia.metadata.hasAudio) {
+            mediaType = "audio";
+          } else {
+            mediaType = "image";
+          }
+
+          if (mediaType === "video" && !thumbnailUrl) {
+            try {
+              const thumbs = await mediaBridge.generateThumbnailsForMedia(
+                processedMedia.blob ?? file,
+                mediaType,
+              );
+              if (thumbs.length > 0) {
+                thumbnailUrl = thumbs[0].dataUrl;
+                filmstripThumbnails.push(
+                  ...thumbs.map((thumb) => ({
+                    timestamp: thumb.timestamp,
+                    url: thumb.dataUrl,
+                  })),
+                );
+              }
+            } catch {
+              // Background retry below is best-effort.
+            }
+          }
+
+          const newMediaItem: MediaItem = {
+            id: uuidv4(),
+            name: file.name,
+            type: mediaType,
+            fileHandle: null,
+            blob: file,
+            metadata: {
+              // Images have no inherent duration (like graphics), duration is set on the clip
+              duration: processedMedia.metadata.duration || 0,
+              width: processedMedia.metadata.width || 0,
+              height: processedMedia.metadata.height || 0,
+              frameRate: processedMedia.metadata.frameRate || 0,
+              codec: processedMedia.metadata.codec || "",
+              sampleRate: processedMedia.metadata.sampleRate || 0,
+              channels: processedMedia.metadata.channels || 0,
+              fileSize: file.size,
+            },
+            thumbnailUrl,
+            waveformData: processedMedia.waveformData?.peaks || null,
+            filmstripThumbnails:
+              filmstripThumbnails.length > 0 ? filmstripThumbnails : undefined,
+            sourceFile: { name: file.name, size: file.size, lastModified: file.lastModified },
+          };
+
+          const updatedProject = {
+            ...project,
+            mediaLibrary: {
+              ...project.mediaLibrary,
+              items: [...project.mediaLibrary.items, newMediaItem],
+            },
+            modifiedAt: Date.now(),
+          };
+
+          set({ project: updatedProject });
+
+          try {
+            await saveMediaBlob(
+              updatedProject.id,
+              newMediaItem.id,
+              file,
+              newMediaItem.metadata,
+            );
+          } catch (err) {
+            console.error("[ProjectStore] Failed to persist media blob:", err);
+          }
+
+          if (mediaType === "video" && !thumbnailUrl) {
+            setTimeout(async () => {
+              try {
+                const thumbs = await mediaBridge.generateThumbnailsForMedia(
+                  newMediaItem.blob ?? file,
+                  mediaType,
+                );
+                if (thumbs.length > 0) {
+                  const currentProject = get().project;
+                  const mediaIndex = currentProject.mediaLibrary.items.findIndex(
+                    (m) => m.id === newMediaItem.id,
+                  );
+                  if (mediaIndex !== -1) {
+                    const updatedItems = [...currentProject.mediaLibrary.items];
+                    updatedItems[mediaIndex] = {
+                      ...updatedItems[mediaIndex],
+                      thumbnailUrl: thumbs[0].dataUrl,
+                      filmstripThumbnails: thumbs.map((t) => ({
+                        timestamp: t.timestamp,
+                        url: t.dataUrl,
+                      })),
+                    };
+                    set({
+                      project: {
+                        ...currentProject,
+                        mediaLibrary: {
+                          ...currentProject.mediaLibrary,
+                          items: updatedItems,
+                        },
+                        modifiedAt: Date.now(),
+                      },
+                    });
+                  }
+                }
+              } catch {
+                // Background thumbnail generation is best-effort
+              }
+            }, 100);
+          }
+
+          return {
+            success: true,
+            actionId: newMediaItem.id,
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: {
+              code: "DECODE_ERROR" as const,
+              message:
+                error instanceof Error ? error.message : "Unknown import error",
+            },
+          };
+        }
+      },
+
+      deleteMedia: async (mediaId: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "media/delete",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { mediaId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+          deleteMediaBlob(mediaId).catch((err) =>
+            console.warn("[ProjectStore] Failed to delete media blob:", err),
+          );
+        }
+        return result;
+      },
+
+      replaceMediaAsset: async (mediaId: string, file: File, sourceFolder?: string) => {
+        const { project } = get();
+
+        try {
+          const mediaBridge = getMediaBridge();
+          if (!mediaBridge.isInitialized()) {
+            await initializeMediaBridge();
+          }
+
+          const importResult = await mediaBridge.importFile(file, true);
+
+          if (!importResult.success || !importResult.media) {
+            return {
+              success: false,
+              error: {
+                code: "DECODE_ERROR" as const,
+                message: importResult.error || "Failed to import media",
+              },
+            };
+          }
+
+          const processedMedia = importResult.media;
+
+          let thumbnailUrl: string | null = null;
+          const filmstripThumbnails: { timestamp: number; url: string }[] = [];
+
+          if (
+            processedMedia.thumbnails &&
+            processedMedia.thumbnails.length > 0
+          ) {
+            for (const thumb of processedMedia.thumbnails) {
+              let thumbUrl: string | null = null;
+
+              if (thumb.dataUrl) {
+                thumbUrl = thumb.dataUrl;
+              } else if (thumb.canvas) {
+                try {
+                  if (thumb.canvas instanceof OffscreenCanvas) {
+                    const blob = await thumb.canvas.convertToBlob({
+                      type: "image/jpeg",
+                      quality: 0.7,
+                    });
+                    thumbUrl = URL.createObjectURL(blob);
+                  } else if (thumb.canvas instanceof HTMLCanvasElement) {
+                    thumbUrl = thumb.canvas.toDataURL("image/jpeg", 0.7);
+                  }
+                } catch (e) {
+                  console.warn("Failed to convert thumbnail canvas to URL:", e);
+                }
+              }
+
+              if (thumbUrl) {
+                filmstripThumbnails.push({
+                  timestamp: thumb.timestamp,
+                  url: thumbUrl,
+                });
+              }
+            }
+
+            if (filmstripThumbnails.length > 0) {
+              thumbnailUrl = filmstripThumbnails[0].url;
+            }
+          }
+
+          const mediaType = processedMedia.metadata.hasVideo
+            ? "video"
+            : processedMedia.metadata.hasAudio
+              ? "audio"
+              : "image";
+
+          if (mediaType === "video" && !thumbnailUrl) {
+            try {
+              const thumbs = await mediaBridge.generateThumbnailsForMedia(
+                processedMedia.blob ?? file,
+                mediaType,
+              );
+              if (thumbs.length > 0) {
+                thumbnailUrl = thumbs[0].dataUrl;
+                filmstripThumbnails.push(
+                  ...thumbs.map((thumb) => ({
+                    timestamp: thumb.timestamp,
+                    url: thumb.dataUrl,
+                  })),
+                );
+              }
+            } catch {
+              // Background retry below is best-effort.
+            }
+          }
+
+          const updatedItem: MediaItem = {
+            id: mediaId,
+            name: file.name,
+            type: mediaType,
+            fileHandle: null,
+            blob: file,
+            metadata: {
+              duration: processedMedia.metadata.duration || 0,
+              width: processedMedia.metadata.width || 0,
+              height: processedMedia.metadata.height || 0,
+              frameRate: processedMedia.metadata.frameRate || 0,
+              codec: processedMedia.metadata.codec || "",
+              sampleRate: processedMedia.metadata.sampleRate || 0,
+              channels: processedMedia.metadata.channels || 0,
+              fileSize: file.size,
+            },
+            thumbnailUrl,
+            waveformData: processedMedia.waveformData?.peaks || null,
+            filmstripThumbnails:
+              filmstripThumbnails.length > 0 ? filmstripThumbnails : undefined,
+            isPlaceholder: false,
+            sourceFile: { name: file.name, size: file.size, lastModified: file.lastModified, folder: sourceFolder },
+          };
+
+          const updatedItems = project.mediaLibrary.items.map((item) =>
+            item.id === mediaId ? updatedItem : item,
+          );
+
+          set({
+            project: {
+              ...project,
+              mediaLibrary: {
+                items: updatedItems,
+              },
+              modifiedAt: Date.now(),
+            },
+          });
+
+          if (updatedItem.type === "video" && !updatedItem.thumbnailUrl) {
+            setTimeout(async () => {
+              try {
+                const thumbs = await mediaBridge.generateThumbnailsForMedia(
+                  updatedItem.blob ?? file,
+                  updatedItem.type,
+                );
+                if (thumbs.length > 0) {
+                  const currentProject = get().project;
+                  const updatedItemsWithThumbs =
+                    currentProject.mediaLibrary.items.map((item) =>
+                      item.id === mediaId
+                        ? {
+                            ...item,
+                            thumbnailUrl: thumbs[0].dataUrl,
+                            filmstripThumbnails: thumbs.map((thumb) => ({
+                              timestamp: thumb.timestamp,
+                              url: thumb.dataUrl,
+                            })),
+                          }
+                        : item,
+                    );
+                  set({
+                    project: {
+                      ...currentProject,
+                      mediaLibrary: { items: updatedItemsWithThumbs },
+                      modifiedAt: Date.now(),
+                    },
+                  });
+                }
+              } catch {
+                // Background thumbnail generation is best-effort
+              }
+            }, 100);
+          }
+
+          return {
+            success: true,
+            actionId: uuidv4(),
+          };
+        } catch (error) {
+          return {
+            success: false,
+            error: {
+              code: "DECODE_ERROR" as const,
+              message:
+                error instanceof Error ? error.message : "Unknown import error",
+            },
+          };
+        }
+      },
+
+      renameMedia: async (mediaId: string, name: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "media/rename",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { mediaId, name },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      getMediaItem: (mediaId: string) => {
+        const { project } = get();
+        return project.mediaLibrary.items.find((item) => item.id === mediaId);
+      },
+
+      addPlaceholderMedia: (item: MediaItem) => {
+        const { project } = get();
+        set({
+          project: {
+            ...project,
+            mediaLibrary: {
+              ...project.mediaLibrary,
+              items: [...project.mediaLibrary.items, item],
+            },
+            modifiedAt: Date.now(),
+          },
+        });
+      },
+
+      setKieAIItemState: (mediaId: string, isPending: boolean, kieaiError: boolean) => {
+        const { project } = get();
+        const updatedItems = project.mediaLibrary.items.map((item) =>
+          item.id === mediaId ? { ...item, isPending, kieaiError } : item,
+        );
+        set({
+          project: {
+            ...project,
+            mediaLibrary: { ...project.mediaLibrary, items: updatedItems },
+            modifiedAt: Date.now(),
+          },
+        });
+      },
+
+      replacePlaceholderMedia: async (mediaId: string, blob: Blob, name: string) => {
+        const { project } = get();
+
+        // For images use createImageBitmap (no mediaBridge dependency).
+        // This avoids WASM initialisation races and works immediately in any context.
+        let thumbnailUrl: string | null = null;
+        let width = 0;
+        let height = 0;
+
+        if (blob.size > 0 && blob.type.startsWith("image/")) {
+          try {
+            const bitmap = await createImageBitmap(blob);
+            width = bitmap.width;
+            height = bitmap.height;
+
+            const THUMB_SIZE = 320;
+            const scale = Math.min(THUMB_SIZE / bitmap.width, THUMB_SIZE / bitmap.height, 1);
+            const tw = Math.round(bitmap.width * scale);
+            const th = Math.round(bitmap.height * scale);
+
+            const canvas = new OffscreenCanvas(tw, th);
+            const ctx = canvas.getContext("2d")!;
+            ctx.drawImage(bitmap, 0, 0, tw, th);
+            bitmap.close();
+
+            const thumbBlob = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.75 });
+            thumbnailUrl = await new Promise<string>((resolve, reject) => {
+              const reader = new FileReader();
+              reader.onload = () => resolve(reader.result as string);
+              reader.onerror = () => reject(reader.error);
+              reader.readAsDataURL(thumbBlob);
+            });
+          } catch (thumbErr) {
+            console.warn("[ProjectStore] KieAI thumbnail generation failed:", thumbErr);
+          }
+        }
+
+        const file = new File([blob], name, { type: blob.type || "image/png" });
+
+        const updatedItem: MediaItem = {
+          id: mediaId,
+          name,
+          type: "image",
+          fileHandle: null,
+          blob: file,
+          metadata: {
+            duration: 0,
+            width,
+            height,
+            frameRate: 0,
+            codec: "",
+            sampleRate: 0,
+            channels: 0,
+            fileSize: file.size,
+          },
+          thumbnailUrl,
+          waveformData: null,
+          isPlaceholder: false,
+          isPending: false,
+        };
+
+        const updatedItems = project.mediaLibrary.items.map((item) =>
+          item.id === mediaId ? updatedItem : item,
+        );
+
+        set({
+          project: {
+            ...project,
+            mediaLibrary: { ...project.mediaLibrary, items: updatedItems },
+            modifiedAt: Date.now(),
+          },
+        });
+
+        try {
+          await saveMediaBlob(project.id, mediaId, file, updatedItem.metadata);
+        } catch (err) {
+          console.error("[ProjectStore] Failed to persist KieAI result blob:", err);
+        }
+      },
+
+      // Track actions
+      addTrack: async (
+        trackType: "video" | "audio" | "image" | "text" | "graphics",
+        position?: number,
+      ) => {
+        const { project, actionExecutor } = get();
+
+        // IMPORTANT: Deep clone the project BEFORE mutation
+        const projectCopy = structuredClone(project);
+
+        const action: Action = {
+          type: "track/add",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackType, position },
+        };
+        const result = await actionExecutor.execute(action, projectCopy);
+        if (result.success) {
+          const finalProject: Project = {
+            ...projectCopy,
+            modifiedAt: Date.now(),
+          };
+
+          set({ project: finalProject });
+        }
+        return result;
+      },
+
+      removeTrack: async (trackId: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "track/remove",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline },
+              modifiedAt: Date.now(),
+            },
+          });
+        }
+        return result;
+      },
+
+      renameTrack: (trackId: string, name: string) => {
+        const { project } = get();
+        const trimmed = name.trim();
+        if (!trimmed) return;
+        set({
+          project: {
+            ...project,
+            timeline: {
+              ...project.timeline,
+              tracks: project.timeline.tracks.map((t) =>
+                t.id === trackId ? { ...t, name: trimmed } : t
+              ),
+            },
+            modifiedAt: Date.now(),
+          },
+        });
+      },
+
+      reorderTrack: async (trackId: string, newPosition: number) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "track/reorder",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId, newPosition },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project, modifiedAt: Date.now() } });
+        }
+        return result;
+      },
+
+      lockTrack: async (trackId: string, locked: boolean) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "track/lock",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId, locked },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      hideTrack: async (trackId: string, hidden: boolean) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "track/hide",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId, hidden },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      muteTrack: async (trackId: string, muted: boolean) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "track/mute",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId, muted },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      soloTrack: async (trackId: string, solo: boolean) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "track/solo",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId, solo },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      getTrack: (trackId: string) => {
+        const { project } = get();
+        return project.timeline.tracks.find((track) => track.id === trackId);
+      },
+
+      // Clip actions
+      addClip: async (trackId: string, mediaId: string, startTime: number) => {
+        const { project, actionExecutor } = get();
+
+        // IMPORTANT: Deep clone the project BEFORE mutation
+        // actionExecutor mutates the project directly, so we need a fresh copy
+        // to ensure Zustand detects the state change
+        const projectCopy = structuredClone(project);
+
+        const action: Action = {
+          type: "clip/add",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId, mediaId, startTime },
+        };
+
+        const result = await actionExecutor.execute(action, projectCopy);
+
+        if (result.success) {
+          const finalProject: Project = {
+            ...projectCopy,
+            modifiedAt: Date.now(),
+          };
+
+          set({ project: finalProject });
+        }
+        return result;
+      },
+
+      addClipToNewTrack: async (mediaId: string, startTime?: number) => {
+        const { project, addTrack, getMediaItem } = get();
+
+        const mediaItem = getMediaItem(mediaId);
+        if (!mediaItem) {
+          return {
+            success: false,
+            error: {
+              code: "MEDIA_NOT_FOUND" as const,
+              message: "Media item not found",
+            },
+          };
+        }
+
+        let trackType: "video" | "audio" | "image" | "text" | "graphics";
+        if (mediaItem.type === "video") {
+          trackType = "video";
+        } else if (mediaItem.type === "audio") {
+          trackType = "audio";
+        } else if (mediaItem.type === "image") {
+          trackType = "image";
+        } else {
+          trackType = "video";
+        }
+
+        const clipStartTime =
+          startTime !== undefined
+            ? startTime
+            : calculateTimelineDuration(project);
+
+        const trackResult = await addTrack(trackType);
+        if (!trackResult.success) {
+          return trackResult;
+        }
+
+        const { project: updatedProject, actionExecutor: exec } = get();
+        const newTrack = updatedProject.timeline.tracks.find(
+          (t) => t.clips.length === 0 && t.type === trackType,
+        );
+
+        if (!newTrack) {
+          return {
+            success: false,
+            error: {
+              code: "TRACK_NOT_FOUND" as const,
+              message: "Could not find newly created track",
+            },
+          };
+        }
+
+        const projectCopy = structuredClone(updatedProject);
+        const action: Action = {
+          type: "clip/add",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId: newTrack.id, mediaId, startTime: clipStartTime },
+        };
+
+        const result = await exec.execute(action, projectCopy);
+
+        if (result.success) {
+          const finalProject: Project = {
+            ...projectCopy,
+            modifiedAt: Date.now(),
+          };
+          set({ project: finalProject });
+        }
+        return result;
+      },
+
+      separateAudio: async (clipId: string) => {
+        const { project, actionExecutor } = get();
+
+        const videoClip = project.timeline.tracks
+          .flatMap((t) => t.clips)
+          .find((c) => c.id === clipId);
+
+        if (!videoClip) {
+          return {
+            success: false,
+            error: { code: "CLIP_NOT_FOUND" as const, message: "Clip not found" },
+          };
+        }
+
+        const mediaItem = project.mediaLibrary.items.find(
+          (m) => m.id === videoClip.mediaId,
+        );
+
+        if (
+          !mediaItem ||
+          mediaItem.type !== "video" ||
+          !mediaItem.metadata?.channels ||
+          mediaItem.metadata.channels === 0
+        ) {
+          return {
+            success: false,
+            error: {
+              code: "MEDIA_NOT_FOUND" as const,
+              message: "Media has no audio to separate",
+            },
+          };
+        }
+
+        // Determine how many audio tracks to separate
+        let audioTrackCount = mediaItem.metadata.audioTrackCount ?? 1;
+
+        // Re-probe with FFmpeg if count is 1 or unset (handles legacy imports)
+        if (audioTrackCount <= 1 && mediaItem.blob) {
+          try {
+            const { getFFmpegFallback } = await import(
+              "@openreel/core/media"
+            );
+            const ffmpeg = getFFmpegFallback();
+            const probeResult = await ffmpeg.probeAudioStreams(mediaItem.blob);
+            if (probeResult.audioStreamCount > 1) {
+              audioTrackCount = probeResult.audioStreamCount;
+            }
+          } catch {
+            // FFmpeg probe unavailable — proceed with count of 1
+          }
+        }
+
+        // Apply all track/add and clip/add actions on a single project copy to
+        // avoid race conditions from multiple store updates.
+        const projectCopy = structuredClone(project);
+
+        // Add new audio timeline tracks as needed (reuse existing ones)
+        const existingAudioCount = projectCopy.timeline.tracks.filter(
+          (t) => t.type === "audio",
+        ).length;
+
+        const newTrackIds: string[] = [];
+        for (let i = existingAudioCount; i < audioTrackCount; i++) {
+          const newTrackId = uuidv4();
+          newTrackIds.push(newTrackId);
+          const trackAction: Action = {
+            type: "track/add",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: { trackType: "audio", trackId: newTrackId },
+          };
+          const trackResult = await actionExecutor.execute(trackAction, projectCopy);
+          if (!trackResult.success) {
+            return {
+              success: false,
+              error: {
+                code: "TRACK_NOT_FOUND" as const,
+                message: "Failed to create audio track",
+              },
+            };
+          }
+        }
+
+        // Capture audio track IDs from the (now-updated) projectCopy
+        const audioTimelineTracks = projectCopy.timeline.tracks.filter(
+          (t) => t.type === "audio",
+        );
+
+        if (audioTimelineTracks.length === 0) {
+          return {
+            success: false,
+            error: {
+              code: "TRACK_NOT_FOUND" as const,
+              message: "Could not find or create audio track",
+            },
+          };
+        }
+
+        // Add one clip per audio track in the source file
+        let lastResult: ActionResult = {
+          success: true,
+        };
+
+        for (let trackIdx = 0; trackIdx < audioTrackCount; trackIdx++) {
+          const targetTrack = audioTimelineTracks[trackIdx];
+          if (!targetTrack) break;
+
+          const action: Action = {
+            type: "clip/add",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: {
+              trackId: targetTrack.id,
+              mediaId: videoClip.mediaId,
+              startTime: videoClip.startTime,
+              audioTrackIndex: trackIdx,
+            },
+          };
+
+          lastResult = await actionExecutor.execute(action, projectCopy);
+
+          if (!lastResult.success) {
+            break;
+          }
+        }
+
+        if (lastResult.success) {
+          for (const track of projectCopy.timeline.tracks) {
+            const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+            if (clipIndex !== -1) {
+              (track.clips[clipIndex] as unknown as { volume: number }).volume = 0;
+              break;
+            }
+          }
+
+          const finalProject: Project = {
+            ...projectCopy,
+            modifiedAt: Date.now(),
+          };
+          set({ project: finalProject });
+        }
+
+        return lastResult;
+      },
+
+      removeClip: async (clipId: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/remove",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      moveClip: async (clipId: string, startTime: number, trackId?: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/move",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId, startTime, trackId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      beginHistoryGroup: (description?: string) => {
+        const { actionExecutor } = get();
+        actionExecutor.getHistory().beginGroup(description);
+      },
+
+      endHistoryGroup: () => {
+        const { actionExecutor } = get();
+        actionExecutor.getHistory().endGroup();
+      },
+
+      closeGapBeforeClip: async (clipId: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/closeGapBefore",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      consolidateTrack: async (trackId: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "track/consolidate",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { trackId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      moveClips: async (
+        moves: Array<{ clipId: string; startTime: number; trackId?: string }>,
+      ) => {
+        if (moves.length === 0) {
+          return { success: true };
+        }
+        if (moves.length === 1) {
+          return get().moveClip(
+            moves[0].clipId,
+            moves[0].startTime,
+            moves[0].trackId,
+          );
+        }
+        const { actionExecutor } = get();
+        const history = actionExecutor.getHistory();
+        history.beginGroup("Move clips");
+        try {
+          let lastResult: ActionResult = { success: true };
+          for (const move of moves) {
+            const { project } = get();
+            const action: Action = {
+              type: "clip/move",
+              id: uuidv4(),
+              timestamp: Date.now(),
+              params: {
+                clipId: move.clipId,
+                startTime: move.startTime,
+                trackId: move.trackId,
+              },
+            };
+            lastResult = await actionExecutor.execute(action, project);
+            if (!lastResult.success) break;
+            set({ project: { ...project } });
+          }
+          return lastResult;
+        } finally {
+          history.endGroup();
+        }
+      },
+
+      trimClip: async (clipId: string, inPoint?: number, outPoint?: number) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/trim",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId, inPoint, outPoint },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      splitClip: async (clipId: string, time: number) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/split",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId, time },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      rippleDeleteClip: async (clipId: string) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/rippleDelete",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      slipClip: async (clipId: string, delta: number) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/slip",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId, delta },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      slideClip: async (clipId: string, delta: number) => {
+        const { project, actionExecutor, getClip } = get();
+        const clip = getClip(clipId);
+        if (!clip) {
+          return {
+            success: false,
+            error: {
+              code: "INVALID_PARAMS" as const,
+              message: "Clip not found",
+            },
+          };
+        }
+
+        const track = project.timeline.tracks.find((t) =>
+          t.clips.some((c) => c.id === clipId),
+        );
+        if (!track) {
+          return {
+            success: false,
+            error: {
+              code: "INVALID_PARAMS" as const,
+              message: "Track not found",
+            },
+          };
+        }
+
+        const sortedClips = [...track.clips].sort(
+          (a, b) => a.startTime - b.startTime,
+        );
+        const clipIndex = sortedClips.findIndex((c) => c.id === clipId);
+        const prevClip = clipIndex > 0 ? sortedClips[clipIndex - 1] : undefined;
+        const nextClip =
+          clipIndex < sortedClips.length - 1
+            ? sortedClips[clipIndex + 1]
+            : undefined;
+
+        const action: Action = {
+          type: "clip/slide",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: {
+            clipId,
+            delta,
+            prevClipId: prevClip?.id,
+            nextClipId: nextClip?.id,
+          },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      rollEdit: async (
+        leftClipId: string,
+        rightClipId: string,
+        delta: number,
+      ) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/roll",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { leftClipId, rightClipId, delta },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      trimToPlayhead: async (
+        clipId: string,
+        playheadTime: number,
+        trimStart: boolean,
+      ) => {
+        const { project, actionExecutor } = get();
+        const action: Action = {
+          type: "clip/trimToPlayhead",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: { clipId, playheadTime, trimStart },
+        };
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      getClip: (clipId: string) => {
+        const { project } = get();
+        for (const track of project.timeline.tracks) {
+          const clip = track.clips.find((c) => c.id === clipId);
+          if (clip) return clip;
+        }
+        return undefined;
+      },
+
+      addClipTransition: (transition: Transition) => {
+        const { project } = get();
+        const clip = project.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === transition.clipAId);
+
+        if (!clip) {
+          return null;
+        }
+
+        const track = project.timeline.tracks.find(
+          (candidate) => candidate.id === clip.trackId,
+        );
+        if (!track) {
+          return null;
+        }
+
+        const updatedTrack = {
+          ...track,
+          transitions: [
+            ...track.transitions.filter(
+              (candidate) =>
+                candidate.id !== transition.id &&
+                !(
+                  candidate.clipAId === transition.clipAId &&
+                  candidate.clipBId === transition.clipBId
+                ),
+            ),
+            transition,
+          ],
+        };
+
+        const updatedProject = {
+          ...project,
+          timeline: {
+            ...project.timeline,
+            tracks: project.timeline.tracks.map((candidate) =>
+              candidate.id === track.id ? updatedTrack : candidate,
+            ),
+          },
+          modifiedAt: Date.now(),
+        };
+
+        syncTrackTransitionsBridge(updatedProject, track.id);
+        set({ project: updatedProject });
+
+        return transition;
+      },
+
+      updateClipTransition: (
+        transitionId: string,
+        updates: Partial<Pick<Transition, "type" | "duration" | "params">>,
+      ) => {
+        const { project } = get();
+        let updatedTrackId: string | null = null;
+        let updatedTransition: Transition | null = null;
+
+        const updatedTracks = project.timeline.tracks.map((track) => {
+          let trackUpdated = false;
+
+          const updatedTransitions = track.transitions.map((transition) => {
+            if (transition.id !== transitionId) {
+              return transition;
+            }
+
+            trackUpdated = true;
+            updatedTrackId = track.id;
+            updatedTransition = {
+              ...transition,
+              ...(updates.type !== undefined ? { type: updates.type } : {}),
+              ...(updates.duration !== undefined
+                ? { duration: updates.duration }
+                : {}),
+              ...(updates.params !== undefined
+                ? { params: { ...transition.params, ...updates.params } }
+                : {}),
+            };
+            return updatedTransition;
+          });
+
+          return trackUpdated
+            ? { ...track, transitions: updatedTransitions }
+            : track;
+        });
+
+        if (!updatedTransition || !updatedTrackId) {
+          return null;
+        }
+
+        const updatedProject = {
+          ...project,
+          timeline: { ...project.timeline, tracks: updatedTracks },
+          modifiedAt: Date.now(),
+        };
+
+        syncTrackTransitionsBridge(updatedProject, updatedTrackId);
+        set({ project: updatedProject });
+
+        return updatedTransition;
+      },
+
+      removeClipTransition: (transitionId: string) => {
+        const { project } = get();
+        let updatedTrackId: string | null = null;
+        let hasRemovedTransition = false;
+
+        const updatedTracks = project.timeline.tracks.map((track) => {
+          const updatedTransitions = track.transitions.filter((transition) => {
+            const shouldKeep = transition.id !== transitionId;
+            if (!shouldKeep) {
+              updatedTrackId = track.id;
+              hasRemovedTransition = true;
+            }
+            return shouldKeep;
+          });
+
+          return updatedTransitions.length !== track.transitions.length
+            ? { ...track, transitions: updatedTransitions }
+            : track;
+        });
+
+        if (!hasRemovedTransition || !updatedTrackId) {
+          return false;
+        }
+
+        const updatedProject = {
+          ...project,
+          timeline: { ...project.timeline, tracks: updatedTracks },
+          modifiedAt: Date.now(),
+        };
+
+        syncTrackTransitionsBridge(updatedProject, updatedTrackId);
+        set({ project: updatedProject });
+
+        return true;
+      },
+
+      getClipTransition: (transitionId: string) => {
+        const { project } = get();
+        for (const track of project.timeline.tracks) {
+          const transition = track.transitions.find(
+            (candidate) => candidate.id === transitionId,
+          );
+          if (transition) {
+            return transition;
+          }
+        }
+        return undefined;
+      },
+
+      getClipTransitionBetweenClips: (clipAId: string, clipBId: string) => {
+        const { project } = get();
+        for (const track of project.timeline.tracks) {
+          const transition = track.transitions.find(
+            (candidate) =>
+              candidate.clipAId === clipAId && candidate.clipBId === clipBId,
+          );
+          if (transition) {
+            return transition;
+          }
+        }
+        return undefined;
+      },
+
+      copyClips: (clipIds: string[]) => {
+        const { getClip } = get();
+        const clips = clipIds
+          .map(getClip)
+          .filter((c): c is Clip => c !== undefined);
+        const copiedClips = clips.map((clip) => ({
+          ...JSON.parse(JSON.stringify(clip)),
+        }));
+        set({ clipboard: copiedClips });
+      },
+
+      pasteClips: async (trackId: string, startTime: number) => {
+        const { clipboard, project, actionExecutor } = get();
+        const results: ActionResult[] = [];
+
+        if (clipboard.length === 0) {
+          return [
+            {
+              success: false,
+              error: {
+                code: "INVALID_PARAMS" as const,
+                message: "Clipboard is empty",
+              },
+            },
+          ];
+        }
+
+        const minStartTime = Math.min(...clipboard.map((c) => c.startTime));
+
+        for (const clip of clipboard) {
+          const offset = clip.startTime - minStartTime;
+          const newStartTime = startTime + offset;
+
+          const action: Action = {
+            type: "clip/add",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: {
+              trackId,
+              mediaId: clip.mediaId,
+              startTime: newStartTime,
+              duration: clip.duration,
+              inPoint: clip.inPoint,
+              outPoint: clip.outPoint,
+              volume: clip.volume,
+              effects: clip.effects,
+            },
+          };
+          const result = await actionExecutor.execute(action, project);
+          results.push(result);
+        }
+
+        set({ project: { ...project } });
+        return results;
+      },
+
+      duplicateClip: async (clipId: string) => {
+        const { getClip, project, actionExecutor } = get();
+        const clip = getClip(clipId);
+        if (!clip) {
+          return {
+            success: false,
+            error: {
+              code: "INVALID_PARAMS" as const,
+              message: "Clip not found",
+            },
+          };
+        }
+
+        const track = project.timeline.tracks.find((t) =>
+          t.clips.some((c) => c.id === clipId),
+        );
+        if (!track) {
+          return {
+            success: false,
+            error: {
+              code: "INVALID_PARAMS" as const,
+              message: "Track not found",
+            },
+          };
+        }
+
+        // Place the duplicate immediately after the original on the same
+        // track. If there's a clip already starting at that time, scan
+        // forward until we find the next gap large enough for the
+        // duplicate's full duration.
+        const sortedClips = [...track.clips].sort(
+          (a, b) => a.startTime - b.startTime,
+        );
+        let candidate = clip.startTime + clip.duration;
+        const epsilon = 0.0001;
+        for (const other of sortedClips) {
+          if (other.id === clip.id) continue;
+          if (other.startTime + other.duration <= candidate + epsilon) continue;
+          if (other.startTime >= candidate + clip.duration - epsilon) break;
+          candidate = other.startTime + other.duration;
+        }
+
+        const projectCopy = structuredClone(project);
+        const action: Action = {
+          type: "clip/add",
+          id: uuidv4(),
+          timestamp: Date.now(),
+          params: {
+            trackId: track.id,
+            mediaId: clip.mediaId,
+            startTime: candidate,
+            duration: clip.duration,
+            inPoint: clip.inPoint,
+            outPoint: clip.outPoint,
+            volume: clip.volume,
+            effects: structuredClone(clip.effects),
+            audioEffects: clip.audioEffects
+              ? structuredClone(clip.audioEffects)
+              : undefined,
+            keyframes: clip.keyframes ? structuredClone(clip.keyframes) : undefined,
+            transform: clip.transform ? structuredClone(clip.transform) : undefined,
+            ...(clip.fade ? { fade: clip.fade } : {}),
+            ...(clip.speed !== undefined ? { speed: clip.speed } : {}),
+            ...(clip.reversed !== undefined ? { reversed: clip.reversed } : {}),
+            ...(clip.audioTrackIndex !== undefined
+              ? { audioTrackIndex: clip.audioTrackIndex }
+              : {}),
+          },
+        };
+
+        const result = await actionExecutor.execute(action, projectCopy);
+        if (result.success) {
+          const finalProject: Project = {
+            ...projectCopy,
+            modifiedAt: Date.now(),
+          };
+          set({ project: finalProject });
+        }
+        return result;
+      },
+
+      copyEffects: (clipId: string) => {
+        const { getClip } = get();
+        const clip = getClip(clipId);
+        if (clip) {
+          const copiedEffects = JSON.parse(JSON.stringify(clip.effects));
+          set({ copiedEffects });
+        }
+      },
+
+      pasteEffects: async (clipId: string) => {
+        const { copiedEffects, project, actionExecutor } = get();
+        if (copiedEffects.length === 0) {
+          return {
+            success: false,
+            error: {
+              code: "INVALID_PARAMS" as const,
+              message: "No effects in clipboard",
+            },
+          };
+        }
+
+        const results: ActionResult[] = [];
+        for (const effect of copiedEffects) {
+          const action: Action = {
+            type: "effect/add",
+            id: uuidv4(),
+            timestamp: Date.now(),
+            params: {
+              clipId,
+              effectType: effect.type,
+              params: effect.params,
+            },
+          };
+          const result = await actionExecutor.execute(action, project);
+          results.push(result);
+        }
+
+        set({ project: { ...project } });
+        return (
+          results[0] || {
+            success: false,
+            error: { code: "UNKNOWN" as const, message: "No results" },
+          }
+        );
+      },
+
+      updateClipTransform: (
+        clipId: string,
+        transformUpdate: Partial<Transform>,
+      ) => {
+        const { project } = get();
+
+        // Try timeline clips first
+        let found = false;
+        const newTracks = project.timeline.tracks.map((track) => {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return track;
+
+          found = true;
+          const clip = track.clips[clipIndex];
+          const newTransform = {
+            ...clip.transform,
+            ...transformUpdate,
+            position: {
+              ...clip.transform.position,
+              ...(transformUpdate.position || {}),
+            },
+            scale: {
+              ...clip.transform.scale,
+              ...(transformUpdate.scale || {}),
+            },
+            anchor: {
+              ...clip.transform.anchor,
+              ...(transformUpdate.anchor || {}),
+            },
+          };
+
+          const newClips = [...track.clips];
+          newClips[clipIndex] = { ...clip, transform: newTransform };
+
+          return { ...track, clips: newClips };
+        });
+
+        if (found) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: newTracks },
+              modifiedAt: Date.now(),
+            },
+          });
+          return true;
+        }
+
+        // Try text clips
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const textClip = titleEngine.getTextClip(clipId);
+          if (textClip) {
+            const newTransform = {
+              ...textClip.transform,
+              ...transformUpdate,
+              position: {
+                ...textClip.transform.position,
+                ...(transformUpdate.position || {}),
+              },
+              scale: {
+                ...textClip.transform.scale,
+                ...(transformUpdate.scale || {}),
+              },
+              anchor: {
+                ...textClip.transform.anchor,
+                ...(transformUpdate.anchor || {}),
+              },
+            };
+            titleEngine.updateTextClip(clipId, { transform: newTransform });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        // Try shape/SVG clips
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            const newTransform = {
+              ...shapeClip.transform,
+              ...transformUpdate,
+              position: {
+                ...shapeClip.transform.position,
+                ...(transformUpdate.position || {}),
+              },
+              scale: {
+                ...shapeClip.transform.scale,
+                ...(transformUpdate.scale || {}),
+              },
+              anchor: {
+                ...shapeClip.transform.anchor,
+                ...(transformUpdate.anchor || {}),
+              },
+            };
+            graphicsEngine.updateShapeClip(clipId, { transform: newTransform });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            const newTransform = {
+              ...svgClip.transform,
+              ...transformUpdate,
+              position: {
+                ...svgClip.transform.position,
+                ...(transformUpdate.position || {}),
+              },
+              scale: {
+                ...svgClip.transform.scale,
+                ...(transformUpdate.scale || {}),
+              },
+              anchor: {
+                ...svgClip.transform.anchor,
+                ...(transformUpdate.anchor || {}),
+              },
+            };
+            graphicsEngine.updateSVGClip(clipId, { transform: newTransform });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      updateClipBlendMode: (clipId: string, blendMode) => {
+        const { project } = get();
+
+        // Try regular timeline clips first
+        let found = false;
+        const newTracks = project.timeline.tracks.map((track) => {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return track;
+
+          found = true;
+          const clip = track.clips[clipIndex];
+          const newClips = [...track.clips];
+          newClips[clipIndex] = { ...clip, blendMode };
+
+          return { ...track, clips: newClips };
+        });
+
+        if (found) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: newTracks },
+              modifiedAt: Date.now(),
+            },
+          });
+          return true;
+        }
+
+        // Try text clips
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const textClip = titleEngine.getTextClip(clipId);
+          if (textClip) {
+            titleEngine.updateTextClip(clipId, { blendMode });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        // Try graphics clips
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            graphicsEngine.updateShapeClip(clipId, { blendMode });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            graphicsEngine.updateSVGClip(clipId, { blendMode });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      updateClipBlendOpacity: (clipId: string, opacity: number) => {
+        const { project } = get();
+
+        if (opacity < 0 || opacity > 100) {
+          console.error("Blend opacity must be between 0 and 100");
+          return false;
+        }
+
+        let found = false;
+        const newTracks = project.timeline.tracks.map((track) => {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return track;
+
+          found = true;
+          const clip = track.clips[clipIndex];
+          const newClips = [...track.clips];
+          newClips[clipIndex] = { ...clip, blendOpacity: opacity };
+
+          return { ...track, clips: newClips };
+        });
+
+        if (found) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: newTracks },
+              modifiedAt: Date.now(),
+            },
+          });
+          return true;
+        }
+
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const textClip = titleEngine.getTextClip(clipId);
+          if (textClip) {
+            titleEngine.updateTextClip(clipId, { blendOpacity: opacity });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            graphicsEngine.updateShapeClip(clipId, { blendOpacity: opacity });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            graphicsEngine.updateSVGClip(clipId, { blendOpacity: opacity });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      updateClipEmphasisAnimation: (clipId: string, emphasisAnimation) => {
+        const { project } = get();
+
+        let found = false;
+        const newTracks = project.timeline.tracks.map((track) => {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return track;
+
+          found = true;
+          const clip = track.clips[clipIndex];
+          const newClips = [...track.clips];
+          newClips[clipIndex] = { ...clip, emphasisAnimation };
+
+          return { ...track, clips: newClips };
+        });
+
+        if (found) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: newTracks },
+              modifiedAt: Date.now(),
+            },
+          });
+          return true;
+        }
+
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const textClip = titleEngine.getTextClip(clipId);
+          if (textClip) {
+            titleEngine.updateTextClip(clipId, { emphasisAnimation });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            graphicsEngine.updateShapeClip(clipId, { emphasisAnimation });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            graphicsEngine.updateSVGClip(clipId, { emphasisAnimation });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const stickerClip = graphicsEngine.getStickerClip(clipId);
+          if (stickerClip) {
+            graphicsEngine.updateStickerClip(clipId, { emphasisAnimation });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      updateClipRotate3D: (
+        clipId: string,
+        rotate3d: { x: number; y: number; z: number },
+      ) => {
+        const { project } = get();
+
+        let found = false;
+        const newTracks = project.timeline.tracks.map((track) => {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return track;
+
+          found = true;
+          const clip = track.clips[clipIndex];
+          const newClips = [...track.clips];
+          newClips[clipIndex] = {
+            ...clip,
+            transform: { ...clip.transform, rotate3d },
+          };
+
+          return { ...track, clips: newClips };
+        });
+
+        if (found) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: newTracks },
+              modifiedAt: Date.now(),
+            },
+          });
+          return true;
+        }
+
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const textClip = titleEngine.getTextClip(clipId);
+          if (textClip) {
+            titleEngine.updateTextClip(clipId, {
+              transform: { ...textClip.transform, rotate3d },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            graphicsEngine.updateShapeClip(clipId, {
+              transform: { ...shapeClip.transform, rotate3d },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            graphicsEngine.updateSVGClip(clipId, {
+              transform: { ...svgClip.transform, rotate3d },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      updateClipPerspective: (clipId: string, perspective: number) => {
+        const { project } = get();
+
+        if (perspective < 0) {
+          console.error("Perspective must be non-negative");
+          return false;
+        }
+
+        let found = false;
+        const newTracks = project.timeline.tracks.map((track) => {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return track;
+
+          found = true;
+          const clip = track.clips[clipIndex];
+          const newClips = [...track.clips];
+          newClips[clipIndex] = {
+            ...clip,
+            transform: { ...clip.transform, perspective },
+          };
+
+          return { ...track, clips: newClips };
+        });
+
+        if (found) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: newTracks },
+              modifiedAt: Date.now(),
+            },
+          });
+          return true;
+        }
+
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const textClip = titleEngine.getTextClip(clipId);
+          if (textClip) {
+            titleEngine.updateTextClip(clipId, {
+              transform: { ...textClip.transform, perspective },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            graphicsEngine.updateShapeClip(clipId, {
+              transform: { ...shapeClip.transform, perspective },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            graphicsEngine.updateSVGClip(clipId, {
+              transform: { ...svgClip.transform, perspective },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      updateClipTransformStyle: (
+        clipId: string,
+        transformStyle: "flat" | "preserve-3d",
+      ) => {
+        const { project } = get();
+
+        let found = false;
+        const newTracks = project.timeline.tracks.map((track) => {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex === -1) return track;
+
+          found = true;
+          const clip = track.clips[clipIndex];
+          const newClips = [...track.clips];
+          newClips[clipIndex] = {
+            ...clip,
+            transform: { ...clip.transform, transformStyle },
+          };
+
+          return { ...track, clips: newClips };
+        });
+
+        if (found) {
+          set({
+            project: {
+              ...project,
+              timeline: { ...project.timeline, tracks: newTracks },
+              modifiedAt: Date.now(),
+            },
+          });
+          return true;
+        }
+
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (titleEngine) {
+          const textClip = titleEngine.getTextClip(clipId);
+          if (textClip) {
+            titleEngine.updateTextClip(clipId, {
+              transform: { ...textClip.transform, transformStyle },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (graphicsEngine) {
+          const shapeClip = graphicsEngine.getShapeClip(clipId);
+          if (shapeClip) {
+            graphicsEngine.updateShapeClip(clipId, {
+              transform: { ...shapeClip.transform, transformStyle },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+
+          const svgClip = graphicsEngine.getSVGClip(clipId);
+          if (svgClip) {
+            graphicsEngine.updateSVGClip(clipId, {
+              transform: { ...svgClip.transform, transformStyle },
+            });
+            set({ project: { ...project, modifiedAt: Date.now() } });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      // Undo/Redo
+      undo: async () => {
+        const {
+          project,
+          actionExecutor,
+          actionHistory,
+          clipUndoStack,
+          clipRedoStack,
+          templateUndoStack,
+          templateRedoStack,
+        } = get();
+
+        const latestActionTimestamp = actionHistory.peekUndo()?.timestamp ?? -1;
+        const latestClipTimestamp =
+          clipUndoStack.length > 0
+            ? clipUndoStack[clipUndoStack.length - 1].timestamp
+            : -1;
+        const latestTemplateTimestamp =
+          templateUndoStack.length > 0
+            ? templateUndoStack[templateUndoStack.length - 1].timestamp
+            : -1;
+
+        if (
+          latestTemplateTimestamp >= 0 &&
+          latestTemplateTimestamp >= latestClipTimestamp &&
+          latestTemplateTimestamp > latestActionTimestamp
+        ) {
+          const entry = templateUndoStack[templateUndoStack.length - 1];
+          const removedProject = removeEditingTemplateApplicationStateFromProject(
+            project,
+            getEditingTemplateApplicationState(entry),
+          );
+          const updatedProject = entry.previousState
+            ? restoreEditingTemplateApplicationState(
+                removedProject,
+                entry.previousState,
+              )
+            : removedProject;
+
+          if (!updatedProject) {
+            return {
+              success: false,
+              error: {
+                code: "INVALID_PARAMS",
+                message: "Failed to undo editing template update",
+              },
+            };
+          }
+
+          set({
+            project: updatedProject,
+            templateUndoStack: templateUndoStack.slice(0, -1),
+            templateRedoStack: [
+              ...templateRedoStack,
+              { ...entry, timestamp: Date.now() },
+            ],
+          });
+
+          return { success: true };
+        }
+
+        // Dual-stack undo/redo system: clipUndoStack handles graphics/text/svg/sticker clips created outside the main timeline
+        // This prevents those creations from being mixed with ActionHistory which handles timeline operations
+        // Compare clip undo entries against the latest timeline action so the newest operation wins.
+        if (latestClipTimestamp >= 0 && latestClipTimestamp > latestActionTimestamp) {
+          const entry = clipUndoStack[clipUndoStack.length - 1];
+          let deleted = false;
+
+          // Dispatch to appropriate engine based on clip type, then remove from engines' internal state
+          if (entry.type === "shape") {
+            const graphicsEngine = useEngineStore
+              .getState()
+              .getGraphicsEngine();
+            if (graphicsEngine) {
+              deleted = graphicsEngine.deleteShapeClip(entry.clipId);
+            }
+          } else if (entry.type === "text") {
+            const titleEngine = useEngineStore.getState().getTitleEngine();
+            if (titleEngine) {
+              deleted = titleEngine.deleteTextClip(entry.clipId);
+            }
+          } else if (entry.type === "svg") {
+            const graphicsEngine = useEngineStore
+              .getState()
+              .getGraphicsEngine();
+            if (graphicsEngine) {
+              deleted = graphicsEngine.deleteSVGClip(entry.clipId);
+            }
+          } else if (entry.type === "sticker") {
+            const graphicsEngine = useEngineStore
+              .getState()
+              .getGraphicsEngine();
+            if (graphicsEngine) {
+              deleted = graphicsEngine.deleteStickerClip(entry.clipId);
+            }
+          }
+
+          if (deleted) {
+            // Move entry from undo to redo stack for redo support, pop from undo
+            set({
+              project: { ...project, modifiedAt: Date.now() },
+              clipUndoStack: clipUndoStack.slice(0, -1),
+              clipRedoStack: [
+                ...clipRedoStack,
+                {
+                  ...entry,
+                  timestamp: Date.now(),
+                  hadEmptyTrackUndo: false,
+                },
+              ],
+            });
+
+            // Check if the track is now empty and should also be undone
+            const trackId = entry.trackId;
+            const updatedProject = get().project;
+            const track = updatedProject.timeline.tracks.find(t => t.id === trackId);
+
+            if (track) {
+              // Check if track has any remaining clips based on track type
+              let trackHasClips = false;
+
+              if (track.type === "text") {
+                const titleEngine = useEngineStore.getState().getTitleEngine();
+                const textClips = titleEngine?.getAllTextClips() || [];
+                trackHasClips = textClips.some(c => c.trackId === trackId);
+              } else if (track.type === "graphics") {
+                const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+                const shapeClips = graphicsEngine?.getAllShapeClips() || [];
+                const svgClips = graphicsEngine?.getAllSVGClips() || [];
+                const stickerClips = graphicsEngine?.getAllStickerClips() || [];
+                trackHasClips = [...shapeClips, ...svgClips, ...stickerClips].some(c => c.trackId === trackId);
+              } else if (track.type === "video" || track.type === "audio" || track.type === "image") {
+                // For video/audio/image tracks, check clips array directly
+                trackHasClips = track.clips.length > 0;
+              }
+
+              // If track is empty, check if previous action was creating this track
+              if (!trackHasClips) {
+                const { actionHistory } = get();
+                const lastEntry = actionHistory.peekUndo();
+                const lastAction = lastEntry?.action;
+
+                // Map clip entry type to track type
+                type TrackType = "video" | "audio" | "image" | "text" | "graphics";
+                const clipTypeToTrackType: Record<string, TrackType> = {
+                  text: "text",
+                  shape: "graphics",
+                  svg: "graphics",
+                  sticker: "graphics",
+                };
+                const expectedTrackType: TrackType = clipTypeToTrackType[entry.type] || (track.type as TrackType);
+                const actionTrackType = lastAction?.params?.trackType as string | undefined;
+
+                if (lastAction &&
+                    lastAction.type === "track/add" &&
+                    actionTrackType === expectedTrackType) {
+                  // Also undo the track creation
+                  const trackUndoResult = await actionExecutor.undo(get().project);
+                  if (trackUndoResult.success) {
+                    // Update the redo entry to indicate track was also undone
+                    const updatedRedoStack = get().clipRedoStack;
+                    if (updatedRedoStack.length > 0) {
+                      const lastRedoEntry = updatedRedoStack[updatedRedoStack.length - 1];
+                      set({
+                        project: { ...get().project },
+                        clipRedoStack: [
+                          ...updatedRedoStack.slice(0, -1),
+                          { ...lastRedoEntry, hadEmptyTrackUndo: true, trackType: expectedTrackType },
+                        ],
+                      });
+                    }
+                  }
+                }
+              }
+            }
+
+            return { success: true };
+          }
+        }
+
+        // Fall back to action executor for timeline operations, track changes, media operations, etc.
+        const result = await actionExecutor.undo(project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      redo: async () => {
+        const {
+          project,
+          actionExecutor,
+          clipUndoStack,
+          clipRedoStack,
+          templateUndoStack,
+          templateRedoStack,
+        } = get();
+
+        if (templateRedoStack.length > 0) {
+          const entry = templateRedoStack[templateRedoStack.length - 1];
+          const cleanedProject = entry.previousState
+            ? removeEditingTemplateApplicationStateFromProject(
+                project,
+                entry.previousState,
+              )
+            : project;
+          const updatedProject = restoreEditingTemplateApplicationState(
+            cleanedProject,
+            getEditingTemplateApplicationState(entry),
+          );
+
+          if (!updatedProject) {
+            return {
+              success: false,
+              error: {
+                code: "INVALID_PARAMS",
+                message: "Failed to restore editing template application",
+              },
+            };
+          }
+
+          set({
+            project: updatedProject,
+            templateUndoStack: [
+              ...templateUndoStack,
+              { ...entry, timestamp: Date.now() },
+            ],
+            templateRedoStack: templateRedoStack.slice(0, -1),
+          });
+
+          return { success: true };
+        }
+
+        // Inverse of undo: restore clip from redo stack by recreating it with saved clipData
+        // Check clip redo stack first (graphics/text/svg/sticker clips previously undone)
+        if (clipRedoStack.length > 0) {
+          const entry = clipRedoStack[clipRedoStack.length - 1];
+          let restored = false;
+          let newTrackId: string | undefined;
+
+          // If the track was also undone, redo the track creation first
+          if (entry.hadEmptyTrackUndo && entry.trackType) {
+            const trackRedoResult = await actionExecutor.redo(get().project);
+            if (!trackRedoResult.success) {
+              return trackRedoResult;
+            }
+            // Find the newly created track (most recent track of the same type)
+            const updatedProject = get().project;
+            const tracksOfType = updatedProject.timeline.tracks.filter(
+              t => t.type === entry.trackType
+            );
+            if (tracksOfType.length > 0) {
+              // The last track of this type should be the newly created one
+              newTrackId = tracksOfType[tracksOfType.length - 1].id;
+            }
+            set({ project: { ...updatedProject } });
+          }
+
+          // Use the new track ID if track was recreated, otherwise use original
+          const targetTrackId = newTrackId || entry.trackId;
+
+          // Recreate the clip in the appropriate engine using saved clipData
+          // Must use same parameters as original creation to ensure consistency
+          if (entry.type === "shape") {
+            const graphicsEngine = useEngineStore
+              .getState()
+              .getGraphicsEngine();
+            if (graphicsEngine) {
+              const shapeData = entry.clipData as ShapeClip;
+              graphicsEngine.createShape(
+                {
+                  shapeType: shapeData.shapeType,
+                  width: 200,
+                  height: 200,
+                  style: shapeData.style,
+                },
+                targetTrackId,
+                shapeData.startTime,
+                shapeData.duration,
+              );
+              restored = true;
+            }
+          } else if (entry.type === "text") {
+            const titleEngine = useEngineStore.getState().getTitleEngine();
+            if (titleEngine) {
+              const textData = entry.clipData as TextClip;
+              titleEngine.createTextClip({
+                trackId: targetTrackId,
+                startTime: textData.startTime,
+                text: textData.text,
+                duration: textData.duration,
+                style: textData.style,
+              });
+              restored = true;
+            }
+          } else if (entry.type === "svg") {
+            const graphicsEngine = useEngineStore
+              .getState()
+              .getGraphicsEngine();
+            if (graphicsEngine) {
+              const svgData = entry.clipData as SVGClip;
+              graphicsEngine.importSVG(
+                svgData.svgContent,
+                targetTrackId,
+                svgData.startTime,
+                svgData.duration,
+              );
+              restored = true;
+            }
+          } else if (entry.type === "sticker") {
+            const graphicsEngine = useEngineStore
+              .getState()
+              .getGraphicsEngine();
+            if (graphicsEngine) {
+              const stickerData = entry.clipData as StickerClip;
+              graphicsEngine.addStickerClip({ ...stickerData, trackId: targetTrackId });
+              restored = true;
+            }
+          }
+
+          if (restored) {
+            // Update the entry with new track ID for future undo/redo
+            const updatedEntry = newTrackId
+              ? { ...entry, trackId: newTrackId, clipData: { ...entry.clipData, trackId: newTrackId } }
+              : entry;
+
+            // Move entry from redo back to undo stack, pop from redo
+            set({
+              project: { ...get().project, modifiedAt: Date.now() },
+              clipUndoStack: [
+                ...clipUndoStack,
+                {
+                  ...updatedEntry,
+                  timestamp: Date.now(),
+                },
+              ],
+              clipRedoStack: clipRedoStack.slice(0, -1),
+            });
+            return { success: true };
+          }
+        }
+
+        // Fall back to action executor for timeline operations
+        const result = await actionExecutor.redo(project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      canUndo: () => {
+        const { actionHistory, clipUndoStack, templateUndoStack } = get();
+        return (
+          templateUndoStack.length > 0 ||
+          clipUndoStack.length > 0 ||
+          actionHistory.canUndo()
+        );
+      },
+
+      canRedo: () => {
+        const { actionHistory, clipRedoStack, templateRedoStack } = get();
+        return (
+          templateRedoStack.length > 0 ||
+          clipRedoStack.length > 0 ||
+          actionHistory.canRedo()
+        );
+      },
+
+      // Execute arbitrary action
+      executeAction: async (action: Action) => {
+        const { project, actionExecutor } = get();
+        const result = await actionExecutor.execute(action, project);
+        if (result.success) {
+          set({ project: { ...project } });
+        }
+        return result;
+      },
+
+      // Computed values
+      getTimelineDuration: () => {
+        const { project } = get();
+        return calculateTimelineDuration(project);
+      },
+
+      // Auto-save methods
+      initializeAutoSave: async () => {
+        await initializeAutoSave();
+        autoSaveManager.start(() => {
+          const { project } = get();
+          const titleEngine = useEngineStore.getState().getTitleEngine();
+          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+
+          return {
+            ...project,
+            textClips: titleEngine?.getAllTextClips() || [],
+            shapeClips: graphicsEngine?.getAllShapeClips() || [],
+            svgClips: graphicsEngine?.getAllSVGClips() || [],
+            stickerClips: graphicsEngine?.getAllStickerClips() || [],
+          };
+        });
+
+        // Subscribe to project state changes to mark as dirty for auto-save
+        // Uses Zustand's subscribeWithSelector middleware to detect changes to project object only
+        // Trigger auto-save when any project field changes (timeline, media, settings, etc.)
+        useProjectStore.subscribe(
+          (state) => state.project,
+          () => {
+            autoSaveManager.markDirty();
+          },
+        );
+      },
+
+      checkForRecovery: async () => {
+        const { project } = get();
+        return autoSaveManager.checkForRecovery(project.id);
+      },
+
+      recoverFromAutoSave: async (saveId: string) => {
+        const recoveredProject = await autoSaveManager.recover(saveId);
+        if (recoveredProject) {
+          const storedMedia = await loadProjectMedia(recoveredProject.id);
+          const blobMap = new Map(storedMedia.map((m) => [m.id, m.blob]));
+
+          const restoredItems = await Promise.all(
+            recoveredProject.mediaLibrary.items.map((item) =>
+              restoreMediaItem(item, blobMap.get(item.id)),
+            ),
+          );
+
+          const projectWithMedia: Project = {
+            ...recoveredProject,
+            mediaLibrary: {
+              ...recoveredProject.mediaLibrary,
+              items: restoredItems,
+            },
+          };
+
+          const titleEngine = useEngineStore.getState().getTitleEngine();
+          const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+
+          if (titleEngine && recoveredProject.textClips) {
+            titleEngine.loadTextClips(recoveredProject.textClips);
+          }
+          if (graphicsEngine) {
+            if (recoveredProject.shapeClips) {
+              graphicsEngine.loadShapeClips(recoveredProject.shapeClips);
+            }
+            if (recoveredProject.svgClips) {
+              graphicsEngine.loadSVGClips(recoveredProject.svgClips);
+            }
+            if (recoveredProject.stickerClips) {
+              graphicsEngine.loadStickerClips(recoveredProject.stickerClips);
+            }
+          }
+
+          const newHistory = new ActionHistory();
+          const newExecutor = new ActionExecutor(newHistory);
+          set({
+            project: projectWithMedia,
+            actionHistory: newHistory,
+            actionExecutor: newExecutor,
+            clipUndoStack: [],
+            clipRedoStack: [],
+            templateUndoStack: [],
+            templateRedoStack: [],
+            error: null,
+          });
+
+          await projectManager.addToRecent(projectWithMedia);
+          return true;
+        }
+        return false;
+      },
+
+      forceSave: async () => {
+        const { project } = get();
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+
+        const fullProject: Project = {
+          ...project,
+          textClips: titleEngine?.getAllTextClips() || [],
+          shapeClips: graphicsEngine?.getAllShapeClips() || [],
+          svgClips: graphicsEngine?.getAllSVGClips() || [],
+          stickerClips: graphicsEngine?.getAllStickerClips() || [],
+        };
+        await autoSaveManager.forceSave(fullProject);
+      },
+
+      getFullProject: (): Project => {
+        const { project } = get();
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+
+        return {
+          ...project,
+          textClips: titleEngine?.getAllTextClips() || [],
+          shapeClips: graphicsEngine?.getAllShapeClips() || [],
+          svgClips: graphicsEngine?.getAllSVGClips() || [],
+          stickerClips: graphicsEngine?.getAllStickerClips() || [],
+        };
+      },
+
+      getEditingTemplates: () => [...getBuiltInEditingTemplates()],
+
+      getEditingTemplate: (templateId: string) =>
+        getBuiltInEditingTemplate(templateId),
+
+      applyEditingTemplate: (
+        templateId: string,
+        clipId: string,
+        overrides: Record<string, EditingTemplatePrimitive> = {},
+      ) => {
+        const { project, templateUndoStack } = get();
+        const applied = applyEditingTemplateApplicationToProject(
+          project,
+          templateId,
+          clipId,
+          overrides,
+        );
+
+        if (!applied) {
+          return null;
+        }
+
+        const historyEntry: EditingTemplateHistoryEntry = {
+          type: "editing-template",
+          mode: "apply",
+          timestamp: Date.now(),
+          description: `Apply ${applied.applicationState.appliedTemplate.name}`,
+          ...applied.applicationState,
+        };
+
+        set({
+          project: applied.project,
+          templateUndoStack: [...templateUndoStack, historyEntry],
+          templateRedoStack: [],
+        });
+
+        return applied.applicationState.applicationId;
+      },
+
+      updateEditingTemplateApplication: (
+        clipId: string,
+        applicationId: string,
+        overrides: Record<string, EditingTemplatePrimitive> = {},
+      ) => {
+        const { project, templateUndoStack } = get();
+        const matchingEntry = findEditingTemplateHistoryEntry(clipId, applicationId);
+        if (!matchingEntry) {
+          return false;
+        }
+
+        const previousState = getEditingTemplateApplicationState(matchingEntry);
+        const projectWithoutCurrent = removeEditingTemplateApplicationStateFromProject(
+          project,
+          previousState,
+          false,
+        );
+        const updated = applyEditingTemplateApplicationToProject(
+          projectWithoutCurrent,
+          previousState.templateId,
+          clipId,
+          overrides,
+          {
+            applicationId,
+            appliedAt: previousState.appliedTemplate.appliedAt,
+            preferredTrackIds: getEditingTemplatePreferredTrackIds(previousState),
+            preservedTrackSnapshots: previousState.trackSnapshots,
+          },
+        );
+
+        if (!updated) {
+          const restoredProject = restoreEditingTemplateApplicationState(
+            projectWithoutCurrent,
+            previousState,
+          );
+
+          if (restoredProject) {
+            set({ project: restoredProject });
+          }
+
+          return false;
+        }
+
+        const historyEntry: EditingTemplateHistoryEntry = {
+          type: "editing-template",
+          mode: "update",
+          timestamp: Date.now(),
+          description: `Update ${updated.applicationState.appliedTemplate.name}`,
+          previousState,
+          ...updated.applicationState,
+        };
+
+        set({
+          project: updated.project,
+          templateUndoStack: [...templateUndoStack, historyEntry],
+          templateRedoStack: [],
+        });
+
+        return true;
+      },
+
+      removeEditingTemplateApplication: (
+        clipId: string,
+        applicationId: string,
+      ) => {
+        const {
+          project,
+          templateUndoStack,
+          templateRedoStack,
+        } = get();
+
+        if (!hasEditingTemplateArtifacts(project, clipId, applicationId)) {
+          return false;
+        }
+
+        const matchingEntry = findEditingTemplateHistoryEntry(clipId, applicationId);
+
+        const updatedProject = removeEditingTemplateApplicationFromProject(
+          project,
+          clipId,
+          applicationId,
+          matchingEntry?.trackSnapshots.map((snapshot) => snapshot.track.id) || [],
+        );
+
+        set({
+          project: updatedProject,
+          templateUndoStack: templateUndoStack.filter(
+            (entry) =>
+              !(entry.ownerClipId === clipId && entry.applicationId === applicationId),
+          ),
+          templateRedoStack: templateRedoStack.filter(
+            (entry) =>
+              !(entry.ownerClipId === clipId && entry.applicationId === applicationId),
+          ),
+        });
+
+        return true;
+      },
+
+      // Text clip actions
+
+      /**
+       * Create a new text clip with default styling
+       * Create text clips using TitleEngine with default styling
+       */
+      createTextClip: (
+        trackId: string,
+        startTime: number,
+        text: string,
+        duration: number = 5,
+        style?: Partial<TextStyle>,
+      ) => {
+        const titleEngine = useEngineStore.getState().titleEngine;
+        if (!titleEngine) {
+          console.error("TitleEngine not available yet");
+          return null;
+        }
+
+        const { project } = get();
+        const track = project.timeline.tracks.find((t) => t.id === trackId);
+        if (!track) {
+          console.error(`Track ${trackId} not found`);
+          return null;
+        }
+
+        const textClip = titleEngine.createTextClip({
+          trackId,
+          startTime,
+          text,
+          duration,
+          style,
+        });
+
+        // Push to undo stack for undo support (separate from main timeline undo/redo)
+        // This prevents text clip creation from being conflated with timeline operations
+        const { clipUndoStack } = get();
+        const historyEntry: ClipHistoryEntry = {
+          type: "text",
+          timestamp: Date.now(),
+          clipId: textClip.id,
+          trackId,
+          clipData: { ...textClip }, // Store full clip data for redo reconstruction
+        };
+
+        set({
+          project: {
+            ...project,
+            modifiedAt: Date.now(), // Mark project as modified
+          },
+          clipUndoStack: [...clipUndoStack, historyEntry], // Push entry to undo stack
+          clipRedoStack: [], // Clear redo stack since new action clears future history
+        });
+
+        return textClip;
+      },
+
+      /**
+       * Update text content in real-time
+       * Update text content and style
+       */
+      updateTextContent: (clipId: string, text: string) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          console.error("TitleEngine not initialized");
+          return null;
+        }
+
+        const updatedClip = titleEngine.updateText(clipId, text);
+        if (updatedClip) {
+          set({ project: { ...get().project, modifiedAt: Date.now() } });
+        }
+        return updatedClip || null;
+      },
+
+      /**
+       * Update text style
+       * Update text content and style
+       */
+      updateTextStyle: (clipId: string, style: Partial<TextStyle>) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          console.error("TitleEngine not initialized");
+          return null;
+        }
+
+        const updatedClip = titleEngine.updateStyle(clipId, style);
+        if (updatedClip) {
+          set({ project: { ...get().project, modifiedAt: Date.now() } });
+        }
+        return updatedClip || null;
+      },
+
+      /**
+       * Update text animation preset
+       * Apply text animation presets
+       */
+      updateTextAnimation: (clipId: string, animation: TextAnimation) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          console.error("TitleEngine not initialized");
+          return null;
+        }
+
+        const updatedClip = titleEngine.updateTextClip(clipId, { animation });
+        if (updatedClip) {
+          // Trigger re-render by updating project state
+          set({ project: { ...get().project } });
+        }
+        return updatedClip || null;
+      },
+
+      /**
+       * Update text clip transform (position, scale, rotation)
+       * Text Overlay System
+       */
+      updateTextTransform: (clipId: string, transform: Partial<Transform>) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          console.error("TitleEngine not initialized");
+          return null;
+        }
+
+        const updatedClip = titleEngine.updateTextClip(clipId, { transform });
+        if (updatedClip) {
+          set({ project: { ...get().project, modifiedAt: Date.now() } });
+        }
+        return updatedClip || null;
+      },
+
+      /**
+       * Toggle text behind subject compositing.
+       */
+      updateTextBehindSubject: (clipId: string, behindSubject: boolean) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          console.error("TitleEngine not initialized");
+          return null;
+        }
+
+        const updatedClip = titleEngine.updateTextClip(clipId, {
+          behindSubject,
+        });
+        if (updatedClip) {
+          set({ project: { ...get().project, modifiedAt: Date.now() } });
+        }
+        return updatedClip || null;
+      },
+
+      updateText3D: (
+        clipId: string,
+        text3d: import("@openreel/core").Text3DSettings | undefined,
+      ) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          console.error("TitleEngine not initialized");
+          return null;
+        }
+        const updatedClip = titleEngine.updateTextClip(clipId, { text3d });
+        if (updatedClip) {
+          set({ project: { ...get().project, modifiedAt: Date.now() } });
+        }
+        return updatedClip || null;
+      },
+
+      /**
+       * Get a text clip by ID
+       */
+      getTextClip: (clipId: string) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          return undefined;
+        }
+        return titleEngine.getTextClip(clipId);
+      },
+
+      /**
+       * Get all text clips
+       */
+      getAllTextClips: () => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          return [];
+        }
+        return titleEngine.getAllTextClips();
+      },
+
+      /**
+       * Update text clip keyframes for entry/exit transitions
+       */
+      updateTextClipKeyframes: (clipId: string, keyframes: Keyframe[]) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          console.error("TitleEngine not initialized");
+          return null;
+        }
+
+        const updatedClip = titleEngine.updateTextClip(clipId, { keyframes });
+        if (updatedClip) {
+          set({ project: { ...get().project, modifiedAt: Date.now() } });
+        }
+        return updatedClip || null;
+      },
+
+      // Text animation actions
+
+      /**
+       * Apply text animation preset to a text clip
+       * Apply text animation presets (typewriter, fade, slide, bounce, scale, rotate, wave)
+       */
+      applyTextAnimationPreset: (
+        clipId: string,
+        preset: TextAnimationPreset,
+        inDuration: number = 0.5,
+        outDuration: number = 0.5,
+        params?: Partial<TextAnimationParams>,
+      ) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          return null;
+        }
+
+        const animation = textAnimationEngine.createAnimationPreset(
+          preset,
+          inDuration,
+          outDuration,
+          params,
+        );
+
+        const updatedClip = titleEngine.updateTextClip(clipId, { animation });
+
+        if (updatedClip) {
+          const { project } = get();
+          set({ project: { ...project, modifiedAt: Date.now() } });
+        }
+        return updatedClip || null;
+      },
+
+      /**
+       * Get available animation presets
+       * Text animation presets
+       */
+      getAvailableAnimationPresets: () => {
+        return textAnimationEngine.getAvailablePresets();
+      },
+
+      // Subtitle actions - subtitles are now created as text clips on a "Captions" track
+
+      /**
+       * Add a subtitle as a text clip on a Captions track
+       */
+      addSubtitle: async (subtitle) => {
+        const { project, addTrack, createTextClip } = get();
+
+        let captionsTrack = project.timeline.tracks.find(
+          (t) => t.type === "text" && t.name === "Captions"
+        );
+
+        if (!captionsTrack) {
+          const result = await addTrack("text");
+          if (!result?.success) return;
+
+          const updatedProject = get().project;
+          const newTracks = updatedProject.timeline.tracks.filter(
+            (t) => t.type === "text" && !project.timeline.tracks.some((old) => old.id === t.id)
+          );
+          captionsTrack = newTracks[0];
+
+          if (captionsTrack) {
+            set((state) => ({
+              project: {
+                ...state.project,
+                timeline: {
+                  ...state.project.timeline,
+                  tracks: state.project.timeline.tracks.map((t) =>
+                    t.id === captionsTrack!.id ? { ...t, name: "Captions" } : t
+                  ),
+                },
+              },
+            }));
+            captionsTrack = { ...captionsTrack, name: "Captions" };
+          }
+        }
+
+        if (!captionsTrack) return;
+
+        const duration = subtitle.endTime - subtitle.startTime;
+        const style = subtitle.style;
+
+        createTextClip(
+          captionsTrack.id,
+          subtitle.startTime,
+          subtitle.text,
+          duration,
+          style ? {
+            fontFamily: style.fontFamily,
+            fontSize: style.fontSize,
+            color: style.color,
+            backgroundColor: style.backgroundColor || undefined,
+          } : undefined
+        );
+      },
+
+      /**
+       * Remove a subtitle from the timeline
+       */
+      removeSubtitle: (subtitleId) => {
+        set((state) => ({
+          project: {
+            ...state.project,
+            timeline: {
+              ...state.project.timeline,
+              subtitles: state.project.timeline.subtitles.filter(
+                (s) => s.id !== subtitleId,
+              ),
+            },
+          },
+        }));
+      },
+
+      /**
+       * Update a subtitle
+       */
+      updateSubtitle: (subtitleId, updates) => {
+        set((state) => ({
+          project: {
+            ...state.project,
+            timeline: {
+              ...state.project.timeline,
+              subtitles: state.project.timeline.subtitles.map((s) =>
+                s.id === subtitleId ? { ...s, ...updates } : s,
+              ),
+            },
+          },
+        }));
+      },
+
+      /**
+       * Get a subtitle by ID
+       */
+      getSubtitle: (subtitleId) => {
+        return get().project.timeline.subtitles.find(
+          (s) => s.id === subtitleId,
+        );
+      },
+
+      importSRT: async (srtContent: string) => {
+        const subtitleEngine = await useEngineStore
+          .getState()
+          .getSubtitleEngine();
+        const { project, addSubtitle } = get();
+        const { result } = subtitleEngine.importSRT(project.timeline, srtContent);
+        const errorMessages = result.errors.map(
+          (err: { line: number; message: string }) =>
+            `Line ${err.line}: ${err.message}`,
+        );
+
+        if (result.subtitles.length === 0) {
+          return {
+            success: false,
+            errors:
+              errorMessages.length > 0
+                ? errorMessages
+                : ["No valid subtitles were found in this SRT file."],
+          };
+        }
+
+        for (const subtitle of result.subtitles) {
+          await addSubtitle(subtitle);
+        }
+
+        return {
+          success: true,
+          errors: errorMessages,
+        };
+      },
+
+      exportSRT: async () => {
+        const subtitleEngine = await useEngineStore
+          .getState()
+          .getSubtitleEngine();
+        const { project } = get();
+        return subtitleEngine.exportSRT(project.timeline);
+      },
+
+      applySubtitleStylePreset: async (presetName: string) => {
+        const subtitleEngine = await useEngineStore
+          .getState()
+          .getSubtitleEngine();
+
+        const { project } = get();
+        const result = subtitleEngine.applyStylePreset(
+          project.timeline,
+          presetName,
+        );
+
+        if ("error" in result) {
+          console.error(result.error);
+          return false;
+        }
+
+        set({
+          project: {
+            ...project,
+            timeline: result.timeline,
+            modifiedAt: Date.now(),
+          },
+        });
+        return true;
+      },
+
+      getSubtitleStylePresets: async () => {
+        const subtitleEngine = await useEngineStore
+          .getState()
+          .getSubtitleEngine();
+        return subtitleEngine.getStylePresets();
+      },
+
+      // Marker actions
+
+      addMarker: (time, label = "Marker", color = "#3b82f6") => {
+        const newMarker: import("@openreel/core").Marker = {
+          id: `marker-${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          time,
+          label,
+          color,
+        };
+        set((state) => ({
+          project: {
+            ...state.project,
+            timeline: {
+              ...state.project.timeline,
+              markers: [...state.project.timeline.markers, newMarker],
+            },
+          },
+        }));
+      },
+
+      removeMarker: (markerId) => {
+        set((state) => ({
+          project: {
+            ...state.project,
+            timeline: {
+              ...state.project.timeline,
+              markers: state.project.timeline.markers.filter(
+                (m) => m.id !== markerId,
+              ),
+            },
+          },
+        }));
+      },
+
+      updateMarker: (markerId, updates) => {
+        set((state) => ({
+          project: {
+            ...state.project,
+            timeline: {
+              ...state.project.timeline,
+              markers: state.project.timeline.markers.map((m) =>
+                m.id === markerId ? { ...m, ...updates } : m,
+              ),
+            },
+          },
+        }));
+      },
+
+      getMarker: (markerId) => {
+        const state = get();
+        return state.project.timeline.markers.find((m) => m.id === markerId);
+      },
+
+      getMarkers: () => {
+        const state = get();
+        return state.project.timeline.markers;
+      },
+
+      // Graphics actions
+
+      /**
+       * Create a shape clip
+       * Create shape clips using GraphicsEngine
+       */
+      createShapeClip: (
+        trackId: string,
+        startTime: number,
+        shapeType: ShapeType,
+        duration: number = 5,
+        style?: Partial<ShapeStyle>,
+      ) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          console.error("GraphicsEngine not initialized");
+          return null;
+        }
+
+        // Verify track exists
+        const { project } = get();
+        const track = project.timeline.tracks.find((t) => t.id === trackId);
+        if (!track) {
+          console.error(`Track ${trackId} not found`);
+          return null;
+        }
+
+        // Create shape clip using GraphicsEngine
+        // The GraphicsEngine stores the clip internally in its own state
+        const shapeClip = graphicsEngine.createShape(
+          {
+            shapeType,
+            width: 200,
+            height: 200,
+            style,
+          },
+          trackId,
+          startTime,
+          duration,
+        );
+
+        // Push to clip-specific undo stack (separate from timeline undo/redo)
+        // This keeps graphics operations isolated from timeline operations in history
+        const { clipUndoStack } = get();
+        const historyEntry: ClipHistoryEntry = {
+          type: "shape",
+          timestamp: Date.now(),
+          clipId: shapeClip.id,
+          trackId,
+          clipData: { ...shapeClip }, // Store full clip data for redo reconstruction
+        };
+
+        // Trigger re-render by updating project state
+        // Zustand subscribers will react to project object reference change
+        set({
+          project: {
+            ...project,
+            modifiedAt: Date.now(),
+          },
+          clipUndoStack: [...clipUndoStack, historyEntry], // Add to undo stack
+          clipRedoStack: [], // Clear redo stack since new action clears future history
+        });
+
+        return shapeClip;
+      },
+
+      /**
+       * Update shape style properties
+       * Update shape properties
+       */
+      updateShapeStyle: (clipId: string, style: Partial<ShapeStyle>) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          console.error("GraphicsEngine not initialized");
+          return null;
+        }
+
+        // Get the shape clip from GraphicsEngine
+        const shapeClip = graphicsEngine.getShapeClip(clipId);
+        if (!shapeClip) {
+          console.error(`Shape clip ${clipId} not found`);
+          return null;
+        }
+
+        // Update the shape style in GraphicsEngine's internal state
+        const updatedClip = graphicsEngine.updateShapeStyle(shapeClip, style);
+
+        // Trigger re-render by updating project state reference (doesn't need full project clone)
+        // This notifies Zustand subscribers that state has changed via modifiedAt timestamp change
+        const { project } = get();
+        set({
+          project: {
+            ...project,
+            modifiedAt: Date.now(), // Cheap way to signal change without modifying project content
+          },
+        });
+
+        return updatedClip;
+      },
+
+      updateShapeTransform: (clipId: string, transform: Partial<Transform>) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          console.error("GraphicsEngine not initialized");
+          return null;
+        }
+
+        const shapeClip = graphicsEngine.getShapeClip(clipId);
+        if (shapeClip) {
+          const updatedClip = graphicsEngine.updateShapeClip(clipId, {
+            transform,
+          });
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+          return updatedClip || null;
+        }
+
+        const svgClip = graphicsEngine.getSVGClip(clipId);
+        if (svgClip) {
+          const updatedClip = graphicsEngine.updateSVGClip(clipId, {
+            transform,
+          });
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+          return updatedClip || null;
+        }
+
+        const stickerClip = graphicsEngine.getStickerClip(clipId);
+        if (stickerClip) {
+          const updatedClip = graphicsEngine.updateStickerClip(clipId, {
+            transform,
+          });
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+          return updatedClip || null;
+        }
+
+        console.error(`Graphic clip ${clipId} not found`);
+        return null;
+      },
+
+      /**
+       * Import SVG and create SVG clip
+       * Parse and render SVG content
+       */
+      importSVG: (
+        svgContent: string,
+        trackId: string,
+        startTime: number,
+        duration: number = 5,
+      ) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          console.error("GraphicsEngine not initialized");
+          return null;
+        }
+
+        // Verify track exists
+        const { project } = get();
+        const track = project.timeline.tracks.find((t) => t.id === trackId);
+        if (!track) {
+          console.error(`Track ${trackId} not found`);
+          return null;
+        }
+
+        try {
+          // Import SVG using GraphicsEngine
+          // The GraphicsEngine parses SVG content and stores the clip internally
+          const svgClip = graphicsEngine.importSVG(
+            svgContent,
+            trackId,
+            startTime,
+            duration,
+          );
+
+          // Push to clip-specific undo stack for separate undo/redo handling
+          const { clipUndoStack } = get();
+          const historyEntry: ClipHistoryEntry = {
+            type: "svg",
+            timestamp: Date.now(),
+            clipId: svgClip.id,
+            trackId,
+            clipData: { ...svgClip }, // Store full SVG clip including svgContent for redo
+          };
+
+          // Trigger re-render by updating project state
+          // Update project reference to notify subscribers of change
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+            clipUndoStack: [...clipUndoStack, historyEntry], // Add to undo stack
+            clipRedoStack: [], // Clear redo when new action occurs
+          });
+
+          return svgClip;
+        } catch (error) {
+          console.error("Failed to import SVG:", error);
+          return null;
+        }
+      },
+
+      /**
+       * Get a shape clip by ID
+       */
+      getShapeClip: (clipId: string) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          return undefined;
+        }
+        return graphicsEngine.getShapeClip(clipId);
+      },
+
+      /**
+       * Get an SVG clip by ID
+       */
+      getSVGClip: (clipId: string) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          return undefined;
+        }
+        return graphicsEngine.getSVGClip(clipId);
+      },
+
+      getSVGClipById: (clipId: string) => {
+        return get().getSVGClip(clipId);
+      },
+
+      updateSVGClip: (clipId: string, updates) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          console.error("[ProjectStore] GraphicsEngine not initialized");
+          return null;
+        }
+
+        const updatedClip = graphicsEngine.updateSVGClip(clipId, updates);
+        if (updatedClip) {
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+        } else {
+          console.error(`[ProjectStore] Failed to update SVG clip ${clipId}`);
+        }
+        return updatedClip || null;
+      },
+
+      createStickerClip: (clip: StickerClip) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          console.error("GraphicsEngine not initialized");
+          return null;
+        }
+
+        const { project } = get();
+        const track = project.timeline.tracks.find(
+          (t) => t.id === clip.trackId,
+        );
+        if (!track) {
+          console.error(`Track ${clip.trackId} not found`);
+          return null;
+        }
+
+        graphicsEngine.addStickerClip(clip);
+
+        set({
+          project: {
+            ...project,
+            modifiedAt: Date.now(),
+          },
+        });
+
+        return clip;
+      },
+
+      getStickerClip: (clipId: string) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          return undefined;
+        }
+        return graphicsEngine.getStickerClip(clipId);
+      },
+
+      deleteShapeClip: (clipId: string) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          return false;
+        }
+        const deleted = graphicsEngine.deleteShapeClip(clipId);
+        if (deleted) {
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+        }
+        return deleted;
+      },
+
+      deleteSVGClip: (clipId: string) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          return false;
+        }
+        const deleted = graphicsEngine.deleteSVGClip(clipId);
+        if (deleted) {
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+        }
+        return deleted;
+      },
+
+      deleteStickerClip: (clipId: string) => {
+        const graphicsEngine = useEngineStore.getState().getGraphicsEngine();
+        if (!graphicsEngine) {
+          return false;
+        }
+        const deleted = graphicsEngine.deleteStickerClip(clipId);
+        if (deleted) {
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+        }
+        return deleted;
+      },
+
+      deleteTextClip: (clipId: string) => {
+        const titleEngine = useEngineStore.getState().getTitleEngine();
+        if (!titleEngine) {
+          return false;
+        }
+        const deleted = titleEngine.deleteTextClip(clipId);
+        if (deleted) {
+          const { project } = get();
+          set({
+            project: {
+              ...project,
+              modifiedAt: Date.now(),
+            },
+          });
+        }
+        return deleted;
+      },
+
+      // Photo editing actions
+
+      /**
+       * Create a new photo project
+       * Create PhotoProject with base layer using PhotoEngine
+       */
+      createPhotoProject: (width?: number, height?: number, name?: string) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        const photoProject = photoEngine.createProject(width, height, name);
+        const { photoProjects } = get();
+        photoProjects.set(photoProject.id, photoProject);
+
+        // Create new Map instance to trigger Zustand reactivity (Maps don't trigger on set operations)
+        // This ensures subscribers are notified of photo project changes
+        set({ photoProjects: new Map(photoProjects) });
+        return photoProject;
+      },
+
+      /**
+       * Import a photo and create a base layer
+       * Create PhotoProject with base layer
+       */
+      importPhotoForEditing: (image: ImageBitmap, name?: string) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        // Create a new project with image dimensions
+        const photoProject = photoEngine.createProject(
+          image.width,
+          image.height,
+          name || "Photo Edit",
+        );
+
+        // Import the photo as base layer in the project
+        const updatedProject = photoEngine.importPhoto(
+          photoProject,
+          image,
+          name,
+        );
+
+        const { photoProjects } = get();
+        photoProjects.set(updatedProject.id, updatedProject);
+
+        // Create new Map to notify Zustand subscribers (mutation on existing Map won't trigger)
+        set({ photoProjects: new Map(photoProjects) });
+        return updatedProject;
+      },
+
+      /**
+       * Add a new layer to a photo project
+       * Insert layer above current layer in stack
+       */
+      addPhotoLayer: (projectId: string, options?: CreateLayerOptions) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        const { photoProjects } = get();
+        const photoProject = photoProjects.get(projectId);
+        if (!photoProject) {
+          console.error(`Photo project ${projectId} not found`);
+          return null;
+        }
+
+        // PhotoEngine.addLayer returns updated project with new layer
+        const updatedProject = photoEngine.addLayer(photoProject, options);
+        photoProjects.set(projectId, updatedProject); // Update Map with new project state
+
+        // Create new Map to notify Zustand and all subscribers of the change
+        set({ photoProjects: new Map(photoProjects) });
+        return updatedProject;
+      },
+
+      /**
+       * Remove a layer from a photo project
+       */
+      removePhotoLayer: (projectId: string, layerId: string) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        const { photoProjects } = get();
+        const photoProject = photoProjects.get(projectId);
+        if (!photoProject) {
+          console.error(`Photo project ${projectId} not found`);
+          return null;
+        }
+
+        const updatedProject = photoEngine.removeLayer(photoProject, layerId);
+        photoProjects.set(projectId, updatedProject);
+
+        set({ photoProjects: new Map(photoProjects) });
+        return updatedProject;
+      },
+
+      /**
+       * Reorder layers in a photo project
+       * Reorder layers and update composite order
+       */
+      reorderPhotoLayers: (
+        projectId: string,
+        fromIndex: number,
+        toIndex: number,
+      ) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        const { photoProjects } = get();
+        const photoProject = photoProjects.get(projectId);
+        if (!photoProject) {
+          console.error(`Photo project ${projectId} not found`);
+          return null;
+        }
+
+        const result = photoEngine.reorderLayers(
+          photoProject,
+          fromIndex,
+          toIndex,
+        );
+        if (!result.success) {
+          console.error(`Failed to reorder layers: ${result.error}`);
+          return null;
+        }
+
+        const updatedProject = {
+          ...photoProject,
+          layers: result.layers,
+        };
+        photoProjects.set(projectId, updatedProject);
+
+        set({ photoProjects: new Map(photoProjects) });
+        return updatedProject;
+      },
+
+      /**
+       * Toggle layer visibility
+       * Toggle layer visibility
+       */
+      setPhotoLayerVisibility: (
+        projectId: string,
+        layerId: string,
+        visible?: boolean,
+      ) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        const { photoProjects } = get();
+        const photoProject = photoProjects.get(projectId);
+        if (!photoProject) {
+          console.error(`Photo project ${projectId} not found`);
+          return null;
+        }
+
+        const updatedProject = photoEngine.setLayerVisibility(
+          photoProject,
+          layerId,
+          visible,
+        );
+        photoProjects.set(projectId, updatedProject);
+
+        set({ photoProjects: new Map(photoProjects) });
+        return updatedProject;
+      },
+
+      /**
+       * Set layer opacity
+       * Adjust layer opacity
+       */
+      setPhotoLayerOpacity: (
+        projectId: string,
+        layerId: string,
+        opacity: number,
+      ) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        const { photoProjects } = get();
+        const photoProject = photoProjects.get(projectId);
+        if (!photoProject) {
+          console.error(`Photo project ${projectId} not found`);
+          return null;
+        }
+
+        const updatedProject = photoEngine.setLayerOpacity(
+          photoProject,
+          layerId,
+          opacity,
+        );
+        photoProjects.set(projectId, updatedProject);
+
+        set({ photoProjects: new Map(photoProjects) });
+        return updatedProject;
+      },
+
+      /**
+       * Set layer blend mode
+       * Adjust layer blend mode
+       */
+      setPhotoLayerBlendMode: (
+        projectId: string,
+        layerId: string,
+        blendMode: PhotoBlendMode,
+      ) => {
+        const photoEngine = useEngineStore.getState().getPhotoEngine();
+        if (!photoEngine) {
+          console.error("PhotoEngine not initialized");
+          return null;
+        }
+
+        const { photoProjects } = get();
+        const photoProject = photoProjects.get(projectId);
+        if (!photoProject) {
+          console.error(`Photo project ${projectId} not found`);
+          return null;
+        }
+
+        const updatedProject = photoEngine.setLayerBlendMode(
+          photoProject,
+          layerId,
+          blendMode,
+        );
+        photoProjects.set(projectId, updatedProject);
+
+        set({ photoProjects: new Map(photoProjects) });
+        return updatedProject;
+      },
+
+      /**
+       * Get a photo project by ID
+       */
+      getPhotoProject: (projectId: string) => {
+        const { photoProjects } = get();
+        return photoProjects.get(projectId) || null;
+      },
+
+      // Video effects actions
+
+      /**
+       * Add a video effect to a clip
+       * Apply video effect within 200ms
+       */
+      addVideoEffect: (
+        clipId: string,
+        effectType: VideoEffectType,
+        params?: Record<string, unknown>,
+      ) => {
+        const { project } = get();
+        const effectsBridge = getEffectsBridge();
+        if (!effectsBridge.isInitialized()) {
+          console.error("EffectsBridge not initialized");
+          return null;
+        }
+
+        const result = effectsBridge.applyVideoEffect(
+          clipId,
+          effectType,
+          params,
+        );
+        if (!result.success || !result.effectId) {
+          console.error("Failed to add video effect:", result.error);
+          return null;
+        }
+
+        const effect = effectsBridge.getEffect(clipId, result.effectId);
+        if (effect) {
+          const updatedProject = updateProjectClip(project, clipId, (clip) => ({
+            ...clip,
+            effects: [
+              ...clip.effects,
+              {
+                id: effect.id,
+                type: effect.type,
+                enabled: effect.enabled,
+                params: effect.params,
+              },
+            ],
+          }));
+
+          if (!updatedProject) {
+            console.error("Failed to persist video effect: clip not found");
+            effectsBridge.removeVideoEffect(clipId, effect.id);
+            return null;
+          }
+
+          syncClipEffectsBridge(updatedProject, clipId);
+          set({ project: updatedProject });
+        }
+        return effect || null;
+      },
+
+      /**
+       * Update a video effect's parameters
+       * Apply changes within 200ms
+       */
+      updateVideoEffect: (
+        clipId: string,
+        effectId: string,
+        params: Record<string, unknown>,
+      ) => {
+        const { project } = get();
+        let hasUpdatedEffect = false;
+
+        const updatedProject = updateProjectClip(project, clipId, (clip) => ({
+          ...clip,
+          effects: clip.effects.map((effect) => {
+            if (effect.id !== effectId) {
+              return effect;
+            }
+
+            hasUpdatedEffect = true;
+            return {
+              ...effect,
+              params: { ...effect.params, ...params },
+            };
+          }),
+        }));
+
+        if (!updatedProject || !hasUpdatedEffect) {
+          console.error("Failed to update video effect: effect not found");
+          return null;
+        }
+
+        syncClipEffectsBridge(updatedProject, clipId);
+        set({ project: updatedProject });
+
+        return getEffectsBridge().getEffect(clipId, effectId) || null;
+      },
+
+      /**
+       * Remove a video effect from a clip
+       * Restore clip to previous state when effect removed
+       */
+      removeVideoEffect: (clipId: string, effectId: string) => {
+        const { project } = get();
+        let hasRemovedEffect = false;
+
+        const updatedProject = updateProjectClip(project, clipId, (clip) => ({
+          ...clip,
+          effects: clip.effects.filter((effect) => {
+            const shouldKeep = effect.id !== effectId;
+            if (!shouldKeep) {
+              hasRemovedEffect = true;
+            }
+            return shouldKeep;
+          }),
+        }));
+
+        if (!updatedProject || !hasRemovedEffect) {
+          console.error("Failed to remove video effect: effect not found");
+          return false;
+        }
+
+        syncClipEffectsBridge(updatedProject, clipId);
+        set({ project: updatedProject });
+        return true;
+      },
+
+      /**
+       * Reorder video effects in the processing chain
+       * Update effect order in clip's effect list
+       */
+      reorderVideoEffects: (clipId: string, effectIds: string[]) => {
+        const { project, getClip } = get();
+        const clip = getClip(clipId);
+        if (!clip) {
+          console.error("Failed to reorder video effects: clip not found");
+          return false;
+        }
+
+        const effectMap = new Map(clip.effects.map((effect) => [effect.id, effect]));
+        const reorderedIds = new Set(effectIds);
+        if (
+          effectIds.length !== clip.effects.length ||
+          reorderedIds.size !== clip.effects.length ||
+          effectIds.some((effectId) => !effectMap.has(effectId))
+        ) {
+          console.error("Failed to reorder video effects: invalid effect order");
+          return false;
+        }
+
+        const updatedProject = updateProjectClip(project, clipId, (currentClip) => ({
+          ...currentClip,
+          effects: effectIds.map((effectId) => effectMap.get(effectId)!),
+        }));
+
+        if (!updatedProject) {
+          console.error("Failed to reorder video effects: clip not found");
+          return false;
+        }
+
+        syncClipEffectsBridge(updatedProject, clipId);
+        set({ project: updatedProject });
+        return true;
+      },
+
+      /**
+       * Toggle a video effect's enabled state
+       * Toggle effect enabled state
+       */
+      toggleVideoEffect: (
+        clipId: string,
+        effectId: string,
+        enabled: boolean,
+      ) => {
+        const { project } = get();
+        let hasToggledEffect = false;
+
+        const updatedProject = updateProjectClip(project, clipId, (clip) => ({
+          ...clip,
+          effects: clip.effects.map((effect) => {
+            if (effect.id !== effectId) {
+              return effect;
+            }
+
+            hasToggledEffect = true;
+            return { ...effect, enabled };
+          }),
+        }));
+
+        if (!updatedProject || !hasToggledEffect) {
+          console.error("Failed to toggle video effect: effect not found");
+          return null;
+        }
+
+        syncClipEffectsBridge(updatedProject, clipId);
+        set({ project: updatedProject });
+
+        return getEffectsBridge().getEffect(clipId, effectId) || null;
+      },
+
+      /**
+       * Get all video effects for a clip
+       */
+      getVideoEffects: (clipId: string) => {
+        const { project } = get();
+        const clip = project.timeline.tracks
+          .flatMap((track) => track.clips)
+          .find((candidate) => candidate.id === clipId);
+        const timelineEffects = clip
+          ? mapClipEffectsToVideoEffects(clip.effects)
+          : [];
+
+        const effectsBridge = getEffectsBridge();
+        if (!effectsBridge.isInitialized()) {
+          return timelineEffects;
+        }
+
+        const bridgeEffects = effectsBridge.getEffects(clipId);
+        if (bridgeEffects.length === 0 && timelineEffects.length > 0) {
+          syncClipEffectsBridge(project, clipId);
+          return effectsBridge.getEffects(clipId);
+        }
+
+        return bridgeEffects.length > 0 ? bridgeEffects : timelineEffects;
+      },
+
+      /**
+       * Get a specific video effect by ID
+       */
+      getVideoEffect: (clipId: string, effectId: string) => {
+        return get()
+          .getVideoEffects(clipId)
+          .find((effect) => effect.id === effectId);
+      },
+
+      // Color grading actions
+
+      /**
+       * Update color grading settings for a clip
+       * Apply color grading adjustments
+       */
+      updateColorGrading: (
+        clipId: string,
+        settings: Partial<ColorGradingSettings>,
+      ) => {
+        const effectsBridge = getEffectsBridge();
+        if (!effectsBridge.isInitialized()) {
+          console.error("EffectsBridge not initialized");
+          return false;
+        }
+
+        // Apply each setting type
+        if (settings.colorWheels) {
+          const result = effectsBridge.applyColorWheels(
+            clipId,
+            settings.colorWheels,
+          );
+          if (!result.success) {
+            console.error("Failed to apply color wheels:", result.error);
+            return false;
+          }
+        }
+
+        if (settings.curves) {
+          const result = effectsBridge.applyCurves(clipId, settings.curves);
+          if (!result.success) {
+            console.error("Failed to apply curves:", result.error);
+            return false;
+          }
+        }
+
+        if (settings.lut) {
+          const result = effectsBridge.applyLUT(clipId, settings.lut);
+          if (!result.success) {
+            console.error("Failed to apply LUT:", result.error);
+            return false;
+          }
+        }
+
+        if (settings.hsl) {
+          const result = effectsBridge.applyHSL(clipId, settings.hsl);
+          if (!result.success) {
+            console.error("Failed to apply HSL:", result.error);
+            return false;
+          }
+        }
+
+        if (
+          settings.temperature !== undefined ||
+          settings.tint !== undefined
+        ) {
+          const result = effectsBridge.applyWhiteBalance(clipId, {
+            temperature: settings.temperature,
+            tint: settings.tint,
+          });
+          if (!result.success) {
+            console.error("Failed to apply white balance:", result.error);
+            return false;
+          }
+        }
+
+        // Trigger re-render by updating project state
+        set({ project: { ...get().project, modifiedAt: Date.now() } });
+        return true;
+      },
+
+      /**
+       * Get color grading settings for a clip
+       */
+      getColorGrading: (clipId: string) => {
+        const effectsBridge = getEffectsBridge();
+        if (!effectsBridge.isInitialized()) {
+          return {};
+        }
+        return effectsBridge.getColorGrading(clipId);
+      },
+
+      /**
+       * Reset color grading to defaults for a clip
+       */
+      resetColorGrading: (clipId: string) => {
+        const effectsBridge = getEffectsBridge();
+        if (!effectsBridge.isInitialized()) {
+          console.error("EffectsBridge not initialized");
+          return false;
+        }
+
+        const result = effectsBridge.resetColorGrading(clipId);
+        if (!result.success) {
+          console.error("Failed to reset color grading:", result.error);
+          return false;
+        }
+
+        // Trigger re-render by updating project state
+        set({ project: { ...get().project, modifiedAt: Date.now() } });
+        return true;
+      },
+
+      // Audio effects actions
+
+      /**
+       * Add an audio effect to a clip
+       * Apply audio effects
+       */
+      addAudioEffect: (clipId: string, effect: Effect) => {
+        const { project } = get();
+
+        for (const track of project.timeline.tracks) {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex !== -1) {
+            const clip = track.clips[clipIndex];
+            const currentAudioEffects = clip.audioEffects || [];
+            const updatedAudioEffects = [...currentAudioEffects, effect];
+            const updatedClip = { ...clip, audioEffects: updatedAudioEffects };
+            const updatedClips = [...track.clips];
+            updatedClips[clipIndex] = updatedClip;
+            const updatedTrack = { ...track, clips: updatedClips };
+            const updatedTracks = project.timeline.tracks.map((t) =>
+              t.id === track.id ? updatedTrack : t,
+            );
+            const updatedProject = {
+              ...project,
+              timeline: { ...project.timeline, tracks: updatedTracks },
+              modifiedAt: Date.now(),
+            };
+            set({ project: updatedProject });
+            return true;
+          }
+        }
+        return false;
+      },
+
+      /**
+       * Update an audio effect on a clip
+       * Update audio effect parameters
+       */
+      updateAudioEffect: (
+        clipId: string,
+        effectId: string,
+        params: Record<string, unknown>,
+      ) => {
+        const { project } = get();
+
+        for (const track of project.timeline.tracks) {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex !== -1) {
+            const clip = track.clips[clipIndex];
+            const audioEffects = clip.audioEffects || [];
+            const effectIndex = audioEffects.findIndex(
+              (e) => e.id === effectId,
+            );
+            if (effectIndex !== -1) {
+              const effect = audioEffects[effectIndex];
+              const updatedEffect = {
+                ...effect,
+                params: { ...effect.params, ...params },
+              };
+              const updatedAudioEffects = [...audioEffects];
+              updatedAudioEffects[effectIndex] = updatedEffect;
+              const updatedClip = {
+                ...clip,
+                audioEffects: updatedAudioEffects,
+              };
+              const updatedClips = [...track.clips];
+              updatedClips[clipIndex] = updatedClip;
+              const updatedTrack = { ...track, clips: updatedClips };
+              const updatedTracks = project.timeline.tracks.map((t) =>
+                t.id === track.id ? updatedTrack : t,
+              );
+              const updatedProject = {
+                ...project,
+                timeline: { ...project.timeline, tracks: updatedTracks },
+                modifiedAt: Date.now(),
+              };
+              set({ project: updatedProject });
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+
+      /**
+       * Remove an audio effect from a clip
+       */
+      removeAudioEffect: (clipId: string, effectId: string) => {
+        const { project } = get();
+
+        for (const track of project.timeline.tracks) {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex !== -1) {
+            const clip = track.clips[clipIndex];
+            const audioEffects = clip.audioEffects || [];
+            const updatedAudioEffects = audioEffects.filter(
+              (e) => e.id !== effectId,
+            );
+            const updatedClip = { ...clip, audioEffects: updatedAudioEffects };
+            const updatedClips = [...track.clips];
+            updatedClips[clipIndex] = updatedClip;
+            const updatedTrack = { ...track, clips: updatedClips };
+            const updatedTracks = project.timeline.tracks.map((t) =>
+              t.id === track.id ? updatedTrack : t,
+            );
+            const updatedProject = {
+              ...project,
+              timeline: { ...project.timeline, tracks: updatedTracks },
+              modifiedAt: Date.now(),
+            };
+            set({ project: updatedProject });
+            return true;
+          }
+        }
+        return false;
+      },
+
+      /**
+       * Toggle an audio effect's enabled state
+       */
+      toggleAudioEffect: (
+        clipId: string,
+        effectId: string,
+        enabled: boolean,
+      ) => {
+        const { project } = get();
+
+        for (const track of project.timeline.tracks) {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex !== -1) {
+            const clip = track.clips[clipIndex];
+            const audioEffects = clip.audioEffects || [];
+            const effectIndex = audioEffects.findIndex(
+              (e) => e.id === effectId,
+            );
+            if (effectIndex !== -1) {
+              const effect = audioEffects[effectIndex];
+              const updatedEffect = { ...effect, enabled };
+              const updatedAudioEffects = [...audioEffects];
+              updatedAudioEffects[effectIndex] = updatedEffect;
+              const updatedClip = {
+                ...clip,
+                audioEffects: updatedAudioEffects,
+              };
+              const updatedClips = [...track.clips];
+              updatedClips[clipIndex] = updatedClip;
+              const updatedTrack = { ...track, clips: updatedClips };
+              const updatedTracks = project.timeline.tracks.map((t) =>
+                t.id === track.id ? updatedTrack : t,
+              );
+              const updatedProject = {
+                ...project,
+                timeline: { ...project.timeline, tracks: updatedTracks },
+                modifiedAt: Date.now(),
+              };
+              set({ project: updatedProject });
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+
+      setAudioEffectPreviewBypass: (
+        clipId: string,
+        effectId: string,
+        bypassed: boolean,
+      ) => {
+        const { project } = get();
+
+        for (const track of project.timeline.tracks) {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex !== -1) {
+            const clip = track.clips[clipIndex];
+            const audioEffects = clip.audioEffects || [];
+            const effectIndex = audioEffects.findIndex(
+              (effect) => effect.id === effectId,
+            );
+
+            if (effectIndex === -1) {
+              return false;
+            }
+
+            const effect = audioEffects[effectIndex];
+            const nextMetadata = { ...(effect.metadata ?? {}) } as Record<
+              string,
+              unknown
+            >;
+
+            if (bypassed) {
+              nextMetadata.previewBypass = true;
+            } else {
+              delete nextMetadata.previewBypass;
+            }
+
+            const updatedEffect = {
+              ...effect,
+              metadata:
+                Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined,
+            };
+
+            const updatedAudioEffects = [...audioEffects];
+            updatedAudioEffects[effectIndex] = updatedEffect;
+
+            const updatedClip = {
+              ...clip,
+              audioEffects: updatedAudioEffects,
+            };
+            const updatedClips = [...track.clips];
+            updatedClips[clipIndex] = updatedClip;
+            const updatedTrack = { ...track, clips: updatedClips };
+            const updatedTracks = project.timeline.tracks.map((candidate) =>
+              candidate.id === track.id ? updatedTrack : candidate,
+            );
+            const updatedProject = {
+              ...project,
+              timeline: { ...project.timeline, tracks: updatedTracks },
+              modifiedAt: Date.now(),
+            };
+            set({ project: updatedProject });
+            return true;
+          }
+        }
+
+        return false;
+      },
+
+      /**
+       * Get all audio effects for a clip
+       */
+      getAudioEffects: (clipId: string) => {
+        const { project } = get();
+
+        for (const track of project.timeline.tracks) {
+          const clip = track.clips.find((c) => c.id === clipId);
+          if (clip) {
+            return clip.audioEffects || [];
+          }
+        }
+        return [];
+      },
+
+      setClipAudioDucking: (
+        clipId: string,
+        settings: AudioDuckingSettings,
+        points: AutomationPoint[],
+      ) => {
+        const { project } = get();
+        const updatedProject = updateProjectClip(project, clipId, (clip) => ({
+          ...clip,
+          automation: {
+            ...(clip.automation ?? {}),
+            volume: points.map((point) => ({ ...point })),
+          },
+          metadata: {
+            ...(clip.metadata ?? {}),
+            audioDucking: { ...settings },
+          },
+        }));
+
+        if (!updatedProject) {
+          return false;
+        }
+
+        set({ project: updatedProject });
+        return true;
+      },
+
+      clearClipAudioDucking: (clipId: string) => {
+        const { project } = get();
+        const updatedProject = updateProjectClip(project, clipId, (clip) => {
+          const nextMetadata = { ...(clip.metadata ?? {}) } as Record<
+            string,
+            unknown
+          >;
+          delete nextMetadata.audioDucking;
+
+          const nextAutomation = { ...(clip.automation ?? {}) };
+          delete nextAutomation.volume;
+
+          return {
+            ...clip,
+            automation:
+              Object.keys(nextAutomation).length > 0 ? nextAutomation : undefined,
+            metadata:
+              Object.keys(nextMetadata).length > 0 ? nextMetadata : undefined,
+          };
+        });
+
+        if (!updatedProject) {
+          return false;
+        }
+
+        set({ project: updatedProject });
+        return true;
+      },
+
+      /**
+       * Update keyframes for a clip
+       * Keyframe animation support
+       */
+      updateClipKeyframes: (clipId: string, keyframes: Keyframe[]) => {
+        const { project } = get();
+
+        for (const track of project.timeline.tracks) {
+          const clipIndex = track.clips.findIndex((c) => c.id === clipId);
+          if (clipIndex !== -1) {
+            const clip = track.clips[clipIndex];
+            const updatedClip = { ...clip, keyframes };
+            const updatedClips = [...track.clips];
+            updatedClips[clipIndex] = updatedClip;
+            const updatedTrack = { ...track, clips: updatedClips };
+            const updatedTracks = project.timeline.tracks.map((t) =>
+              t.id === track.id ? updatedTrack : t,
+            );
+            const updatedProject = {
+              ...project,
+              timeline: { ...project.timeline, tracks: updatedTracks },
+              modifiedAt: Date.now(),
+            };
+            set({ project: updatedProject });
+            return true;
+          }
+        }
+        return false;
+      },
+    };
+  }),
+);

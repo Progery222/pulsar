@@ -10,7 +10,8 @@
     "release": "tsc --noEmit && vite build && electron-builder --publish always",
     "build:dir": "vite build && electron-builder --dir",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "studio:build": "node scripts/build-studio.mjs"
   },
   "dependencies": {
     "electron-updater": "^6.8.9",
