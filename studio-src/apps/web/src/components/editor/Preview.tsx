@@ -73,6 +73,7 @@ import {
   MotionPathOverlay,
   ParticleRenderer,
 } from "./preview/index";
+import { markFrame } from "./preview/fps-meter";
 import { ProcessingOverlay } from "./ProcessingOverlay";
 import {
   getPersonSegmentationEngine,
@@ -2805,6 +2806,7 @@ export const Preview: React.FC = () => {
       };
 
       const drawFrame = async () => {
+        markFrame();
         if (!isActive || !nativePlaybackActiveRef.current) return;
 
         const currentPlayhead = masterClock.currentTime;
@@ -3460,6 +3462,7 @@ export const Preview: React.FC = () => {
           let frameCount = 0;
 
           const processNextFrame = async () => {
+            markFrame();
             if (!isActive) {
               input[Symbol.dispose]?.();
               return;
@@ -3894,6 +3897,7 @@ export const Preview: React.FC = () => {
       let isProcessingFrame = false;
 
       const processMultiTrackFrame = async () => {
+        markFrame();
         if (!isActive) {
           cleanupPlaybackResources();
           masterClock.pause();
