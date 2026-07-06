@@ -156,8 +156,12 @@ function App() {
   if (appMode === 'studio') {
     return (
       <>
-        <div className="screen-fade" style={{ height: '100vh' }}>
-          <StudioHost />
+        <div className="screen-fade" style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
+          {/* Отдельная полоса под наш навбар — чтобы он не накрывал шапку Студии. */}
+          <div style={{ height: 58, flex: '0 0 auto', background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)' }} />
+          <div style={{ flex: 1, minHeight: 0 }}>
+            <StudioHost />
+          </div>
         </div>
         <TopBar />
         <Overlays />

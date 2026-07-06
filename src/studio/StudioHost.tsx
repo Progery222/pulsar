@@ -36,7 +36,7 @@ export default function StudioHost() {
       src="studio/index.html"
       title="Студия"
       allow="camera; microphone; clipboard-read; clipboard-write; fullscreen"
-      style={{ width: '100%', height: '100vh', border: 'none', display: 'block', background: '#0b0b0b' }}
+      style={{ width: '100%', height: '100%', border: 'none', display: 'block', background: '#0b0b0b' }}
     />
   );
 }
