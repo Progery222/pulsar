@@ -71,6 +71,9 @@ const electronAPI = {
   proMakeProxy: (src: string): Promise<string | null> => ipcRenderer.invoke('pro:makeProxy', src),
   proProbeVideo: (src: string): Promise<{ codec: string; pixFmt: string; width: number; height: number; bitrate: number } | null> => ipcRenderer.invoke('pro:probeVideo', src),
 
+  // Обратная связь (баг-репорт) -> Telegram.
+  sendFeedback: (text: string): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('feedback:send', text),
+
   // Показать файл в проводнике с выделением.
   showItemInFolder: (filePath: string): Promise<{ ok: true }> =>
     ipcRenderer.invoke('shell:showItem', filePath),

@@ -587,12 +587,61 @@ function ProToolbar() {
         {subbing ? 'Распознаю…' : '＋Авто-титры'}
       </ToolBtn>
       <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+        <FeedbackButton />
         <WorkspacePresets />
         <ToolBtn active={snapping} onClick={toggleSnapping} title="Прилипание (N)">
           Snap
         </ToolBtn>
       </div>
     </div>
+  );
+}
+
+// Кнопка «Сообщить о проблеме» -> модалка -> отправка в Telegram разработчику.
+function FeedbackButton() {
+  const [open, setOpen] = useState(false);
+  const [text, setText] = useState('');
+  const [sending, setSending] = useState(false);
+  const send = async () => {
+    if (!text.trim() || sending) return;
+    setSending(true);
+    try {
+      const r = await window.electronAPI.sendFeedback(text);
+      if ('ok' in r) {
+        showToast('Спасибо! Отправлено разработчику');
+        setText('');
+        setOpen(false);
+      } else {
+        showToast('Не отправилось: ' + r.error);
+      }
+    } finally {
+      setSending(false);
+    }
+  };
+  return (
+    <>
+      <ToolBtn onClick={() => setOpen(true)} title="Сообщить о баге/проблеме — уйдёт разработчику">🐞 Проблема</ToolBtn>
+      {open && (
+        <div onClick={() => setOpen(false)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1100 }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 18, width: 'min(460px, 92vw)' }}>
+            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 10 }}>Сообщить о проблеме</div>
+            <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 8 }}>Опиши баг или пожелание — придёт разработчику (версия и ОС приложатся автоматически).</div>
+            <textarea
+              value={text}
+              onChange={(e) => setText(e.target.value)}
+              autoFocus
+              rows={5}
+              placeholder="Что случилось / что хотелось бы…"
+              style={{ width: '100%', padding: '8px 10px', fontSize: 13, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', resize: 'vertical' }}
+            />
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
+              <button onClick={() => setOpen(false)} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13 }}>Отмена</button>
+              <button onClick={send} disabled={!text.trim() || sending} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', background: 'var(--accent-green)', color: 'var(--bg-primary)', cursor: text.trim() && !sending ? 'pointer' : 'default', opacity: text.trim() && !sending ? 1 : 0.6, fontSize: 13, fontWeight: 600 }}>{sending ? 'Отправка…' : 'Отправить'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
