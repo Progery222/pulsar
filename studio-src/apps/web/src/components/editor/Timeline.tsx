@@ -113,6 +113,8 @@ export const Timeline: React.FC = () => {
     setExportIn,
     setExportOut,
     clearExportRange,
+    bladeMode,
+    toggleBladeMode,
   } = useUIStore();
   const selectedClipIds = getSelectedClipIds();
 
@@ -764,9 +766,16 @@ export const Timeline: React.FC = () => {
         <TLTool
           onClick={handleSplit}
           disabled={selectedClipIds.length !== 1}
-          title="Split (S)"
+          title="Split — разрезать выделенный по плейхеду (S)"
         >
           <Scissors size={14} />
+        </TLTool>
+        <TLTool
+          onClick={toggleBladeMode}
+          active={bladeMode}
+          title="Лезвие — клик по клипу режет его в точке клика"
+        >
+          <span className="text-[13px] leading-none">🔪</span>
         </TLTool>
         <TLTool
           onClick={handleDelete}

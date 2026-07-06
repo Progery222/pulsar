@@ -64,6 +64,7 @@ export interface UIState {
   effectApplicationLabel: string | null;
   snapSettings: SnapSettings;
   exportRange: { in: number | null; out: number | null };
+  bladeMode: boolean;
   panels: Record<PanelId, PanelState>;
   shortcuts: KeyboardShortcuts;
   theme: "light" | "dark" | "system";
@@ -101,6 +102,8 @@ export interface UIState {
   setExportIn: (t: number | null) => void;
   setExportOut: (t: number | null) => void;
   clearExportRange: () => void;
+  toggleBladeMode: () => void;
+  setBladeMode: (on: boolean) => void;
   setSnapEnabled: (enabled: boolean) => void;
   setSnapToGrid: (enabled: boolean) => void;
   setSnapToClips: (enabled: boolean) => void;
@@ -209,6 +212,8 @@ export const useUIStore = create<UIState>()(
         snapSettings: DEFAULT_SNAP_SETTINGS,
 
         exportRange: { in: null, out: null },
+
+        bladeMode: false,
 
         panels: DEFAULT_PANELS,
 
@@ -355,6 +360,8 @@ export const useUIStore = create<UIState>()(
             return { exportRange: { in: inn != null && t != null && inn >= t ? null : inn, out: t } };
           }),
         clearExportRange: () => set({ exportRange: { in: null, out: null } }),
+        toggleBladeMode: () => set((state) => ({ bladeMode: !state.bladeMode })),
+        setBladeMode: (on) => set({ bladeMode: on }),
         setSnapEnabled: (enabled: boolean) => {
           set((state) => ({
             snapSettings: { ...state.snapSettings, enabled },

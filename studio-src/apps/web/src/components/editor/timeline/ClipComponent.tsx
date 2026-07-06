@@ -56,6 +56,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 }) => {
   const { getMediaItem } = useProjectStore();
   const { snapSettings } = useUIStore();
+  const bladeMode = useUIStore((s) => s.bladeMode);
   const effectApplicationClipId = useUIStore(
     (state) => state.effectApplicationClipId,
   );
@@ -120,6 +121,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   const handleClick = (e: React.MouseEvent) => {
     if (e.button !== 0) return;
     if (isDragging || isPendingDrag) return;
+    if (useUIStore.getState().bladeMode) return; // в режиме «Лезвие» клик режет, не выделяет
     e.stopPropagation();
     onSelect(clip.id, e.shiftKey || e.metaKey);
   };
@@ -128,6 +130,18 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
     if (e.button !== 0) return;
     if (track.locked || isTrimming) return;
     e.stopPropagation();
+
+    // Режим «Лезвие»: клик по клипу режет его в точке клика (без выделения/перетаскивания).
+    if (useUIStore.getState().bladeMode) {
+      const parentRect = clipRef.current?.parentElement?.getBoundingClientRect();
+      if (parentRect) {
+        const time = (e.clientX - parentRect.left) / pixelsPerSecond;
+        if (time > clip.startTime + 0.02 && time < clip.startTime + clip.duration - 0.02) {
+          void useProjectStore.getState().splitClip(clip.id, time);
+        }
+      }
+      return;
+    }
 
     const rect = clipRef.current?.parentElement?.getBoundingClientRect();
     const clipRect = clipRef.current?.getBoundingClientRect();
@@ -644,7 +658,9 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
           className={`group absolute top-1 bottom-1 rounded-lg overflow-hidden shadow-sm ${
-            isDragging
+            bladeMode
+              ? "cursor-crosshair"
+              : isDragging
               ? `cursor-grabbing z-50 ${isInvalidDrop ? "opacity-50 ring-2 ring-red-500 border-red-500" : "opacity-90 shadow-xl"}`
               : "cursor-grab"
           } ${
