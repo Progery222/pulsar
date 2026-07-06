@@ -17,12 +17,9 @@ try {
 // Разрешаем программный WebGL (SwiftShader), если аппаратный GPU недоступен/заблокирован —
 // иначе WebGL-компоновщик Viewer в Pulsar Pro не инициализируется (createShader → null).
 try {
-  // На этом железе видео-конвейер (WebGPU/GPU-декод) роняет процесс рендера в чёрный экран.
-  // Полностью уводим приложение в софт-рендер — стабильно на любом драйвере (медленнее, но не падает).
-  app.disableHardwareAcceleration();
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
-  app.commandLine.appendSwitch('disable-accelerated-2d-canvas');
-  app.commandLine.appendSwitch('disable-gpu-compositing');
+  // Прим.: WebGPU/GPU-флаги под Студию убраны — её WebCodecs-плеер роняет рендер на части
+  // машин; ускорение здесь не трогаем, чтобы не замедлять остальные режимы.
 } catch {
   /* noop */
 }
