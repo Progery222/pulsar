@@ -6,6 +6,7 @@ import type {
   SVGClip,
   StickerClip,
 } from "@openreel/core";
+import { Blend } from "lucide-react";
 import { ClipComponent } from "./ClipComponent";
 import { TextClipComponent } from "./TextClipComponent";
 import { ShapeClipComponent } from "./ShapeClipComponent";
@@ -257,6 +258,39 @@ export const TrackLane: React.FC<TrackLaneProps> = ({
               onTrimClip={onTrimClip}
             />
           ))}
+        {(track.transitions ?? []).map((tr) => {
+          const clipA = track.clips.find((c) => c.id === tr.clipAId);
+          if (!clipA) return null;
+          const seamX = (clipA.startTime + clipA.duration) * pixelsPerSecond;
+          const w = Math.max((tr.duration ?? 0.5) * pixelsPerSecond, 16);
+          return (
+            <div
+              key={tr.id}
+              className="absolute top-0 bottom-0 z-30 pointer-events-none flex items-start justify-center"
+              style={{ left: seamX - w / 2, width: w }}
+            >
+              <div
+                className="absolute top-1 bottom-1 left-0 right-0 rounded-sm border border-primary/70"
+                style={{
+                  backgroundImage:
+                    "repeating-linear-gradient(45deg, rgba(200,255,0,0.30) 0 3px, transparent 3px 6px)",
+                }}
+              />
+              <button
+                type="button"
+                className="pointer-events-auto relative mt-0.5 flex items-center justify-center rounded bg-background/85 px-1 py-0.5 text-primary hover:text-red-400 shadow"
+                title={`Переход: ${tr.type} • ${(tr.duration ?? 0).toFixed(1)} c — клик, чтобы удалить`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  useProjectStore.getState().removeClipTransition(tr.id);
+                  toast.info("Переход удалён");
+                }}
+              >
+                <Blend size={11} />
+              </button>
+            </div>
+          );
+        })}
         {textClips.map((textClip) => (
           <TextClipComponent
             key={textClip.id}
