@@ -308,11 +308,35 @@ export function registerFileHandlers() {
     const key = crypto.createHash('md5').update(`${src}|${time}`).digest('hex');
     const out = path.join(dir, `${key}.jpg`);
     if (fs.existsSync(out)) return out;
-    await new Promise<void>((resolve) => {
-      const ch = spawn(ffmpegBin, ['-y', '-ss', String(Math.max(0, time || 0)), '-i', src, '-frames:v', '1', '-vf', 'scale=200:-1', out], { windowsHide: true });
-      ch.on('close', () => resolve());
-      ch.on('error', () => resolve());
-    });
+    // Ограничиваем параллелизм — иначе десятки ffmpeg разом душат CPU и превью не проигрывается.
+    await acquireThumbSlot();
+    try {
+      await new Promise<void>((resolve) => {
+        const ch = spawn(ffmpegBin, ['-y', '-ss', String(Math.max(0, time || 0)), '-i', src, '-frames:v', '1', '-vf', 'scale=200:-1', out], { windowsHide: true });
+        ch.on('close', () => resolve());
+        ch.on('error', () => resolve());
+      });
+    } finally {
+      releaseThumbSlot();
+    }
     return fs.existsSync(out) ? out : null;
   });
+}
+
+// Очередь миниатюр: не более 3 ffmpeg одновременно (чтобы не забивать CPU при добавлении клипа).
+let thumbActive = 0;
+const thumbWaiters: (() => void)[] = [];
+function acquireThumbSlot(): Promise<void> {
+  if (thumbActive < 3) {
+    thumbActive++;
+    return Promise.resolve();
+  }
+  return new Promise<void>((res) => thumbWaiters.push(() => res())).then(() => {
+    thumbActive++;
+  });
+}
+function releaseThumbSlot(): void {
+  thumbActive--;
+  const next = thumbWaiters.shift();
+  if (next) next();
 }

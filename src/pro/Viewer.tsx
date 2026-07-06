@@ -195,6 +195,11 @@ export default function Viewer() {
       if (!el.paused) el.pause();
       hideEl2();
       thumb.style.display = 'block';
+      // Прогрев: держим src верхнего клипа загруженным и спозиционированным, чтобы Space играл мгновенно.
+      const warmBase = proxyMap[top.clip.sourceFile] || top.clip.sourceFile;
+      if (curVideoSrc.current !== warmBase) { curVideoSrc.current = warmBase; el.src = mediaUrl(warmBase); }
+      const wt = Math.max(0, top.sourceTime);
+      if (el.readyState >= 1 && Math.abs(el.currentTime - wt) > 0.4) el.currentTime = wt;
       // В кроссфейде показываем доминирующий по альфе слой (иначе «замороженный» первый кадр входящего клипа часто чёрный).
       const dom = items.reduce((m, it) => (it.alpha > m.alpha ? it : m), items[0]);
       applyVisual(thumb, dom.clip, d, ph - dom.clip.timelineStart);
