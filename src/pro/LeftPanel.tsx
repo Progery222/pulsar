@@ -52,23 +52,22 @@ async function addFileToProject(path: string) {
 // Левая панель (§2 ТЗ): Media (бин источников) / Inspector (параметры клипа).
 
 export default function LeftPanel() {
-  const [tab, setTab] = useState<'media' | 'inspector' | 'transitions'>('inspector');
+  const [tab, setTab] = useState<'media' | 'inspector'>('inspector');
   return (
     <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-secondary)' }}>
       <div className="flex" style={{ borderBottom: '1px solid var(--border)' }}>
         <TabBtn active={tab === 'media'} onClick={() => setTab('media')}>Media</TabBtn>
         <TabBtn active={tab === 'inspector'} onClick={() => setTab('inspector')}>Inspector</TabBtn>
-        <TabBtn active={tab === 'transitions'} onClick={() => setTab('transitions')}>Переходы</TabBtn>
       </div>
       <div className="flex flex-1 flex-col" style={{ minHeight: 0, overflow: 'auto' }}>
-        {tab === 'media' ? <MediaTab /> : tab === 'transitions' ? <TransitionsTab /> : <InspectorTab />}
+        {tab === 'media' ? <MediaTab /> : <InspectorTab />}
       </div>
     </div>
   );
 }
 
 // Вкладка «Переходы»: живые превью (та же математика transitionLayers, что и реальный эффект) + применение к клипу.
-function TransitionsTab() {
+export function TransitionsTab() {
   const selected = useProStore((s) => s.selectedClipIds);
   const clips = useProStore((s) => s.doc.clips);
   const clip = clips.find((c) => selected.includes(c.id)) ?? null;

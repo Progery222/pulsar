@@ -66,6 +66,10 @@ export interface ProState {
   // Раскладка панелей (resizable, Фаза 1).
   leftWidth: number;
   timelineHeight: number;
+  rightWidth: number;
+  rightOpen: boolean;
+  setRightWidth: (w: number) => void;
+  toggleRight: () => void;
   trackScale: number; // множитель высоты дорожек на таймлайне
   setTrackScale: (v: number) => void;
 
@@ -203,6 +207,16 @@ export const useProStore = create<ProState>()(
 
     leftWidth: 300,
     timelineHeight: 300,
+    rightWidth: 240,
+    rightOpen: true,
+    setRightWidth: (w) =>
+      set((s) => {
+        s.rightWidth = Math.min(480, Math.max(160, w));
+      }),
+    toggleRight: () =>
+      set((s) => {
+        s.rightOpen = !s.rightOpen;
+      }),
     trackScale: 1,
     setTrackScale: (v) =>
       set((s) => {

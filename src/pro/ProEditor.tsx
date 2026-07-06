@@ -3,7 +3,7 @@ import { useProStore } from '../store/proStore';
 import { showToast } from '../store/toastStore';
 import Timeline, { zoomAtPlayhead } from './Timeline';
 import Viewer from './Viewer';
-import LeftPanel from './LeftPanel';
+import LeftPanel, { TransitionsTab } from './LeftPanel';
 import { buildAutoCut } from './autoCut';
 import { deleteProject, getCurrentId, listProjects, loadProject, migrateLegacy, newProjectId, saveProject, setCurrentId } from './persistence';
 import { createEmptyProDocument, type Mood } from './proTypes';
@@ -168,12 +168,17 @@ class ProErrorBoundary extends Component<{ children: ReactNode }, { error: Error
 function ProEditor() {
   const leftWidth = useProStore((s) => s.leftWidth);
   const timelineHeight = useProStore((s) => s.timelineHeight);
+  const rightWidth = useProStore((s) => s.rightWidth);
+  const rightOpen = useProStore((s) => s.rightOpen);
+  const toggleRight = useProStore((s) => s.toggleRight);
   const setLeftWidth = useProStore((s) => s.setLeftWidth);
   const setTimelineHeight = useProStore((s) => s.setTimelineHeight);
   const [showHelp, setShowHelp] = useState(false);
 
   // Вертикальный разделитель левой панели.
   const onDragLeft = useDrag((dx) => setLeftWidth(useProStore.getState().leftWidth + dx));
+  // Правый разделитель тянется в обратную сторону (влево = шире).
+  const onDragRight = useDrag((dx) => useProStore.getState().setRightWidth(useProStore.getState().rightWidth - dx));
   // Горизонтальный разделитель таймлайна (тянем вверх — таймлайн выше).
   const onDragTimeline = useDrag((_dx, dy) => setTimelineHeight(useProStore.getState().timelineHeight - dy));
 
@@ -321,8 +326,8 @@ function ProEditor() {
 
   return (
     <div className="flex h-full w-full flex-col" style={{ background: 'var(--bg-primary)', overflow: 'hidden', paddingTop: 54, boxSizing: 'border-box' }}>
-      {/* Верхняя область: Media/Inspector (слева) + Viewer (центр). */}
-      <div className="flex" style={{ flex: 1, minHeight: 0 }}>
+      {/* Верхняя область: Media/Inspector (слева) + Viewer (центр) + Переходы (справа). */}
+      <div className="flex" style={{ flex: 1, minHeight: 0, position: 'relative' }}>
         <div style={{ width: leftWidth, minWidth: 0, borderRight: '1px solid var(--border)' }}>
           <LeftPanel />
         </div>
@@ -334,6 +339,23 @@ function ProEditor() {
         <div style={{ flex: 1, minWidth: 0 }}>
           <Viewer />
         </div>
+        {rightOpen && (
+          <>
+            <div onMouseDown={onDragRight} style={{ width: 5, cursor: 'col-resize', background: 'var(--bg-primary)', flex: '0 0 auto' }} title="Ширина панели" />
+            <div style={{ width: rightWidth, minWidth: 0, borderLeft: '1px solid var(--border)', background: 'var(--bg-secondary)', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--text-secondary)' }}>
+                <span>Переходы</span>
+                <button onClick={toggleRight} title="Скрыть панель" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+              </div>
+              <div style={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+                <TransitionsTab />
+              </div>
+            </div>
+          </>
+        )}
+        {!rightOpen && (
+          <button onClick={toggleRight} title="Показать переходы" style={{ position: 'absolute', right: 8, top: 62, zIndex: 20, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 12 }}>⇄ Переходы</button>
+        )}
       </div>
 
       {/* Toolbar между Viewer и Timeline (§2 ТЗ). */}
