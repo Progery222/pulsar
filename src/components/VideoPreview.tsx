@@ -78,6 +78,10 @@ export default function VideoPreview({
               src={mediaUrl(src)}
               playsInline
               preload="auto"
+              onError={(e) => {
+                const v = e.currentTarget;
+                console.error('[VideoPreview] не загрузилось видео', src, 'код:', v.error?.code, v.error?.message);
+              }}
               className="absolute inset-0 h-full w-full object-contain"
               style={{
                 background: '#000000',
