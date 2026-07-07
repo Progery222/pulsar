@@ -72,6 +72,13 @@ export default function CutoutScreen() {
   const [ui, setUi] = useState<Params>(DEF_PARAMS); // параметры выбранного (для слайдеров)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [batchRunning, setBatchRunning] = useState(false);
+  const [cropMode, setCropMode] = useState(false);
+  const [cropRect, setCropRect] = useState<{ x: number; y: number; w: number; h: number } | null>(null);
+  const cropModeRef = useRef(false);
+  const cropRectRef = useRef<{ x: number; y: number; w: number; h: number } | null>(null);
+  cropModeRef.current = cropMode;
+  cropRectRef.current = cropRect;
+  const cropDragRef = useRef<{ x: number; y: number } | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -79,7 +86,7 @@ export default function CutoutScreen() {
   const paintingRef = useRef(false);
   const lastRef = useRef<{ x: number; y: number } | null>(null);
   const baseMap = useRef<Map<string, HTMLCanvasElement>>(new Map());
-  const origMap = useRef<Map<string, HTMLImageElement>>(new Map());
+  const origMap = useRef<Map<string, CanvasImageSource>>(new Map());
   const paramMap = useRef<Map<string, Params>>(new Map());
 
   const sel = items.find((i) => i.id === selId) || null;
@@ -101,7 +108,24 @@ export default function CutoutScreen() {
     if (!base) return;
     const p = { ...(paramMap.current.get(id) || DEF_PARAMS), ...override };
     renderInto(c, base, p);
-  }, []);
+    // Оверлей кадрирования (не деструктивно).
+    if (cropModeRef.current && cropRectRef.current) {
+      const r = cropRectRef.current;
+      const ctx = c.getContext('2d')!;
+      ctx.save();
+      ctx.fillStyle = 'rgba(0,0,0,0.5)';
+      // затемнение вне рамки
+      ctx.fillRect(0, 0, c.width, r.y);
+      ctx.fillRect(0, r.y + r.h, c.width, c.height - r.y - r.h);
+      ctx.fillRect(0, r.y, r.x, r.h);
+      ctx.fillRect(r.x + r.w, r.y, c.width - r.x - r.w, r.h);
+      ctx.strokeStyle = '#c8ff00';
+      ctx.lineWidth = Math.max(1, 2 / zoom);
+      ctx.setLineDash([6 / zoom, 4 / zoom]);
+      ctx.strokeRect(r.x, r.y, r.w, r.h);
+      ctx.restore();
+    }
+  }, [zoom]);
 
   const addFiles = useCallback((files: FileList | File[]) => {
     const imgs = Array.from(files).filter((f) => f.type.startsWith('image/'));
@@ -209,9 +233,23 @@ export default function CutoutScreen() {
     const r = c.getBoundingClientRect();
     return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height };
   };
+  const clampRect = (r: { x: number; y: number; w: number; h: number }) => {
+    const c = canvasRef.current!;
+    const x = Math.max(0, Math.min(r.x, c.width));
+    const y = Math.max(0, Math.min(r.y, c.height));
+    return { x, y, w: Math.min(r.w, c.width - x), h: Math.min(r.h, c.height - y) };
+  };
+
   const onDown = (e: React.PointerEvent) => {
     if (sel?.status !== 'done') return;
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    if (cropMode) {
+      const p = toImg(e);
+      cropDragRef.current = { x: p.x, y: p.y };
+      cropRectRef.current = { x: p.x, y: p.y, w: 0, h: 0 };
+      composite(selId);
+      return;
+    }
     paintingRef.current = true;
     const p = toImg(e);
     lastRef.current = p;
@@ -219,6 +257,14 @@ export default function CutoutScreen() {
   };
   const onMove = (e: React.PointerEvent) => {
     setCursor({ x: e.clientX, y: e.clientY });
+    if (cropMode) {
+      if (!cropDragRef.current) return;
+      const p = toImg(e);
+      const s = cropDragRef.current;
+      cropRectRef.current = clampRect({ x: Math.min(s.x, p.x), y: Math.min(s.y, p.y), w: Math.abs(p.x - s.x), h: Math.abs(p.y - s.y) });
+      composite(selId);
+      return;
+    }
     if (!paintingRef.current) return;
     const p = toImg(e);
     const last = lastRef.current;
@@ -232,9 +278,42 @@ export default function CutoutScreen() {
     lastRef.current = p;
   };
   const onUp = () => {
-    if (paintingRef.current) composite(selId); // пересобрать с растушёвкой/обводкой
+    if (cropMode) {
+      cropDragRef.current = null;
+      if (cropRectRef.current) setCropRect(cropRectRef.current);
+      return;
+    }
+    if (paintingRef.current) composite(selId);
     paintingRef.current = false;
     lastRef.current = null;
+  };
+
+  const applyCrop = () => {
+    const r = cropRectRef.current;
+    if (!selId || !r || r.w < 4 || r.h < 4) return;
+    const rx = Math.round(r.x), ry = Math.round(r.y), rw = Math.round(r.w), rh = Math.round(r.h);
+    const base = baseMap.current.get(selId);
+    if (!base) return;
+    // Обрезать вырез.
+    const nb = document.createElement('canvas');
+    nb.width = rw;
+    nb.height = rh;
+    nb.getContext('2d')!.drawImage(base, rx, ry, rw, rh, 0, 0, rw, rh);
+    baseMap.current.set(selId, nb);
+    // Обрезать оригинал (для кисти «Вернуть»).
+    const o = origMap.current.get(selId);
+    if (o) {
+      const no = document.createElement('canvas');
+      no.width = rw;
+      no.height = rh;
+      no.getContext('2d')!.drawImage(o, rx, ry, rw, rh, 0, 0, rw, rh);
+      origMap.current.set(selId, no);
+    }
+    setCropMode(false);
+    setCropRect(null);
+    cropRectRef.current = null;
+    composite(selId);
+    setZoom(fitZoom(rw, rh));
   };
 
   const downloadOne = useCallback((item: Item) => {
@@ -313,6 +392,19 @@ export default function CutoutScreen() {
           <label style={lbl}>Растушёвка<input type="range" min={0} max={12} step={0.5} value={ui.feather} onChange={(e) => setParam({ feather: +e.target.value })} /><span style={num}>{ui.feather}</span></label>
           <label style={lbl}>Обводка<input type="range" min={0} max={40} value={ui.outlineW} onChange={(e) => setParam({ outlineW: +e.target.value })} /><span style={num}>{ui.outlineW}</span>
             <input type="color" value={ui.outlineColor} onChange={(e) => setParam({ outlineColor: e.target.value })} style={{ width: 26, height: 22, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} /></label>
+          {!cropMode ? (
+            <button onClick={() => {
+              const base = selId ? baseMap.current.get(selId) : null;
+              if (base) { const r = { x: 0, y: 0, w: base.width, h: base.height }; cropRectRef.current = r; setCropRect(r); }
+              setCropMode(true);
+              composite(selId);
+            }} style={btn(false, false)}>✂ Кадрировать</button>
+          ) : (
+            <>
+              <button onClick={applyCrop} style={btn(true, false)}>Применить кроп</button>
+              <button onClick={() => { setCropMode(false); setCropRect(null); cropRectRef.current = null; composite(selId); }} style={btn(false, false)}>Отмена</button>
+            </>
+          )}
           <button onClick={() => sel && processItem(sel)} style={btn(false, false)}>Заново ИИ</button>
           <button onClick={() => sel && downloadOne(sel)} style={btn(true, false)}>Скачать PNG</button>
         </div>
@@ -333,7 +425,7 @@ export default function CutoutScreen() {
               display: sel?.status === 'done' ? 'block' : 'none',
               width: canvasRef.current ? canvasRef.current.width * zoom : undefined,
               height: canvasRef.current ? canvasRef.current.height * zoom : undefined,
-              cursor: 'none', imageRendering: zoom > 1.5 ? 'pixelated' : 'auto', touchAction: 'none', flexShrink: 0,
+              cursor: cropMode ? 'crosshair' : 'none', imageRendering: zoom > 1.5 ? 'pixelated' : 'auto', touchAction: 'none', flexShrink: 0,
             }}
           />
           {sel && sel.status !== 'done' && items.length > 0 && (
@@ -367,7 +459,7 @@ export default function CutoutScreen() {
         )}
       </div>
 
-      {sel?.status === 'done' && cursor && (
+      {sel?.status === 'done' && cursor && !cropMode && (
         <div style={{
           position: 'fixed', left: cursor.x, top: cursor.y, width: cursorPx * 2, height: cursorPx * 2,
           marginLeft: -cursorPx, marginTop: -cursorPx, borderRadius: '50%',
