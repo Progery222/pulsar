@@ -20,9 +20,11 @@ export default function ProcessingScreen() {
   const ran = useRef(false);
 
   useEffect(() => {
-    if (ran.current) return; // защита от двойного запуска (StrictMode)
+    // Запуск ровно один раз (ref переживает двойной монтаж StrictMode в dev).
+    // Никакого `cancelled`: cleanup при StrictMode-размонтировании иначе блокировал
+    // финальный переход и экран «Синхронизируем…» висел на «Готово».
+    if (ran.current) return;
     ran.current = true;
-    let cancelled = false;
     const s = useProjectStore.getState();
 
     async function run() {
@@ -35,7 +37,6 @@ export default function ProcessingScreen() {
       const beatData = s.selectedTrack
         ? await analyzeBeat(s.selectedTrack.file, s.selectedTrack.duration ?? 0)
         : fallbackBeatData(s.duration && s.duration > 0 ? s.duration : 30);
-      if (cancelled) return;
       setProgress(40);
 
       // 2. Нарезка клипов
@@ -48,13 +49,11 @@ export default function ProcessingScreen() {
         s.segmentStart,
         s.mediaOrder
       );
-      if (cancelled) return;
       setProgress(70);
 
       // 3. Расстановка эффектов
       setStepIdx(2);
       const withEffects = applyEffects(clips, s.activeEffects, beatData.beat_times);
-      if (cancelled) return;
       setProgress(100);
       setStepIdx(3);
 
@@ -64,7 +63,7 @@ export default function ProcessingScreen() {
       s.setIsProcessing(false);
 
       await sleep(300);
-      if (!cancelled) s.setCurrentScreen('editor');
+      s.setCurrentScreen('editor');
     }
 
     // Никакой сбой на этапе обработки не должен оставлять пользователя на экране
@@ -72,11 +71,8 @@ export default function ProcessingScreen() {
     run().catch((err) => {
       console.error('processing failed:', err);
       s.setIsProcessing(false);
-      if (!cancelled) s.setCurrentScreen('editor');
+      s.setCurrentScreen('editor');
     });
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   return (
