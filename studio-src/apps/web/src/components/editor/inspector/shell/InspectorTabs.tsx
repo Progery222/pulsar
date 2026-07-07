@@ -21,7 +21,7 @@ export const InspectorTabs: React.FC<InspectorTabsProps> = ({ tabs, activeId, on
     <div
       role="tablist"
       aria-label="Inspector tabs"
-      className="flex items-center gap-0.5 px-2 border-b border-border overflow-x-auto scrollbar-none shrink-0"
+      className="flex flex-wrap items-center gap-0.5 px-2 border-b border-border shrink-0"
     >
       {tabs.map((tab, index) => {
         const Icon = tab.icon;
