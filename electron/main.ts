@@ -135,7 +135,6 @@ app.whenReady().then(() => {
     try {
       const stat = await fs.promises.stat(filePath);
       const total = stat.size;
-      console.log('[media] req', request.headers.get('Range') || 'no-range', '->', filePath, total, 'bytes');
       const type = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
       const rangeHeader = request.headers.get('Range');
       // Ограничение размера чанка: для открытых range (bytes=0-) не тянем весь
@@ -167,7 +166,6 @@ app.whenReady().then(() => {
       } finally {
         await fd.close();
       }
-      console.log('[media]', partial ? 206 : 200, `${start}-${end}/${total}`, path.basename(filePath));
       return new Response(data, {
         status: partial ? 206 : 200,
         headers: {
