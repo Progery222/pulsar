@@ -1,4 +1,5 @@
 import { useProjectStore } from '../store/projectStore';
+import { shuffleMontage } from '../utils/regenerate';
 import type { UniqualizerSettings } from '../types/uniqualizer';
 
 type CheckKey = Exclude<keyof UniqualizerSettings, 'enabled'>;
@@ -20,6 +21,7 @@ export default function UniqualizerPanel() {
   const setSettings = useProjectStore((s) => s.setUniqualizerSettings);
   const count = useProjectStore((s) => s.uniqualizerCount);
   const setCount = useProjectStore((s) => s.setUniqualizerCount);
+  const hasMontage = useProjectStore((s) => !!s.beatData);
 
   return (
     <div className="mb-4 border-t border-border pt-4">
@@ -78,6 +80,16 @@ export default function UniqualizerPanel() {
               );
             })}
           </div>
+          {hasMontage && (
+            <button
+              onClick={() => shuffleMontage()}
+              title="Перемешать порядок клипов в монтаже"
+              className="mt-2 rounded-el px-3 py-1.5 font-semibold"
+              style={{ fontSize: 13, backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
+            >
+              ⤮ Перемешать порядок
+            </button>
+          )}
         </div>
 
         {/* Блок «Авто» */}
