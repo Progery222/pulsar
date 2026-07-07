@@ -16,13 +16,25 @@ export default function CutoutScreen() {
   const [tool, setTool] = useState<Tool>('erase');
   const [brush, setBrush] = useState(40);
   const [zoom, setZoom] = useState(1);
+  const [feather, setFeather] = useState(2);
+  const [outlineW, setOutlineW] = useState(6);
+  const [outlineColor, setOutlineColor] = useState('#ffffff');
+  const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
 
   const fileRef = useRef<File | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const origImgRef = useRef<HTMLImageElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
   const paintingRef = useRef(false);
   const lastRef = useRef<{ x: number; y: number } | null>(null);
+
+  const fitZoom = useCallback((iw: number, ih: number) => {
+    const wrap = wrapRef.current;
+    if (!wrap || !iw || !ih) return 1;
+    const z = Math.min((wrap.clientWidth - 24) / iw, (wrap.clientHeight - 24) / ih, 1);
+    return isFinite(z) && z > 0 ? z : 1;
+  }, []);
 
   const loadFile = useCallback((file: File) => {
     if (!file.type.startsWith('image/')) {
@@ -71,17 +83,15 @@ export default function CutoutScreen() {
         ctx.clearRect(0, 0, c.width, c.height);
         ctx.drawImage(img, 0, 0);
         setStatus('done');
-        // Вписать по ширине контейнера примерно.
-        setZoom(1);
+        setZoom(fitZoom(img.naturalWidth, img.naturalHeight));
       };
       img.src = URL.createObjectURL(blob);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Не удалось удалить фон');
       setStatus('error');
     }
-  }, []);
+  }, [fitZoom]);
 
-  // Рисование кистью по холсту (в координатах изображения).
   const stamp = useCallback(
     (x: number, y: number) => {
       const c = canvasRef.current;
@@ -124,11 +134,11 @@ export default function CutoutScreen() {
     stamp(p.x, p.y);
   };
   const onMove = (e: React.PointerEvent) => {
+    setCursor({ x: e.clientX, y: e.clientY });
     if (!paintingRef.current) return;
     const p = toImg(e);
     const last = lastRef.current;
     if (last) {
-      // интерполяция вдоль штриха
       const dx = p.x - last.x;
       const dy = p.y - last.y;
       const dist = Math.hypot(dx, dy);
@@ -145,6 +155,52 @@ export default function CutoutScreen() {
     lastRef.current = null;
   };
 
+  // Растушевать края (лёгкое размытие всего кадра — мягкие границы без чёрного ореола).
+  const applyFeather = useCallback(() => {
+    const c = canvasRef.current;
+    if (!c || feather <= 0) return;
+    const ctx = c.getContext('2d')!;
+    const snap = document.createElement('canvas');
+    snap.width = c.width;
+    snap.height = c.height;
+    snap.getContext('2d')!.drawImage(c, 0, 0);
+    ctx.clearRect(0, 0, c.width, c.height);
+    ctx.filter = `blur(${feather}px)`;
+    ctx.drawImage(snap, 0, 0);
+    ctx.filter = 'none';
+  }, [feather]);
+
+  // Обводка силуэта заданным цветом и толщиной.
+  const applyOutline = useCallback(() => {
+    const c = canvasRef.current;
+    if (!c || outlineW <= 0) return;
+    const w = c.width;
+    const h = c.height;
+    const ctx = c.getContext('2d')!;
+    // Копия текущего результата.
+    const top = document.createElement('canvas');
+    top.width = w;
+    top.height = h;
+    top.getContext('2d')!.drawImage(c, 0, 0);
+    // Силуэт в цвете обводки (по альфе текущего).
+    const sil = document.createElement('canvas');
+    sil.width = w;
+    sil.height = h;
+    const sctx = sil.getContext('2d')!;
+    sctx.drawImage(c, 0, 0);
+    sctx.globalCompositeOperation = 'source-in';
+    sctx.fillStyle = outlineColor;
+    sctx.fillRect(0, 0, w, h);
+    // Дилатация: рисуем силуэт по кругу смещений позади оригинала.
+    ctx.clearRect(0, 0, w, h);
+    const steps = 24;
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      ctx.drawImage(sil, Math.cos(a) * outlineW, Math.sin(a) * outlineW);
+    }
+    ctx.drawImage(top, 0, 0);
+  }, [outlineW, outlineColor]);
+
   const download = useCallback(() => {
     const c = canvasRef.current;
     if (!c) return;
@@ -158,23 +214,24 @@ export default function CutoutScreen() {
     }, 'image/png');
   }, []);
 
-  // Зум колесом (Ctrl/Alt) над холстом.
   useEffect(() => {
-    const el = canvasRef.current?.parentElement;
+    const el = wrapRef.current;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       if (!(e.ctrlKey || e.altKey)) return;
       e.preventDefault();
-      setZoom((z) => Math.min(6, Math.max(0.2, z * (e.deltaY < 0 ? 1.1 : 0.9))));
+      setZoom((z) => Math.min(6, Math.max(0.1, z * (e.deltaY < 0 ? 1.1 : 0.9))));
     };
     el.addEventListener('wheel', onWheel, { passive: false });
     return () => el.removeEventListener('wheel', onWheel);
   }, [status]);
 
+  const cursorPx = brush * zoom; // радиус кисти на экране
+
   return (
     <div
       className="screen-fade"
-      style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '24px 28px', gap: 16, overflow: 'hidden' }}
+      style={{ height: '100%', display: 'flex', flexDirection: 'column', padding: '24px 28px', gap: 14, overflow: 'hidden' }}
     >
       <div style={{ flexShrink: 0 }}>
         <h1 style={{ fontSize: 24, fontWeight: 700, color: 'var(--text-primary)' }}>Удаление фона</h1>
@@ -201,47 +258,74 @@ export default function CutoutScreen() {
           onChange={(e) => { const f = e.target.files?.[0]; if (f) loadFile(f); e.target.value = ''; }} />
       </div>
 
-      {/* Панель инструментов */}
       {status === 'done' && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap', flexShrink: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary,#161616)', padding: 3, borderRadius: 9 }}>
             <ToolBtn active={tool === 'erase'} onClick={() => setTool('erase')}>🩹 Стереть</ToolBtn>
             <ToolBtn active={tool === 'restore'} onClick={() => setTool('restore')}>↩ Вернуть</ToolBtn>
           </div>
           <label style={lbl}>Кисть
             <input type="range" min={4} max={200} value={brush} onChange={(e) => setBrush(+e.target.value)} />
-            <span style={{ width: 30, textAlign: 'right' }}>{brush}</span>
+            <span style={num}>{brush}</span>
           </label>
           <label style={lbl}>Зум
-            <input type="range" min={0.2} max={6} step={0.1} value={zoom} onChange={(e) => setZoom(+e.target.value)} />
-            <span style={{ width: 34, textAlign: 'right' }}>{Math.round(zoom * 100)}%</span>
+            <input type="range" min={0.1} max={6} step={0.05} value={zoom} onChange={(e) => setZoom(+e.target.value)} />
+            <span style={num}>{Math.round(zoom * 100)}%</span>
           </label>
+          <label style={lbl}>Растушёвка
+            <input type="range" min={0} max={12} value={feather} onChange={(e) => setFeather(+e.target.value)} />
+            <span style={num}>{feather}</span>
+          </label>
+          <button onClick={applyFeather} style={btn(false, false)}>Растушевать</button>
+          <label style={lbl}>Обводка
+            <input type="range" min={0} max={40} value={outlineW} onChange={(e) => setOutlineW(+e.target.value)} />
+            <span style={num}>{outlineW}</span>
+            <input type="color" value={outlineColor} onChange={(e) => setOutlineColor(e.target.value)}
+              style={{ width: 26, height: 22, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} />
+          </label>
+          <button onClick={applyOutline} style={btn(false, false)}>Обвести</button>
           <button onClick={run} style={btn(false, false)}>Заново ИИ</button>
         </div>
       )}
 
-      {/* Холст */}
       {srcUrl && (
-        <div style={{ flex: 1, minHeight: 0, borderRadius: 12, border: '1px solid var(--border,#2a2a2a)', overflow: 'auto', background: CHECKER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <div
+          ref={wrapRef}
+          style={{ flex: 1, minHeight: 0, borderRadius: 12, border: '1px solid var(--border,#2a2a2a)', overflow: 'auto', background: CHECKER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
           <canvas
             ref={canvasRef}
             onPointerDown={onDown}
             onPointerMove={onMove}
             onPointerUp={onUp}
-            onPointerLeave={onUp}
+            onPointerLeave={() => { onUp(); setCursor(null); }}
+            onPointerEnter={(e) => setCursor({ x: e.clientX, y: e.clientY })}
             style={{
               display: status === 'done' ? 'block' : 'none',
               width: canvasRef.current ? canvasRef.current.width * zoom : undefined,
               height: canvasRef.current ? canvasRef.current.height * zoom : undefined,
-              cursor: 'crosshair',
+              cursor: 'none',
               imageRendering: zoom > 1.5 ? 'pixelated' : 'auto',
               touchAction: 'none',
+              flexShrink: 0,
             }}
           />
           {status !== 'done' && (
             <img src={srcUrl} alt="" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }} />
           )}
         </div>
+      )}
+
+      {/* Круг-курсор кисти (как в Photoshop) */}
+      {status === 'done' && cursor && (
+        <div
+          style={{
+            position: 'fixed', left: cursor.x, top: cursor.y, width: cursorPx * 2, height: cursorPx * 2,
+            marginLeft: -cursorPx, marginTop: -cursorPx, borderRadius: '50%',
+            border: `1px solid ${tool === 'erase' ? '#ff5c5c' : '#c8ff00'}`,
+            boxShadow: '0 0 0 1px rgba(0,0,0,.6)', pointerEvents: 'none', zIndex: 60,
+          }}
+        />
       )}
 
       {status === 'processing' && (
@@ -283,6 +367,7 @@ function ToolBtn({ active, onClick, children }: { active: boolean; onClick: () =
 const lbl: React.CSSProperties = {
   display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: 'var(--text-secondary)',
 };
+const num: React.CSSProperties = { width: 40, textAlign: 'right' };
 
 function btn(primary: boolean, disabled: boolean): React.CSSProperties {
   return {
