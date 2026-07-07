@@ -28,7 +28,7 @@ function getAudioDuration(audioPath: string): Promise<number> {
 }
 
 // Fallback (§14): равномерное разбиение трека на фрагменты по 0.5 секунды.
-function fallbackBeatData(duration: number): BeatData {
+export function fallbackBeatData(duration: number): BeatData {
   const beat_times: number[] = [];
   for (let t = 0; t < duration; t += 0.5) {
     beat_times.push(Number(t.toFixed(3)));

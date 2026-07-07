@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import type { Track } from '../types';
 import { fileName, formatTime, mediaUrl } from '../utils/media';
+import { analyzeBeat } from '../utils/beatDetection';
 import tracksData from '../data/tracks.json';
 
 const TRACKS = tracksData as Track[];
@@ -110,8 +111,17 @@ export default function MusicPickerScreen() {
     setSelectedTrack(track);
   }
 
-  function goNext() {
+  // Предварительный анализ выбранного трека в фоне — к моменту «Далее» бит уже
+  // посчитан и лежит в кэше, окно синхронизации не висит.
+  useEffect(() => {
     if (!selectedTrack) return;
+    const t = setTimeout(() => {
+      void analyzeBeat(selectedTrack.file, selectedTrack.duration ?? 0);
+    }, 800);
+    return () => clearTimeout(t);
+  }, [selectedTrack]);
+
+  function goNext() {
     stopPreview();
     setScreen('processing');
   }
@@ -144,11 +154,10 @@ export default function MusicPickerScreen() {
         </span>
         <button
           className="font-semibold"
-          style={{ color: selectedTrack ? 'var(--accent-green)' : 'var(--text-secondary)' }}
-          disabled={!selectedTrack}
+          style={{ color: 'var(--accent-green)' }}
           onClick={goNext}
         >
-          Далее →
+          {selectedTrack ? 'Далее →' : 'Без музыки →'}
         </button>
       </div>
 

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
-import { analyzeBeat } from '../utils/beatDetection';
+import { analyzeBeat, fallbackBeatData } from '../utils/beatDetection';
 import { generateClips } from '../utils/videoSlicer';
 import { applyEffects } from '../utils/effectsEngine';
 
@@ -28,13 +28,13 @@ export default function ProcessingScreen() {
     async function run() {
       s.setIsProcessing(true);
 
-      // 1. Анализ аудио
+      // 1. Анализ аудио. Без выбранного трека анализ пропускаем — берём
+      // равномерную сетку сразу (не ждём Python/таймаут).
       setStepIdx(0);
       setProgress(10);
-      const beatData = await analyzeBeat(
-        s.selectedTrack?.file ?? '',
-        s.selectedTrack?.duration ?? 0
-      );
+      const beatData = s.selectedTrack
+        ? await analyzeBeat(s.selectedTrack.file, s.selectedTrack.duration ?? 0)
+        : fallbackBeatData(s.duration && s.duration > 0 ? s.duration : 30);
       if (cancelled) return;
       setProgress(40);
       await sleep(250);

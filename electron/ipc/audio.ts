@@ -133,6 +133,10 @@ function warmUpBeatDetection(): void {
   tryNext();
 }
 
+// Дедуп одновременных запросов: предзагрузка (при выборе трека) и основной
+// анализ (по «Далее») для одного файла разделяют один процесс, а не спавнят два.
+const inflight = new Map<string, Promise<unknown>>();
+
 export function registerAudioHandlers() {
   // Прогрев в фоне через 3с после старта — не конкурирует с запуском окна.
   setTimeout(warmUpBeatDetection, 3000);
@@ -147,7 +151,14 @@ export function registerAudioHandlers() {
       if (cache[key]) return cache[key];
     }
 
-    const result = await runBeat(resolved);
+    // Уже идёт анализ этого файла — дождаться того же процесса.
+    const flightKey = key ?? resolved;
+    const existing = inflight.get(flightKey);
+    if (existing) return existing;
+
+    const p = runBeat(resolved).finally(() => inflight.delete(flightKey));
+    inflight.set(flightKey, p);
+    const result = await p;
 
     // Кэшируем только удачный результат (есть биты).
     const r = result as { beat_times?: unknown[]; error?: string };
