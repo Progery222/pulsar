@@ -23,6 +23,13 @@ jobs:
       - name: Install deps
         run: npm ci
 
+      # Создаём релиз заранее, чтобы electron-builder заливал в существующий
+      # и НЕ плодил второй дубль (гонка при параллельной заливке ассетов).
+      - name: Create release
+        run: gh release create "$env:GITHUB_REF_NAME" --title "$env:GITHUB_REF_NAME" --notes "$env:GITHUB_REF_NAME" 2>$null; exit 0
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       # Студия (public/studio) закоммичена в репо — CI её не собирает.
       - name: Build & publish
         run: npm run release
