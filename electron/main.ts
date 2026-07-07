@@ -20,6 +20,10 @@ try {
   app.commandLine.appendSwitch('enable-unsafe-swiftshader');
   // WebGPU для Студии (Dawn -> D3D12 на Windows; Vulkan НЕ форсим — он ронял GPU).
   app.commandLine.appendSwitch('enable-unsafe-webgpu');
+  // Платформенный декод HEVC/H.265 в <video> (превью монтажа) — иначе видео с
+  // телефонов (H.265) не проигрываются (MediaError code 4). Требует HEVC-декодер
+  // в системе (обычно есть на Windows с GPU Intel/NVIDIA/AMD).
+  app.commandLine.appendSwitch('enable-features', 'PlatformHEVCDecoderSupport');
 } catch {
   /* noop */
 }
