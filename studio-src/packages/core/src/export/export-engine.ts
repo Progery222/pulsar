@@ -387,7 +387,9 @@ export class ExportEngine {
         bitrate: fullSettings.bitrate ? fullSettings.bitrate * 1000 : QUALITY_MEDIUM,
         keyFrameInterval:
           fullSettings.keyframeInterval / fullSettings.frameRate,
-        hardwareAcceleration: "prefer-software",
+        // Аппаратный энкодер (GPU): в разы быстрее софтового. Chromium сам
+        // откатится на софт, если аппаратная конфигурация не поддержана.
+        hardwareAcceleration: "prefer-hardware",
       });
       const audioSource = new AudioBufferSource({
         codec: audioCodecResult.codec as "aac" | "opus" | "mp3",
