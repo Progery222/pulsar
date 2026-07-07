@@ -7,6 +7,7 @@ export interface UniqualizerSettings {
   cropEdges: boolean;
   audioShift: boolean;
   reverse: boolean;
+  shuffleOrder: boolean;
   // Режим «видимая вариация»: каждая копия с заметно разным фильтром/зумом/отражением.
   visibleVariation: boolean;
 }

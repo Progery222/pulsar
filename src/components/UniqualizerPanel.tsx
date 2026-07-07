@@ -1,5 +1,4 @@
 import { useProjectStore } from '../store/projectStore';
-import { shuffleMontage } from '../utils/regenerate';
 import type { UniqualizerSettings } from '../types/uniqualizer';
 
 type CheckKey = Exclude<keyof UniqualizerSettings, 'enabled'>;
@@ -12,6 +11,7 @@ const OPTIONS: { key: CheckKey; label: string; desc: string }[] = [
   { key: 'cropEdges', label: 'Обрезка краёв', desc: 'Обрезать 1–3px по краям и растянуть обратно' },
   { key: 'audioShift', label: 'Аудио сдвиг', desc: 'Сдвинуть аудиодорожку на 10–50ms' },
   { key: 'reverse', label: 'Реверс видео', desc: 'Проиграть видео и звук задом наперёд' },
+  { key: 'shuffleOrder', label: 'Перемешать порядок', desc: 'Каждая копия — свой случайный порядок клипов' },
 ];
 
 const COUNTS = [1, 10, 20, 40, 50, 100];
@@ -21,7 +21,6 @@ export default function UniqualizerPanel() {
   const setSettings = useProjectStore((s) => s.setUniqualizerSettings);
   const count = useProjectStore((s) => s.uniqualizerCount);
   const setCount = useProjectStore((s) => s.setUniqualizerCount);
-  const hasMontage = useProjectStore((s) => !!s.beatData);
 
   return (
     <div className="mb-4 border-t border-border pt-4">
@@ -80,16 +79,6 @@ export default function UniqualizerPanel() {
               );
             })}
           </div>
-          {hasMontage && (
-            <button
-              onClick={() => shuffleMontage()}
-              title="Перемешать порядок клипов в монтаже"
-              className="mt-2 rounded-el px-3 py-1.5 font-semibold"
-              style={{ fontSize: 13, backgroundColor: 'var(--bg-tertiary)', color: 'var(--text-primary)' }}
-            >
-              ⤮ Перемешать порядок
-            </button>
-          )}
         </div>
 
         {/* Блок «Авто» */}

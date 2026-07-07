@@ -181,6 +181,7 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
     cropEdges: true,
     audioShift: true,
     reverse: false,
+    shuffleOrder: false,
     visibleVariation: false,
   },
   uniqualizerCount: 1,
