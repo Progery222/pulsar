@@ -20,16 +20,10 @@ jobs:
         with:
           node-version: 20
 
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
       - name: Install deps
         run: npm ci
 
-      - name: Build studio (OpenReel -> public/studio)
-        run: npm run studio:build
-
+      # Студия (public/studio) закоммичена в репо — CI её не собирает.
       - name: Build & publish
         run: npm run release
         env:
