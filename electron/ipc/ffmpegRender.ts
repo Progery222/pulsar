@@ -466,6 +466,9 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     if (req.fade === 'in' || req.fade === 'all') videoFades.push('fade=t=in:st=0:d=0.5');
     if (req.fade === 'out' || req.fade === 'all') videoFades.push(`fade=t=out:st=${fadeOutStart}:d=0.5`);
 
+    // Родной звук исходника используем, если отдельная музыкальная дорожка не выбрана.
+    const sourceHasAudio = audioTrack ? false : await hasAudio(videoSource);
+
     const basePath = path.join(tmpDir, 'base.mp4');
     const baseCmd = ffmpeg().input(videoSource);
     const baseVenc = await videoEncoderOptions({ preset: 'fast', crf: 23 });
@@ -476,6 +479,8 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     if (audioTrack) {
       baseCmd.input(audioTrack);
       baseOut.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-shortest');
+    } else if (sourceHasAudio) {
+      baseOut.push('-map', '0:a:0', '-c:a', 'aac', '-b:a', '192k', '-shortest');
     } else {
       baseOut.push('-an');
     }
@@ -497,7 +502,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     );
 
     // Этап 6b: N уникальных копий. Каждая — свежие фильтры/метаданные/байты.
-    const baseHasAudio = !!audioTrack;
+    const baseHasAudio = !!audioTrack || sourceHasAudio;
     for (let i = 0; i < count; i++) {
       if (cancelled()) throw new Error('Экспорт отменён');
       const out = single ? req.outputPath : suffixPath(req.outputPath, i + 1, count);
