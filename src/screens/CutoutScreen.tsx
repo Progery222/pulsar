@@ -4,6 +4,11 @@ import { removeBackground } from '@imgly/background-removal';
 type Status = 'idle' | 'processing' | 'done' | 'error';
 type Tool = 'erase' | 'restore';
 
+interface Params {
+  feather: number;
+  outlineW: number;
+  outlineColor: string;
+}
 interface Item {
   id: string;
   name: string;
@@ -17,9 +22,46 @@ interface Item {
 
 const CHECKER =
   'repeating-conic-gradient(#2a2a2a 0% 25%, #1c1c1c 0% 50%) 50% / 20px 20px';
+const DEF_PARAMS: Params = { feather: 0, outlineW: 0, outlineColor: '#ffffff' };
 
 let idc = 0;
 const uid = () => `it-${++idc}`;
+
+// Отрисовать вырез (base) в target с растушёвкой краёв и обводкой (недеструктивно).
+function renderInto(target: HTMLCanvasElement, base: HTMLCanvasElement, p: Params) {
+  const w = base.width;
+  const h = base.height;
+  target.width = w;
+  target.height = h;
+  const ctx = target.getContext('2d')!;
+  ctx.clearRect(0, 0, w, h);
+
+  // Обводка: цветной силуэт по альфе, «раздутый» смещениями по кругу, позади.
+  if (p.outlineW > 0) {
+    const sil = document.createElement('canvas');
+    sil.width = w;
+    sil.height = h;
+    const sctx = sil.getContext('2d')!;
+    sctx.drawImage(base, 0, 0);
+    sctx.globalCompositeOperation = 'source-in';
+    sctx.fillStyle = p.outlineColor;
+    sctx.fillRect(0, 0, w, h);
+    const steps = 32;
+    for (let i = 0; i < steps; i++) {
+      const a = (i / steps) * Math.PI * 2;
+      ctx.drawImage(sil, Math.cos(a) * p.outlineW, Math.sin(a) * p.outlineW);
+    }
+  }
+
+  // Вырез с растушёвкой края (лёгкое размытие бледит цвет субъекта в кромку — без чёрного ореола).
+  if (p.feather > 0) {
+    ctx.filter = `blur(${p.feather}px)`;
+    ctx.drawImage(base, 0, 0);
+    ctx.filter = 'none';
+  } else {
+    ctx.drawImage(base, 0, 0);
+  }
+}
 
 export default function CutoutScreen() {
   const [items, setItems] = useState<Item[]>([]);
@@ -27,9 +69,7 @@ export default function CutoutScreen() {
   const [tool, setTool] = useState<Tool>('erase');
   const [brush, setBrush] = useState(40);
   const [zoom, setZoom] = useState(1);
-  const [feather, setFeather] = useState(2);
-  const [outlineW, setOutlineW] = useState(6);
-  const [outlineColor, setOutlineColor] = useState('#ffffff');
+  const [ui, setUi] = useState<Params>(DEF_PARAMS); // параметры выбранного (для слайдеров)
   const [cursor, setCursor] = useState<{ x: number; y: number } | null>(null);
   const [batchRunning, setBatchRunning] = useState(false);
 
@@ -38,9 +78,9 @@ export default function CutoutScreen() {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const paintingRef = useRef(false);
   const lastRef = useRef<{ x: number; y: number } | null>(null);
-  // Персистентные пиксели результата и оригинал по каждому item.
-  const resMap = useRef<Map<string, HTMLCanvasElement>>(new Map());
+  const baseMap = useRef<Map<string, HTMLCanvasElement>>(new Map());
   const origMap = useRef<Map<string, HTMLImageElement>>(new Map());
+  const paramMap = useRef<Map<string, Params>>(new Map());
 
   const sel = items.find((i) => i.id === selId) || null;
   const patch = (id: string, p: Partial<Item>) =>
@@ -53,6 +93,16 @@ export default function CutoutScreen() {
     return isFinite(z) && z > 0 ? z : 1;
   }, []);
 
+  // Собрать видимый холст из base выбранного + его параметры.
+  const composite = useCallback((id: string | null, override?: Partial<Params>) => {
+    const c = canvasRef.current;
+    if (!c || !id) return;
+    const base = baseMap.current.get(id);
+    if (!base) return;
+    const p = { ...(paramMap.current.get(id) || DEF_PARAMS), ...override };
+    renderInto(c, base, p);
+  }, []);
+
   const addFiles = useCallback((files: FileList | File[]) => {
     const imgs = Array.from(files).filter((f) => f.type.startsWith('image/'));
     if (!imgs.length) return;
@@ -62,83 +112,40 @@ export default function CutoutScreen() {
       const oimg = new Image();
       oimg.onload = () => origMap.current.set(id, oimg);
       oimg.src = srcUrl;
+      paramMap.current.set(id, { ...DEF_PARAMS });
       return { id, name: file.name, file, srcUrl, status: 'idle', progress: 0, progressLabel: '' };
     });
     setItems((arr) => [...arr, ...next]);
     setSelId((cur) => cur ?? next[0].id);
   }, []);
 
-  // Показать в холсте выбранный item.
-  const showItem = useCallback(
-    (id: string | null) => {
-      const c = canvasRef.current;
-      if (!c) return;
-      const res = id ? resMap.current.get(id) : null;
-      if (res) {
-        c.width = res.width;
-        c.height = res.height;
-        c.getContext('2d')!.drawImage(res, 0, 0);
-        setZoom(fitZoom(res.width, res.height));
-      }
-    },
-    [fitZoom],
-  );
-
-  useEffect(() => {
-    if (sel && sel.status === 'done') showItem(sel.id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selId, sel?.status]);
-
-  // Сохранить пиксели холста в item.
-  const syncToItem = useCallback(() => {
-    const c = canvasRef.current;
-    if (!c || !selId) return;
-    let res = resMap.current.get(selId);
-    if (!res || res.width !== c.width || res.height !== c.height) {
-      res = document.createElement('canvas');
-      res.width = c.width;
-      res.height = c.height;
-      resMap.current.set(selId, res);
+  const processItem = useCallback(async (item: Item) => {
+    patch(item.id, { status: 'processing', progress: 0, error: undefined });
+    try {
+      const blob = await removeBackground(item.file, {
+        progress: (key, cur, total) => {
+          const pct = total > 0 ? Math.round((cur / total) * 100) : 0;
+          patch(item.id, { progress: pct, progressLabel: key.startsWith('fetch') ? `Модель… ${pct}%` : `Обработка… ${pct}%` });
+        },
+        output: { format: 'image/png' },
+      });
+      await new Promise<void>((resolve) => {
+        const img = new Image();
+        img.onload = () => {
+          const base = document.createElement('canvas');
+          base.width = img.naturalWidth;
+          base.height = img.naturalHeight;
+          base.getContext('2d')!.drawImage(img, 0, 0);
+          baseMap.current.set(item.id, base);
+          patch(item.id, { status: 'done', progress: 100 });
+          resolve();
+        };
+        img.src = URL.createObjectURL(blob);
+      });
+    } catch (e) {
+      patch(item.id, { status: 'error', error: e instanceof Error ? e.message : 'Ошибка' });
     }
-    const rctx = res.getContext('2d')!;
-    rctx.clearRect(0, 0, res.width, res.height);
-    rctx.drawImage(c, 0, 0);
-  }, [selId]);
-
-  const processItem = useCallback(
-    async (item: Item) => {
-      patch(item.id, { status: 'processing', progress: 0, error: undefined });
-      try {
-        const blob = await removeBackground(item.file, {
-          progress: (key, cur, total) => {
-            const pct = total > 0 ? Math.round((cur / total) * 100) : 0;
-            patch(item.id, {
-              progress: pct,
-              progressLabel: key.startsWith('fetch') ? `Модель… ${pct}%` : `Обработка… ${pct}%`,
-            });
-          },
-          output: { format: 'image/png' },
-        });
-        await new Promise<void>((resolve) => {
-          const img = new Image();
-          img.onload = () => {
-            const res = document.createElement('canvas');
-            res.width = img.naturalWidth;
-            res.height = img.naturalHeight;
-            res.getContext('2d')!.drawImage(img, 0, 0);
-            resMap.current.set(item.id, res);
-            patch(item.id, { status: 'done', progress: 100 });
-            resolve();
-          };
-          img.src = URL.createObjectURL(blob);
-        });
-      } catch (e) {
-        patch(item.id, { status: 'error', error: e instanceof Error ? e.message : 'Ошибка' });
-      }
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
-  );
+  }, []);
 
   const processAll = useCallback(async () => {
     setBatchRunning(true);
@@ -148,16 +155,37 @@ export default function CutoutScreen() {
       await processItem(it);
     }
     setBatchRunning(false);
-    // Обновить холст, если выбранный только что обработан.
-    if (selId) showItem(selId);
-  }, [items, processItem, selId, showItem]);
+  }, [items, processItem]);
 
-  // ── Инструменты рисования ──
-  const stamp = useCallback(
-    (x: number, y: number) => {
-      const c = canvasRef.current;
-      const ctx = c?.getContext('2d');
-      if (!c || !ctx) return;
+  // При выборе / завершении обработки — показать вырез и подгрузить его параметры.
+  useEffect(() => {
+    if (sel && sel.status === 'done' && baseMap.current.has(sel.id)) {
+      const p = paramMap.current.get(sel.id) || DEF_PARAMS;
+      setUi(p);
+      composite(sel.id);
+      const base = baseMap.current.get(sel.id)!;
+      setZoom(fitZoom(base.width, base.height));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selId, sel?.status]);
+
+  // Слайдеры растушёвки/обводки — живое обновление.
+  const setParam = (patchP: Partial<Params>) => {
+    if (!selId) return;
+    const cur = paramMap.current.get(selId) || DEF_PARAMS;
+    const np = { ...cur, ...patchP };
+    paramMap.current.set(selId, np);
+    setUi(np);
+    composite(selId, patchP);
+  };
+
+  // ── Кисти ──
+  const stamp = useCallback((x: number, y: number) => {
+    const c = canvasRef.current;
+    const base = selId ? baseMap.current.get(selId) : null;
+    if (!c || !base) return;
+    // Рисуем и в base (истина), и в видимый холст (мгновенная отдача).
+    for (const ctx of [base.getContext('2d')!, c.getContext('2d')!]) {
       ctx.save();
       ctx.beginPath();
       ctx.arc(x, y, brush, 0, Math.PI * 2);
@@ -170,20 +198,16 @@ export default function CutoutScreen() {
         ctx.clip();
         ctx.globalCompositeOperation = 'source-over';
         const o = selId ? origMap.current.get(selId) : null;
-        if (o) ctx.drawImage(o, 0, 0, c.width, c.height);
+        if (o) ctx.drawImage(o, 0, 0, base.width, base.height);
       }
       ctx.restore();
-    },
-    [brush, tool, selId],
-  );
+    }
+  }, [brush, tool, selId]);
 
   const toImg = (e: React.PointerEvent) => {
     const c = canvasRef.current!;
     const r = c.getBoundingClientRect();
-    return {
-      x: ((e.clientX - r.left) / r.width) * c.width,
-      y: ((e.clientY - r.top) / r.height) * c.height,
-    };
+    return { x: ((e.clientX - r.left) / r.width) * c.width, y: ((e.clientY - r.top) / r.height) * c.height };
   };
   const onDown = (e: React.PointerEvent) => {
     if (sel?.status !== 'done') return;
@@ -199,8 +223,7 @@ export default function CutoutScreen() {
     const p = toImg(e);
     const last = lastRef.current;
     if (last) {
-      const dx = p.x - last.x;
-      const dy = p.y - last.y;
+      const dx = p.x - last.x, dy = p.y - last.y;
       const dist = Math.hypot(dx, dy);
       const step = Math.max(1, brush / 3);
       for (let d = step; d < dist; d += step) stamp(last.x + (dx * d) / dist, last.y + (dy * d) / dist);
@@ -209,63 +232,21 @@ export default function CutoutScreen() {
     lastRef.current = p;
   };
   const onUp = () => {
-    if (paintingRef.current) syncToItem();
+    if (paintingRef.current) composite(selId); // пересобрать с растушёвкой/обводкой
     paintingRef.current = false;
     lastRef.current = null;
   };
 
-  const applyFeather = useCallback(() => {
-    const c = canvasRef.current;
-    if (!c || feather <= 0) return;
-    const ctx = c.getContext('2d')!;
-    const snap = document.createElement('canvas');
-    snap.width = c.width;
-    snap.height = c.height;
-    snap.getContext('2d')!.drawImage(c, 0, 0);
-    ctx.clearRect(0, 0, c.width, c.height);
-    ctx.filter = `blur(${feather}px)`;
-    ctx.drawImage(snap, 0, 0);
-    ctx.filter = 'none';
-    syncToItem();
-  }, [feather, syncToItem]);
-
-  const applyOutline = useCallback(() => {
-    const c = canvasRef.current;
-    if (!c || outlineW <= 0) return;
-    const w = c.width;
-    const h = c.height;
-    const ctx = c.getContext('2d')!;
-    const top = document.createElement('canvas');
-    top.width = w;
-    top.height = h;
-    top.getContext('2d')!.drawImage(c, 0, 0);
-    const sil = document.createElement('canvas');
-    sil.width = w;
-    sil.height = h;
-    const sctx = sil.getContext('2d')!;
-    sctx.drawImage(c, 0, 0);
-    sctx.globalCompositeOperation = 'source-in';
-    sctx.fillStyle = outlineColor;
-    sctx.fillRect(0, 0, w, h);
-    ctx.clearRect(0, 0, w, h);
-    const steps = 24;
-    for (let i = 0; i < steps; i++) {
-      const a = (i / steps) * Math.PI * 2;
-      ctx.drawImage(sil, Math.cos(a) * outlineW, Math.sin(a) * outlineW);
-    }
-    ctx.drawImage(top, 0, 0);
-    syncToItem();
-  }, [outlineW, outlineColor, syncToItem]);
-
   const downloadOne = useCallback((item: Item) => {
-    const res = resMap.current.get(item.id);
-    if (!res) return;
-    res.toBlob((blob) => {
+    const base = baseMap.current.get(item.id);
+    if (!base) return;
+    const out = document.createElement('canvas');
+    renderInto(out, base, paramMap.current.get(item.id) || DEF_PARAMS);
+    out.toBlob((blob) => {
       if (!blob) return;
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob);
-      const base = item.name.replace(/\.[^.]+$/, '') || 'cutout';
-      a.download = `${base}-no-bg.png`;
+      a.download = `${item.name.replace(/\.[^.]+$/, '') || 'cutout'}-no-bg.png`;
       a.click();
     }, 'image/png');
   }, []);
@@ -279,12 +260,10 @@ export default function CutoutScreen() {
   }, [items, downloadOne]);
 
   const removeItem = (id: string) => {
-    resMap.current.delete(id);
+    baseMap.current.delete(id);
     origMap.current.delete(id);
-    if (selId === id) {
-      const remaining = items.filter((i) => i.id !== id);
-      setSelId(remaining[0]?.id ?? null);
-    }
+    paramMap.current.delete(id);
+    if (selId === id) setSelId(items.filter((i) => i.id !== id)[0]?.id ?? null);
     setItems((arr) => arr.filter((i) => i.id !== id));
   };
 
@@ -309,11 +288,10 @@ export default function CutoutScreen() {
       <div style={{ flexShrink: 0 }}>
         <h1 style={{ fontSize: 22, fontWeight: 700, color: 'var(--text-primary)' }}>Удаление фона</h1>
         <p style={{ fontSize: 12.5, color: 'var(--text-secondary)', marginTop: 3 }}>
-          Пакетно: добавьте изображения, удалите фон у всех, затем правьте каждое отдельно. ИИ работает локально.
+          Пакетно: добавьте изображения, удалите фон у всех, правьте каждое отдельно. Растушёвка и обводка — вживую.
         </p>
       </div>
 
-      {/* Верхняя панель пакета */}
       <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', flexShrink: 0 }}>
         <button onClick={() => inputRef.current?.click()} style={btn(true, false)}>+ Добавить изображения</button>
         <button onClick={processAll} disabled={batchRunning || pendingCount === 0} style={btn(false, batchRunning || pendingCount === 0)}>
@@ -324,31 +302,6 @@ export default function CutoutScreen() {
           onChange={(e) => { if (e.target.files) addFiles(e.target.files); e.target.value = ''; }} />
       </div>
 
-      {/* Лента миниатюр */}
-      {items.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, overflowX: 'auto', flexShrink: 0, paddingBottom: 4 }}>
-          {items.map((it) => (
-            <div key={it.id} onClick={() => setSelId(it.id)}
-              style={{
-                position: 'relative', width: 74, height: 74, borderRadius: 8, flexShrink: 0, cursor: 'pointer',
-                border: `2px solid ${selId === it.id ? 'var(--accent, #c8ff00)' : 'transparent'}`,
-                background: CHECKER, overflow: 'hidden',
-              }}>
-              <img src={it.srcUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: it.status === 'done' ? 1 : 0.65 }} />
-              <span style={{ position: 'absolute', top: 2, left: 2, fontSize: 11 }}>
-                {it.status === 'done' ? '✅' : it.status === 'processing' ? '⏳' : it.status === 'error' ? '⚠️' : ''}
-              </span>
-              {it.status === 'processing' && (
-                <span style={{ position: 'absolute', bottom: 2, left: 4, fontSize: 9, color: '#fff', textShadow: '0 0 3px #000' }}>{it.progress}%</span>
-              )}
-              <button onClick={(e) => { e.stopPropagation(); removeItem(it.id); }}
-                style={{ position: 'absolute', top: 0, right: 0, width: 18, height: 18, border: 'none', background: 'rgba(0,0,0,.55)', color: '#fff', cursor: 'pointer', fontSize: 11, lineHeight: '18px', padding: 0 }}>×</button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Панель редактирования выбранного */}
       {sel?.status === 'done' && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', flexShrink: 0 }}>
           <div style={{ display: 'flex', gap: 4, background: 'var(--bg-secondary,#161616)', padding: 3, borderRadius: 9 }}>
@@ -357,41 +310,59 @@ export default function CutoutScreen() {
           </div>
           <label style={lbl}>Кисть<input type="range" min={4} max={200} value={brush} onChange={(e) => setBrush(+e.target.value)} /><span style={num}>{brush}</span></label>
           <label style={lbl}>Зум<input type="range" min={0.1} max={6} step={0.05} value={zoom} onChange={(e) => setZoom(+e.target.value)} /><span style={num}>{Math.round(zoom * 100)}%</span></label>
-          <label style={lbl}>Растуш.<input type="range" min={0} max={12} value={feather} onChange={(e) => setFeather(+e.target.value)} /><span style={num}>{feather}</span></label>
-          <button onClick={applyFeather} style={btn(false, false)}>Растушевать</button>
-          <label style={lbl}>Обводка<input type="range" min={0} max={40} value={outlineW} onChange={(e) => setOutlineW(+e.target.value)} /><span style={num}>{outlineW}</span>
-            <input type="color" value={outlineColor} onChange={(e) => setOutlineColor(e.target.value)} style={{ width: 26, height: 22, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} /></label>
-          <button onClick={applyOutline} style={btn(false, false)}>Обвести</button>
-          <button onClick={() => sel && processItem(sel).then(() => showItem(sel.id))} style={btn(false, false)}>Заново ИИ</button>
+          <label style={lbl}>Растушёвка<input type="range" min={0} max={12} step={0.5} value={ui.feather} onChange={(e) => setParam({ feather: +e.target.value })} /><span style={num}>{ui.feather}</span></label>
+          <label style={lbl}>Обводка<input type="range" min={0} max={40} value={ui.outlineW} onChange={(e) => setParam({ outlineW: +e.target.value })} /><span style={num}>{ui.outlineW}</span>
+            <input type="color" value={ui.outlineColor} onChange={(e) => setParam({ outlineColor: e.target.value })} style={{ width: 26, height: 22, padding: 0, border: 'none', background: 'none', cursor: 'pointer' }} /></label>
+          <button onClick={() => sel && processItem(sel)} style={btn(false, false)}>Заново ИИ</button>
           <button onClick={() => sel && downloadOne(sel)} style={btn(true, false)}>Скачать PNG</button>
         </div>
       )}
 
-      {/* Холст */}
-      <div ref={wrapRef} style={{ flex: 1, minHeight: 0, borderRadius: 12, border: '1px solid var(--border,#2a2a2a)', overflow: 'auto', background: CHECKER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {items.length === 0 && (
-          <div style={{ color: 'var(--text-muted,#777)', fontSize: 14 }}>Добавьте изображения, чтобы начать</div>
-        )}
-        <canvas
-          ref={canvasRef}
-          onPointerDown={onDown}
-          onPointerMove={onMove}
-          onPointerUp={onUp}
-          onPointerLeave={() => { onUp(); setCursor(null); }}
-          onPointerEnter={(e) => setCursor({ x: e.clientX, y: e.clientY })}
-          style={{
-            display: sel?.status === 'done' ? 'block' : 'none',
-            width: canvasRef.current ? canvasRef.current.width * zoom : undefined,
-            height: canvasRef.current ? canvasRef.current.height * zoom : undefined,
-            cursor: 'none', imageRendering: zoom > 1.5 ? 'pixelated' : 'auto', touchAction: 'none', flexShrink: 0,
-          }}
-        />
-        {sel && sel.status !== 'done' && items.length > 0 && (
-          <div style={{ textAlign: 'center' }}>
-            <img src={sel.srcUrl} alt="" style={{ maxWidth: '80%', maxHeight: '70%', objectFit: 'contain', opacity: 0.8 }} />
-            <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 10 }}>
-              {sel.status === 'processing' ? sel.progressLabel || 'Обработка…' : sel.status === 'error' ? (sel.error || 'Ошибка') : 'Нажмите «Удалить фон у всех» или обработайте'}
+      {/* Основная область: холст слева + лента миниатюр справа */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', gap: 10 }}>
+        <div ref={wrapRef} style={{ flex: 1, minWidth: 0, borderRadius: 12, border: '1px solid var(--border,#2a2a2a)', overflow: 'auto', background: CHECKER, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          {items.length === 0 && <div style={{ color: 'var(--text-muted,#777)', fontSize: 14 }}>Добавьте изображения, чтобы начать</div>}
+          <canvas
+            ref={canvasRef}
+            onPointerDown={onDown}
+            onPointerMove={onMove}
+            onPointerUp={onUp}
+            onPointerLeave={() => { onUp(); setCursor(null); }}
+            onPointerEnter={(e) => setCursor({ x: e.clientX, y: e.clientY })}
+            style={{
+              display: sel?.status === 'done' ? 'block' : 'none',
+              width: canvasRef.current ? canvasRef.current.width * zoom : undefined,
+              height: canvasRef.current ? canvasRef.current.height * zoom : undefined,
+              cursor: 'none', imageRendering: zoom > 1.5 ? 'pixelated' : 'auto', touchAction: 'none', flexShrink: 0,
+            }}
+          />
+          {sel && sel.status !== 'done' && items.length > 0 && (
+            <div style={{ textAlign: 'center' }}>
+              <img src={sel.srcUrl} alt="" style={{ maxWidth: '80%', maxHeight: '70%', objectFit: 'contain', opacity: 0.8 }} />
+              <div style={{ color: 'var(--text-secondary)', fontSize: 13, marginTop: 10 }}>
+                {sel.status === 'processing' ? sel.progressLabel || 'Обработка…' : sel.status === 'error' ? (sel.error || 'Ошибка') : 'Нажмите «Удалить фон у всех»'}
+              </div>
             </div>
+          )}
+        </div>
+
+        {items.length > 0 && (
+          <div style={{ width: 100, flexShrink: 0, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {items.map((it) => (
+              <div key={it.id} onClick={() => setSelId(it.id)}
+                style={{
+                  position: 'relative', width: 92, height: 92, borderRadius: 8, flexShrink: 0, cursor: 'pointer',
+                  border: `2px solid ${selId === it.id ? 'var(--accent, #c8ff00)' : 'transparent'}`, background: CHECKER, overflow: 'hidden',
+                }}>
+                <img src={it.srcUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', opacity: it.status === 'done' ? 1 : 0.6 }} />
+                <span style={{ position: 'absolute', top: 2, left: 3, fontSize: 12 }}>
+                  {it.status === 'done' ? '✅' : it.status === 'processing' ? '⏳' : it.status === 'error' ? '⚠️' : ''}
+                </span>
+                {it.status === 'processing' && <span style={{ position: 'absolute', bottom: 2, left: 4, fontSize: 10, color: '#fff', textShadow: '0 0 3px #000' }}>{it.progress}%</span>}
+                <button onClick={(e) => { e.stopPropagation(); removeItem(it.id); }}
+                  style={{ position: 'absolute', top: 0, right: 0, width: 18, height: 18, border: 'none', background: 'rgba(0,0,0,.55)', color: '#fff', cursor: 'pointer', fontSize: 11, lineHeight: '18px', padding: 0 }}>×</button>
+              </div>
+            ))}
           </div>
         )}
       </div>
@@ -400,8 +371,7 @@ export default function CutoutScreen() {
         <div style={{
           position: 'fixed', left: cursor.x, top: cursor.y, width: cursorPx * 2, height: cursorPx * 2,
           marginLeft: -cursorPx, marginTop: -cursorPx, borderRadius: '50%',
-          border: `1px solid ${tool === 'erase' ? '#ff5c5c' : '#c8ff00'}`,
-          boxShadow: '0 0 0 1px rgba(0,0,0,.6)', pointerEvents: 'none', zIndex: 60,
+          border: `1px solid ${tool === 'erase' ? '#ff5c5c' : '#c8ff00'}`, boxShadow: '0 0 0 1px rgba(0,0,0,.6)', pointerEvents: 'none', zIndex: 60,
         }} />
       )}
     </div>
@@ -418,7 +388,7 @@ function ToolBtn({ active, onClick, children }: { active: boolean; onClick: () =
 }
 
 const lbl: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--text-secondary)' };
-const num: React.CSSProperties = { width: 40, textAlign: 'right' };
+const num: React.CSSProperties = { width: 36, textAlign: 'right' };
 
 function btn(primary: boolean, disabled: boolean): React.CSSProperties {
   return {
