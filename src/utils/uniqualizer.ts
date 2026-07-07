@@ -75,6 +75,12 @@ export function buildUniqualizerFilters(
   const af: string[] = [];
   if (!s.enabled) return { vf, af };
 
+  // Реверс: проиграть видео и звук задом наперёд (первым в цепочке).
+  if (s.reverse) {
+    vf.push('reverse');
+    af.push('areverse');
+  }
+
   // Зеркальный флип (§4) — двойной hflip: визуально идентично, иной fingerprint.
   if (s.mirrorFlip) {
     vf.push('hflip', 'hflip');

@@ -10,6 +10,7 @@ const OPTIONS: { key: CheckKey; label: string; desc: string }[] = [
   { key: 'speed', label: 'Скорость', desc: 'Изменить скорость на ±0.5–2%' },
   { key: 'cropEdges', label: 'Обрезка краёв', desc: 'Обрезать 1–3px по краям и растянуть обратно' },
   { key: 'audioShift', label: 'Аудио сдвиг', desc: 'Сдвинуть аудиодорожку на 10–50ms' },
+  { key: 'reverse', label: 'Реверс видео', desc: 'Проиграть видео и звук задом наперёд' },
 ];
 
 const COUNTS = [1, 10, 20, 40, 50, 100];
