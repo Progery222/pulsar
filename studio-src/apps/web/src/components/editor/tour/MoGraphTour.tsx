@@ -193,7 +193,7 @@ export const MoGraphTour: React.FC = () => {
             <div className="flex-1">
               <h3 className="text-white font-semibold text-sm">{step.title}</h3>
               <p className="text-white/60 text-[10px]">
-                Motion Graphics Tour • Step {currentStep + 1} of {totalSteps}
+                Обучение «Моушн-графика» • Шаг {currentStep + 1} из {totalSteps}
               </p>
             </div>
             <button
@@ -213,7 +213,7 @@ export const MoGraphTour: React.FC = () => {
               <div className="bg-purple-500/10 rounded-lg p-3 mb-4">
                 <div className="flex items-center gap-2 mb-2">
                   <Lightbulb size={14} className="text-purple-400" />
-                  <span className="text-purple-400 text-xs font-medium">Pro Tips</span>
+                  <span className="text-purple-400 text-xs font-medium">Советы</span>
                 </div>
                 <ul className="space-y-1.5">
                   {step.tips.map((tip, i) => (
@@ -250,20 +250,20 @@ export const MoGraphTour: React.FC = () => {
                 className="flex items-center gap-1 px-3 py-2 text-xs rounded-lg bg-background-tertiary text-text-secondary hover:text-text-primary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 <ChevronLeft size={14} />
-                Back
+                Назад
               </button>
               <div className="flex-1" />
               <button
                 onClick={skip}
                 className="px-3 py-2 text-xs text-text-muted hover:text-text-secondary transition-colors"
               >
-                Skip Tour
+                Пропустить
               </button>
               <button
                 onClick={next}
                 className="flex items-center gap-1 px-4 py-2 text-xs rounded-lg bg-gradient-to-r from-purple-600 to-pink-600 text-white font-medium hover:from-purple-500 hover:to-pink-500 transition-all"
               >
-                {isLastStep ? "Get Started" : "Next"}
+                {isLastStep ? "Начать" : "Далее"}
                 {!isLastStep && <ChevronRight size={14} />}
               </button>
             </div>

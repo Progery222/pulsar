@@ -220,21 +220,21 @@ export const TourPopover: React.FC<TourPopoverProps> = ({
             className="flex items-center gap-1 px-3 py-1.5 text-xs text-text-secondary hover:text-text-primary disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <ChevronLeft size={14} />
-            Back
+            Назад
           </button>
 
           <button
             onClick={onSkip}
             className="px-3 py-1.5 text-xs text-text-muted hover:text-text-secondary transition-colors"
           >
-            Skip Tour
+            Пропустить
           </button>
 
           <button
             onClick={onNext}
             className="flex items-center gap-1 px-4 py-1.5 bg-primary text-white rounded-lg text-xs font-medium hover:bg-primary/80 transition-colors"
           >
-            {isLastStep ? "Get Started" : "Next"}
+            {isLastStep ? "Начать" : "Далее"}
             {!isLastStep && <ChevronRight size={14} />}
           </button>
         </div>
