@@ -105,41 +105,98 @@ function runBeat(audioPath: string): Promise<unknown> {
   });
 }
 
-// Прогрев librosa в фоне: импорт модулей (в RAM-кэш ОС) + разовая JIT-компиляция
-// numba (кэшируется на диск и переиспользуется даже холодными процессами). Убирает
-// основную часть ~16с холодного старта при ПЕРВОМ реальном анализе.
-let warmed = false;
-function warmUpBeatDetection(): void {
-  if (warmed) return;
-  warmed = true;
+// ── Постоянный Python-воркер librosa ──────────────────────────────────────────
+// Импортирует librosa ОДИН раз и живёт, обрабатывая запросы через stdin/stdout.
+// Убирает ~10с повторного импорта numba/scipy на каждый анализ.
+type WorkerMsg = { id?: number; ready?: boolean; beat_times?: unknown[]; error?: string };
+let worker: ReturnType<typeof spawn> | null = null;
+let workerReady = false;
+let workerBuf = '';
+let reqSeq = 0;
+const pending = new Map<number, { resolve: (v: WorkerMsg) => void; timer: NodeJS.Timeout }>();
+
+function startWorker(): void {
+  if (worker) return;
   const ffDir = ffmpegDir();
   const env = ffDir ? { ...process.env, PATH: `${ffDir}${path.delimiter}${process.env.PATH ?? ''}` } : process.env;
   const candidates = pythonCandidates();
-  const code =
-    'import numpy as np, librosa; y=np.random.default_rng(0).standard_normal(44100).astype("float32"); librosa.beat.beat_track(y=y, sr=22050)';
   let idx = 0;
   const tryNext = () => {
     if (idx >= candidates.length) return;
     const [cmd, ...pre] = candidates[idx++];
+    let child: ReturnType<typeof spawn>;
     try {
-      const child = spawn(cmd, [...pre, '-c', code], { env, stdio: 'ignore' });
-      child.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'ENOENT') tryNext();
-      });
+      child = spawn(cmd, [...pre, scriptPath(), '--server'], { env });
     } catch {
-      /* прогрев не критичен */
+      tryNext();
+      return;
     }
+    child.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'ENOENT') { worker = null; tryNext(); }
+    });
+    child.stdout?.on('data', (c) => {
+      workerBuf += c.toString();
+      let nl: number;
+      while ((nl = workerBuf.indexOf('\n')) >= 0) {
+        const line = workerBuf.slice(0, nl).trim();
+        workerBuf = workerBuf.slice(nl + 1);
+        if (!line) continue;
+        let msg: WorkerMsg;
+        try { msg = JSON.parse(line); } catch { continue; }
+        if (msg.ready) { workerReady = true; continue; }
+        if (typeof msg.id === 'number') {
+          const p = pending.get(msg.id);
+          if (p) { clearTimeout(p.timer); pending.delete(msg.id); p.resolve(msg); }
+        }
+      }
+    });
+    const cleanup = () => {
+      worker = null; workerReady = false; workerBuf = '';
+      for (const [, p] of pending) { clearTimeout(p.timer); p.resolve({ error: 'worker gone' }); }
+      pending.clear();
+    };
+    child.on('close', cleanup);
+    worker = child;
   };
   tryNext();
 }
 
+function analyzeViaWorker(audioPath: string): Promise<WorkerMsg> | null {
+  if (!worker || !workerReady || !worker.stdin) return null;
+  const id = ++reqSeq;
+  return new Promise<WorkerMsg>((resolve) => {
+    const timer = setTimeout(() => { pending.delete(id); resolve({ error: 'worker timeout' }); }, 45000);
+    pending.set(id, { resolve, timer });
+    try {
+      worker!.stdin!.write(JSON.stringify({ id, path: audioPath }) + '\n');
+    } catch {
+      clearTimeout(timer);
+      pending.delete(id);
+      resolve({ error: 'worker write failed' });
+    }
+  });
+}
+
+// Анализ: сначала через воркер, при неудаче — одноразовый запуск.
+async function doAnalyze(resolved: string): Promise<unknown> {
+  const viaWorker = analyzeViaWorker(resolved);
+  if (viaWorker) {
+    const r = await viaWorker;
+    if (r && !r.error && Array.isArray(r.beat_times) && r.beat_times.length) return r;
+    startWorker(); // воркер сбоил — попробуем поднять к следующему разу
+  } else {
+    startWorker();
+  }
+  return runBeat(resolved);
+}
+
 // Дедуп одновременных запросов: предзагрузка (при выборе трека) и основной
-// анализ (по «Далее») для одного файла разделяют один процесс, а не спавнят два.
+// анализ (по «Далее») для одного файла разделяют один результат.
 const inflight = new Map<string, Promise<unknown>>();
 
 export function registerAudioHandlers() {
-  // Прогрев в фоне через 3с после старта — не конкурирует с запуском окна.
-  setTimeout(warmUpBeatDetection, 3000);
+  // Поднимаем воркер librosa через 2с после старта (импорт идёт в фоне).
+  setTimeout(startWorker, 2000);
 
   ipcMain.handle('analyze-audio', async (_event, audioPath: string) => {
     const resolved = resolveAudioPath(audioPath);
@@ -151,12 +208,12 @@ export function registerAudioHandlers() {
       if (cache[key]) return cache[key];
     }
 
-    // Уже идёт анализ этого файла — дождаться того же процесса.
+    // Уже идёт анализ этого файла — дождаться того же результата.
     const flightKey = key ?? resolved;
     const existing = inflight.get(flightKey);
     if (existing) return existing;
 
-    const p = runBeat(resolved).finally(() => inflight.delete(flightKey));
+    const p = doAnalyze(resolved).finally(() => inflight.delete(flightKey));
     inflight.set(flightKey, p);
     const result = await p;
 

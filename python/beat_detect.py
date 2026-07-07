@@ -8,7 +8,8 @@ import numpy as np
 def analyze_audio(audio_path):
     # sr=22050 (стандарт librosa для beat tracking): заметно быстрее загрузки на
     # нативной частоте и стабильнее по детекту, чем sr=None.
-    y, sr = librosa.load(audio_path, sr=22050, mono=True)
+    # res_type=kaiser_fast — быстрый ресемплинг (для бит-детекта качества хватает).
+    y, sr = librosa.load(audio_path, sr=22050, mono=True, res_type="kaiser_fast")
     duration = float(librosa.get_duration(y=y, sr=sr))
 
     # librosa>=0.10 возвращает tempo как np.ndarray — приводим к скаляру.
@@ -38,9 +39,38 @@ def analyze_audio(audio_path):
     }
 
 
-if __name__ == "__main__":
+def _serve():
+    # Постоянный воркер: импорт librosa уже выполнен, разово прогреваем numba-JIT,
+    # затем в цикле читаем построчно запросы {"id":..,"path":..} из stdin и
+    # отвечаем строкой JSON в stdout. Убирает ~10с повторного импорта на каждый анализ.
     try:
-        result = analyze_audio(sys.argv[1])
-        print(json.dumps(result))
-    except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        librosa.beat.beat_track(y=np.zeros(22050, dtype="float32"), sr=22050)
+    except Exception:
+        pass
+    sys.stdout.write(json.dumps({"ready": True}) + "\n")
+    sys.stdout.flush()
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        rid = None
+        try:
+            req = json.loads(line)
+            rid = req.get("id")
+            res = analyze_audio(req["path"])
+        except Exception as e:
+            res = {"error": str(e)}
+        res["id"] = rid
+        sys.stdout.write(json.dumps(res) + "\n")
+        sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "--server":
+        _serve()
+    else:
+        try:
+            result = analyze_audio(sys.argv[1])
+            print(json.dumps(result))
+        except Exception as e:
+            print(json.dumps({"error": str(e)}))

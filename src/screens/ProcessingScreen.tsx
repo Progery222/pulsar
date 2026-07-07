@@ -37,7 +37,6 @@ export default function ProcessingScreen() {
         : fallbackBeatData(s.duration && s.duration > 0 ? s.duration : 30);
       if (cancelled) return;
       setProgress(40);
-      await sleep(250);
 
       // 2. Нарезка клипов
       setStepIdx(1);
@@ -51,7 +50,6 @@ export default function ProcessingScreen() {
       );
       if (cancelled) return;
       setProgress(70);
-      await sleep(250);
 
       // 3. Расстановка эффектов
       setStepIdx(2);
@@ -65,7 +63,7 @@ export default function ProcessingScreen() {
       s.setGeneratedClips(withEffects);
       s.setIsProcessing(false);
 
-      await sleep(500);
+      await sleep(300);
       if (!cancelled) s.setCurrentScreen('editor');
     }
 
