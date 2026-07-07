@@ -105,7 +105,38 @@ function runBeat(audioPath: string): Promise<unknown> {
   });
 }
 
+// Прогрев librosa в фоне: импорт модулей (в RAM-кэш ОС) + разовая JIT-компиляция
+// numba (кэшируется на диск и переиспользуется даже холодными процессами). Убирает
+// основную часть ~16с холодного старта при ПЕРВОМ реальном анализе.
+let warmed = false;
+function warmUpBeatDetection(): void {
+  if (warmed) return;
+  warmed = true;
+  const ffDir = ffmpegDir();
+  const env = ffDir ? { ...process.env, PATH: `${ffDir}${path.delimiter}${process.env.PATH ?? ''}` } : process.env;
+  const candidates = pythonCandidates();
+  const code =
+    'import numpy as np, librosa; y=np.random.default_rng(0).standard_normal(44100).astype("float32"); librosa.beat.beat_track(y=y, sr=22050)';
+  let idx = 0;
+  const tryNext = () => {
+    if (idx >= candidates.length) return;
+    const [cmd, ...pre] = candidates[idx++];
+    try {
+      const child = spawn(cmd, [...pre, '-c', code], { env, stdio: 'ignore' });
+      child.on('error', (err: NodeJS.ErrnoException) => {
+        if (err.code === 'ENOENT') tryNext();
+      });
+    } catch {
+      /* прогрев не критичен */
+    }
+  };
+  tryNext();
+}
+
 export function registerAudioHandlers() {
+  // Прогрев в фоне через 3с после старта — не конкурирует с запуском окна.
+  setTimeout(warmUpBeatDetection, 3000);
+
   ipcMain.handle('analyze-audio', async (_event, audioPath: string) => {
     const resolved = resolveAudioPath(audioPath);
     const key = fileKey(resolved);
