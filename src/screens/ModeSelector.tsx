@@ -185,6 +185,20 @@ export default function ModeSelector() {
             </svg>
           }
         />
+        <ModeCard
+          index={7}
+          title="Удаление фона"
+          description="ИИ-вырезание фона у изображений (локально), кисть-доводка и экспорт PNG"
+          onClick={() => setAppMode('cutout')}
+          icon={
+            <svg {...I(38)}>
+              <path d="M3 3h7v7H3z" />
+              <path d="M14 14h7v7h-7z" />
+              <path d="M14 3l7 7" />
+              <path d="M3 14l7 7" />
+            </svg>
+          }
+        />
       </div>
 
       {/* Вспомогательные разделы: очередь и история — мини-окна; настройки — экран. */}

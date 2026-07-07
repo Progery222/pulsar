@@ -14,6 +14,7 @@ import ProcessingScreen from './screens/ProcessingScreen';
 import EditorScreen from './screens/EditorScreen';
 import ProEditor from './pro/ProEditor';
 import StudioHost from './studio/StudioHost';
+import CutoutScreen from './screens/CutoutScreen';
 import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
@@ -240,6 +241,19 @@ function App() {
       <>
         <div className="screen-fade">
           <DownloadApp />
+        </div>
+        <TopBar />
+        <Overlays />
+      </>
+    );
+  }
+
+  // Удаление фона (ИИ, локально).
+  if (appMode === 'cutout') {
+    return (
+      <>
+        <div className="screen-fade" style={{ height: '100vh' }}>
+          <CutoutScreen />
         </div>
         <TopBar />
         <Overlays />
