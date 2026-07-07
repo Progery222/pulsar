@@ -36,6 +36,30 @@ export default function VideoPreview({
   const ratio = RATIO_NUM[format];
   const title = useProjectStore((s) => s.title);
 
+  // Грузим каждый источник в память как blob (fetch по media://) и отдаём
+  // <video> через blob:-URL. Надёжно (как в Студии): без протокол/range/safety
+  // проблем Chromium-медиапайплайна с кастомной схемой.
+  const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    const created: string[] = [];
+    for (const src of sources) {
+      fetch(mediaUrl(src))
+        .then((r) => r.blob())
+        .then((b) => {
+          if (!alive) return;
+          const url = URL.createObjectURL(b);
+          created.push(url);
+          setBlobUrls((prev) => (prev[src] ? prev : { ...prev, [src]: url }));
+        })
+        .catch((e) => console.error('[VideoPreview] fetch blob failed', src, e));
+    }
+    return () => {
+      alive = false;
+      created.forEach((u) => URL.revokeObjectURL(u));
+    };
+  }, [sources]);
+
   // Best-fit прямоугольник заданного соотношения внутри контейнера.
   useEffect(() => {
     const el = containerRef.current;
@@ -75,12 +99,12 @@ export default function VideoPreview({
                 if (el) videosRef.current.set(src, el);
                 else videosRef.current.delete(src);
               }}
-              src={mediaUrl(src)}
+              src={blobUrls[src] || undefined}
               playsInline
               preload="auto"
               onError={(e) => {
                 const v = e.currentTarget;
-                console.error('[VideoPreview] не загрузилось видео', src, 'код:', v.error?.code, v.error?.message);
+                if (v.getAttribute('src')) console.error('[VideoPreview] не загрузилось видео', src, 'код:', v.error?.code, v.error?.message);
               }}
               className="absolute inset-0 h-full w-full object-contain"
               style={{

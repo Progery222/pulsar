@@ -66,11 +66,6 @@ protocol.registerSchemesAsPrivileged([
   {
     scheme: 'media',
     privileges: {
-      // standard:true обязателен, чтобы <video> (медиа-пайплайн Chromium с
-      // range-запросами) грузил файлы по схеме — иначе <img> работает, а
-      // <video> нет (запрос вообще не доходит до обработчика).
-      standard: true,
-      secure: true,
       supportFetchAPI: true,
       stream: true,
       bypassCSP: true,
@@ -128,14 +123,7 @@ const MIME: Record<string, string> = {
 app.whenReady().then(() => {
   // media:///<encoded-abs-path> -> потоковая отдача локального файла с поддержкой Range.
   protocol.handle('media', async (request) => {
-    // При standard-схеме путь может парситься как host+pathname — берём оба.
-    let encoded: string;
-    try {
-      const u = new URL(request.url);
-      encoded = (u.host + u.pathname).replace(/^\/+/, '');
-    } catch {
-      encoded = request.url.slice('media://'.length).replace(/^\/+/, '');
-    }
+    const encoded = request.url.slice('media://'.length).replace(/^\/+/, '');
     let filePath = decodeURIComponent(encoded);
     // Относительные пути (assets/music/...) резолвим от корня приложения/ресурсов.
     if (!path.isAbsolute(filePath)) {
