@@ -66,6 +66,11 @@ protocol.registerSchemesAsPrivileged([
   {
     scheme: 'media',
     privileges: {
+      // standard:true обязателен, чтобы <video> (медиа-пайплайн Chromium с
+      // range-запросами) грузил файлы по схеме — иначе <img> работает, а
+      // <video> нет (запрос вообще не доходит до обработчика).
+      standard: true,
+      secure: true,
       supportFetchAPI: true,
       stream: true,
       bypassCSP: true,
@@ -123,7 +128,14 @@ const MIME: Record<string, string> = {
 app.whenReady().then(() => {
   // media:///<encoded-abs-path> -> потоковая отдача локального файла с поддержкой Range.
   protocol.handle('media', async (request) => {
-    const encoded = request.url.slice('media://'.length).replace(/^\/+/, '');
+    // При standard-схеме путь может парситься как host+pathname — берём оба.
+    let encoded: string;
+    try {
+      const u = new URL(request.url);
+      encoded = (u.host + u.pathname).replace(/^\/+/, '');
+    } catch {
+      encoded = request.url.slice('media://'.length).replace(/^\/+/, '');
+    }
     let filePath = decodeURIComponent(encoded);
     // Относительные пути (assets/music/...) резолвим от корня приложения/ресурсов.
     if (!path.isAbsolute(filePath)) {
@@ -135,54 +147,48 @@ app.whenReady().then(() => {
     try {
       const stat = await fs.promises.stat(filePath);
       const total = stat.size;
+      console.log('[media] req', request.headers.get('Range') || 'no-range', '->', filePath, total, 'bytes');
       const type = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
       const rangeHeader = request.headers.get('Range');
       // Ограничение размера чанка: для открытых range (bytes=0-) не тянем весь
       // файл в память — отдаём кусок, <video> дозапросит остальное.
       const MAX_CHUNK = 4 * 1024 * 1024;
 
+      let start = 0;
+      let end = total - 1;
+      let partial = false;
+      if (rangeHeader) {
+        const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+        start = match ? parseInt(match[1], 10) : 0;
+        const openEnded = !(match && match[2]);
+        end = openEnded ? total - 1 : parseInt(match![2], 10);
+        if (!Number.isFinite(start) || start < 0) start = 0;
+        if (!Number.isFinite(end) || end >= total) end = total - 1;
+        if (end < start) end = start;
+        if (openEnded && end - start + 1 > MAX_CHUNK) end = start + MAX_CHUNK - 1;
+        partial = true;
+      } else if (total > MAX_CHUNK) {
+        end = MAX_CHUNK - 1;
+        partial = true;
+      }
+      const len = end - start + 1;
+      const data = new Uint8Array(len);
       const fd = await fs.promises.open(filePath, 'r');
       try {
-        if (rangeHeader) {
-          const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-          let start = match ? parseInt(match[1], 10) : 0;
-          const openEnded = !(match && match[2]);
-          let end = openEnded ? total - 1 : parseInt(match![2], 10);
-          if (!Number.isFinite(start) || start < 0) start = 0;
-          if (!Number.isFinite(end) || end >= total) end = total - 1;
-          if (end < start) end = start;
-          if (openEnded && end - start + 1 > MAX_CHUNK) end = start + MAX_CHUNK - 1;
-          const len = end - start + 1;
-          const buf = Buffer.alloc(len);
-          await fd.read(buf, 0, len, start);
-          return new Response(buf, {
-            status: 206,
-            headers: {
-              'Content-Type': type,
-              'Content-Length': String(len),
-              'Content-Range': `bytes ${start}-${end}/${total}`,
-              'Accept-Ranges': 'bytes',
-            },
-          });
-        }
-
-        // Без Range: первый кусок как 206 (video сам дозапросит остальное).
-        const end = Math.min(total - 1, MAX_CHUNK - 1);
-        const len = end + 1;
-        const buf = Buffer.alloc(len);
-        await fd.read(buf, 0, len, 0);
-        return new Response(buf, {
-          status: total > len ? 206 : 200,
-          headers: {
-            'Content-Type': type,
-            'Content-Length': String(len),
-            ...(total > len ? { 'Content-Range': `bytes 0-${end}/${total}` } : {}),
-            'Accept-Ranges': 'bytes',
-          },
-        });
+        await fd.read(data, 0, len, start);
       } finally {
         await fd.close();
       }
+      console.log('[media]', partial ? 206 : 200, `${start}-${end}/${total}`, path.basename(filePath));
+      return new Response(data, {
+        status: partial ? 206 : 200,
+        headers: {
+          'Content-Type': type,
+          'Content-Length': String(len),
+          ...(partial ? { 'Content-Range': `bytes ${start}-${end}/${total}` } : {}),
+          'Accept-Ranges': 'bytes',
+        },
+      });
     } catch (err) {
       console.error('[media protocol] error', filePath, err);
       return new Response('Not found', { status: 404 });
