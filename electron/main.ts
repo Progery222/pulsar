@@ -2,7 +2,6 @@ import { app, BrowserWindow, protocol } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns';
-import { Readable } from 'node:stream';
 
 // Node 18 fetch (undici) без Happy Eyeballs падает «fetch failed», если хост
 // резолвится в IPv6, а IPv6 не работает. Глобально предпочитаем IPv4 для всех
@@ -138,37 +137,54 @@ app.whenReady().then(() => {
       const total = stat.size;
       const type = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
       const rangeHeader = request.headers.get('Range');
+      // Ограничение размера чанка: для открытых range (bytes=0-) не тянем весь
+      // файл в память — отдаём кусок, <video> дозапросит остальное.
+      const MAX_CHUNK = 4 * 1024 * 1024;
 
-      if (rangeHeader) {
-        const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-        let start = match ? parseInt(match[1], 10) : 0;
-        let end = match && match[2] ? parseInt(match[2], 10) : total - 1;
-        // Клампим кривой/великоватый Range, иначе неверный Content-Length.
-        if (!Number.isFinite(start) || start < 0) start = 0;
-        if (!Number.isFinite(end) || end >= total) end = total - 1;
-        if (end < start) end = start;
-        const stream = fs.createReadStream(filePath, { start, end });
-        return new Response(Readable.toWeb(stream) as ReadableStream, {
-          status: 206,
+      const fd = await fs.promises.open(filePath, 'r');
+      try {
+        if (rangeHeader) {
+          const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
+          let start = match ? parseInt(match[1], 10) : 0;
+          const openEnded = !(match && match[2]);
+          let end = openEnded ? total - 1 : parseInt(match![2], 10);
+          if (!Number.isFinite(start) || start < 0) start = 0;
+          if (!Number.isFinite(end) || end >= total) end = total - 1;
+          if (end < start) end = start;
+          if (openEnded && end - start + 1 > MAX_CHUNK) end = start + MAX_CHUNK - 1;
+          const len = end - start + 1;
+          const buf = Buffer.alloc(len);
+          await fd.read(buf, 0, len, start);
+          return new Response(buf, {
+            status: 206,
+            headers: {
+              'Content-Type': type,
+              'Content-Length': String(len),
+              'Content-Range': `bytes ${start}-${end}/${total}`,
+              'Accept-Ranges': 'bytes',
+            },
+          });
+        }
+
+        // Без Range: первый кусок как 206 (video сам дозапросит остальное).
+        const end = Math.min(total - 1, MAX_CHUNK - 1);
+        const len = end + 1;
+        const buf = Buffer.alloc(len);
+        await fd.read(buf, 0, len, 0);
+        return new Response(buf, {
+          status: total > len ? 206 : 200,
           headers: {
             'Content-Type': type,
-            'Content-Length': String(end - start + 1),
-            'Content-Range': `bytes ${start}-${end}/${total}`,
+            'Content-Length': String(len),
+            ...(total > len ? { 'Content-Range': `bytes 0-${end}/${total}` } : {}),
             'Accept-Ranges': 'bytes',
           },
         });
+      } finally {
+        await fd.close();
       }
-
-      const stream = fs.createReadStream(filePath);
-      return new Response(Readable.toWeb(stream) as ReadableStream, {
-        status: 200,
-        headers: {
-          'Content-Type': type,
-          'Content-Length': String(total),
-          'Accept-Ranges': 'bytes',
-        },
-      });
-    } catch {
+    } catch (err) {
+      console.error('[media protocol] error', filePath, err);
       return new Response('Not found', { status: 404 });
     }
   });
