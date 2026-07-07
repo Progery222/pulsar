@@ -247,18 +247,12 @@ export default function ModeSelector() {
             <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 22 }}>
               Выберите способ работы над роликом
             </p>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <ChooserCard
                 title="Быстрый"
                 sub="beat-sync"
                 description="Авто-нарезка в ритм за 1–2 клика. Один видеоряд, стили и эффекты."
                 onClick={() => setAppMode('editor')}
-              />
-              <ChooserCard
-                title="Pro"
-                sub="мульти-трек"
-                description="Полноценный NLE: дорожки V/A, таймлайн, Transform/Crop, Undo/Redo."
-                onClick={() => setAppMode('pro')}
               />
               <ChooserCard
                 title="Студия"
