@@ -53,14 +53,15 @@ function renderInto(target: HTMLCanvasElement, base: HTMLCanvasElement, p: Param
     }
   }
 
-  // Вырез с растушёвкой края (лёгкое размытие бледит цвет субъекта в кромку — без чёрного ореола).
+  // Растушёвка ТОЛЬКО кромки: размытый «подслой» даёт мягкую цветную кайму по краю
+  // (цвет субъекта бледит наружу, без чёрного ореола), а резкий вырез сверху
+  // оставляет интерьер чётким.
   if (p.feather > 0) {
     ctx.filter = `blur(${p.feather}px)`;
     ctx.drawImage(base, 0, 0);
     ctx.filter = 'none';
-  } else {
-    ctx.drawImage(base, 0, 0);
   }
+  ctx.drawImage(base, 0, 0);
 }
 
 export default function CutoutScreen() {

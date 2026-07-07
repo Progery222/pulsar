@@ -57,7 +57,7 @@ export default function TopBar() {
   };
 
   return (
-    <div style={{ position: 'fixed', top: 12, left: 12, zIndex: 1000, display: 'flex', gap: 8 }}>
+    <div style={{ height: 56, flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8, padding: '0 12px', background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)', zIndex: 1000 }}>
       <button title="Назад" onClick={goBack} style={btn}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <line x1="19" y1="12" x2="5" y2="12" />

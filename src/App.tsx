@@ -23,7 +23,7 @@ import DubApp from './dub/DubApp';
 import FunnelApp from './funnel/FunnelApp';
 import DownloadApp from './download/DownloadApp';
 import SettingsScreen from './screens/SettingsScreen';
-import TopBar from './components/TopBar';
+import Chrome from './components/Chrome';
 import Overlays from './components/Overlays';
 import IntroOverlay, { introAlreadyPlayed } from './components/IntroOverlay';
 
@@ -144,10 +144,9 @@ function App() {
   if (appMode === 'pro') {
     return (
       <>
-        <div className="screen-fade" style={{ height: '100vh' }}>
+        <Chrome>
           <ProEditor />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -157,14 +156,9 @@ function App() {
   if (appMode === 'studio') {
     return (
       <>
-        <div className="screen-fade" style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
-          {/* Отдельная полоса под наш навбар — чтобы он не накрывал шапку Студии. */}
-          <div style={{ height: 58, flex: '0 0 auto', background: 'var(--bg-primary)', borderBottom: '1px solid var(--border)' }} />
-          <div style={{ flex: 1, minHeight: 0 }}>
-            <StudioHost />
-          </div>
-        </div>
-        <TopBar />
+        <Chrome>
+          <StudioHost />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -174,10 +168,9 @@ function App() {
   if (appMode === 'vub') {
     return (
       <>
-        <div className="screen-fade">
+        <Chrome>
           <VubApp />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -187,10 +180,9 @@ function App() {
   if (appMode === 'cleaner') {
     return (
       <>
-        <div className="screen-fade">
+        <Chrome>
           <CleanerApp />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -200,10 +192,9 @@ function App() {
   if (appMode === 'tts') {
     return (
       <>
-        <div className="screen-fade">
+        <Chrome>
           <TtsApp />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -213,10 +204,9 @@ function App() {
   if (appMode === 'dub') {
     return (
       <>
-        <div className="screen-fade">
+        <Chrome>
           <DubApp />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -226,10 +216,9 @@ function App() {
   if (appMode === 'funnel') {
     return (
       <>
-        <div className="screen-fade">
+        <Chrome>
           <FunnelApp />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -239,10 +228,9 @@ function App() {
   if (appMode === 'download') {
     return (
       <>
-        <div className="screen-fade">
+        <Chrome>
           <DownloadApp />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -252,10 +240,9 @@ function App() {
   if (appMode === 'cutout') {
     return (
       <>
-        <div className="screen-fade" style={{ height: '100vh' }}>
+        <Chrome>
           <CutoutScreen />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -265,10 +252,9 @@ function App() {
   if (appMode === 'settings') {
     return (
       <>
-        <div className="screen-fade">
+        <Chrome>
           <SettingsScreen />
-        </div>
-        <TopBar />
+        </Chrome>
         <Overlays />
       </>
     );
@@ -297,10 +283,7 @@ function App() {
 
   return (
     <>
-      <div key={currentScreen} className="screen-fade">
-        {screen}
-      </div>
-      <TopBar />
+      <Chrome frameKey={currentScreen}>{screen}</Chrome>
       <Overlays />
     </>
   );
