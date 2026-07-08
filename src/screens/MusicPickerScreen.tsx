@@ -71,10 +71,17 @@ export default function MusicPickerScreen() {
   function playPreview(track: Track) {
     if (!audioRef.current) audioRef.current = new Audio();
     const audio = audioRef.current;
-    audio.src = mediaUrl(track.file);
-    audio.currentTime = 0;
-    audio.onended = () => setPlayingId(null);
-    audio.play().then(() => setPlayingId(track.id)).catch(() => setPlayingId(null));
+    // Через blob (media:// не проигрывается в <audio> Electron).
+    fetch(mediaUrl(track.file))
+      .then((r) => r.blob())
+      .then((b) => {
+        audio.src = URL.createObjectURL(b);
+        audio.currentTime = 0;
+        audio.onended = () => setPlayingId(null);
+        return audio.play();
+      })
+      .then(() => setPlayingId(track.id))
+      .catch(() => setPlayingId(null));
   }
 
   function stopPreview() {

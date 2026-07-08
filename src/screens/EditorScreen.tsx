@@ -88,6 +88,30 @@ export default function EditorScreen() {
 
   const videosRef = useRef<Map<string, HTMLVideoElement>>(new Map());
   const audioRef = useRef<HTMLAudioElement>(null);
+
+  // Трек грузим в память как blob (как видео) — <audio src="media://"> в
+  // Electron не проигрывается, а blob: работает надёжно.
+  const [audioBlobUrl, setAudioBlobUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!selectedTrack) {
+      setAudioBlobUrl(null);
+      return;
+    }
+    let alive = true;
+    let created: string | null = null;
+    fetch(mediaUrl(selectedTrack.file))
+      .then((r) => r.blob())
+      .then((b) => {
+        if (!alive) return;
+        created = URL.createObjectURL(b);
+        setAudioBlobUrl(created);
+      })
+      .catch((e) => console.error('[Editor] не загрузилась музыка', e));
+    return () => {
+      alive = false;
+      if (created) URL.revokeObjectURL(created);
+    };
+  }, [selectedTrack]);
   const flashRef = useRef<HTMLDivElement | null>(null);
   const fadeRef = useRef<HTMLDivElement | null>(null);
   const splitCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -591,7 +615,7 @@ export default function EditorScreen() {
         </div>
       </div>
 
-      {selectedTrack && <audio ref={audioRef} src={mediaUrl(selectedTrack.file)} preload="auto" />}
+      {selectedTrack && audioBlobUrl && <audio ref={audioRef} src={audioBlobUrl} preload="auto" />}
       {showExport && <ExportModal />}
     </div>
   );
