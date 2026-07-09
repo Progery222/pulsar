@@ -14,7 +14,7 @@ const OPTIONS: { key: CheckKey; label: string; desc: string }[] = [
   { key: 'shuffleOrder', label: 'Перемешать порядок', desc: 'Каждая копия — свой случайный порядок клипов' },
 ];
 
-const COUNTS = [1, 10, 20, 40, 50, 100];
+const COUNTS = [1, 2, 3, 10, 20, 40, 50, 100];
 
 export default function UniqualizerPanel() {
   const settings = useProjectStore((s) => s.uniqualizerSettings);
