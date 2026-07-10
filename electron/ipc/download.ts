@@ -60,7 +60,12 @@ function pickVideo(dir: string): string | null {
   return best?.p ?? null;
 }
 
-function runDownload(url: string, outDir: string): Promise<{ ok: true; path: string } | { error: string }> {
+// Ошибки, при которых нужна авторизация (Instagram/приватные видео) — повторяем с куками из браузера.
+const NEEDS_COOKIES = /empty media response|login required|log in|sign in|requires authentication|cookies|private|not available|rate.?limit|account/i;
+// Браузеры для извлечения куки (в порядке попыток).
+const COOKIE_BROWSERS = ['edge', 'chrome', 'firefox'];
+
+function runDownload(url: string, outDir: string, cookiesBrowser?: string): Promise<{ ok: true; path: string } | { error: string }> {
   return new Promise((resolve) => {
     const args = [
       '-m', 'yt_dlp',
@@ -71,6 +76,8 @@ function runDownload(url: string, outDir: string): Promise<{ ok: true; path: str
       '--merge-output-format', 'mp4',
       '-o', path.join(outDir, '%(title).80B.%(ext)s'),
     ];
+    // Куки из браузера (нужны Instagram и для приватного контента).
+    if (cookiesBrowser) args.push('--cookies-from-browser', cookiesBrowser);
     const dir = ffmpegDir();
     if (dir) args.push('--ffmpeg-location', dir);
     args.push(url);
@@ -129,7 +136,19 @@ export function registerDownloadHandlers() {
     const outDir = path.join(root, String(Date.now()));
     fs.mkdirSync(outDir, { recursive: true });
     try {
-      return await runDownload(url.trim(), outDir);
+      let r = await runDownload(url.trim(), outDir);
+      // Instagram/приватное: если нужна авторизация — пробуем куки из браузеров.
+      if ('error' in r && NEEDS_COOKIES.test(r.error)) {
+        for (const b of COOKIE_BROWSERS) {
+          sendProgress({ stage: 'download', line: `Требуется вход — пробую куки из ${b}…` });
+          const r2 = await runDownload(url.trim(), outDir, b);
+          if ('ok' in r2) return r2;
+          r = r2;
+          // «браузер не найден / не удалось расшифровать куки» — пробуем следующий браузер.
+        }
+        return { error: `${r.error}\nНужен вход: залогиньтесь в Instagram в Chrome/Edge/Firefox и повторите (или используйте публичную ссылку).` };
+      }
+      return r;
     } catch (err) {
       return { error: err instanceof Error ? err.message : String(err) };
     }

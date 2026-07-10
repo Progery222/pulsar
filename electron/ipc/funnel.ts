@@ -139,6 +139,9 @@ function installYtdlp(): Promise<{ ok: true } | { error: string }> {
 
 // Максимум видео при ссылке на аккаунт/плейлист (защита от выкачивания всего профиля).
 const PLAYLIST_LIMIT = 20;
+// Ошибки авторизации (Instagram/приватное) — повторяем с куками из браузера.
+const NEEDS_COOKIES = /empty media response|login required|log in|sign in|requires authentication|cookies|private|not available|rate.?limit|account/i;
+const COOKIE_BROWSERS = ['edge', 'chrome', 'firefox'];
 
 // Скачивает по ссылке (одно видео или аккаунт/плейлист) в outDir.
 // onReport — прогресс текущего файла (0..100) и/или человекочитаемая метка этапа.
@@ -146,7 +149,8 @@ const PLAYLIST_LIMIT = 20;
 function runDownload(
   url: string,
   outDir: string,
-  onReport: (r: { percent?: number; label?: string }) => void
+  onReport: (r: { percent?: number; label?: string }) => void,
+  cookiesBrowser?: string
 ): Promise<{ ok: true; files: string[] } | { error: string }> {
   return new Promise((resolve) => {
     const args = [
@@ -163,6 +167,7 @@ function runDownload(
       '--merge-output-format', 'mp4',
       '-o', path.join(outDir, '%(playlist_index|0)s_%(title).60B.%(ext)s'),
     ];
+    if (cookiesBrowser) args.push('--cookies-from-browser', cookiesBrowser);
     const dir = ffmpegDir();
     if (dir) args.push('--ffmpeg-location', dir);
     args.push(url);
@@ -852,14 +857,24 @@ export function registerFunnelHandlers() {
       send(win, { id: 'download', name: 'Скачивание', stage: 'downloading', percent: 0, stageLabel: `Скачивание ${u + 1}/${urls.length}…` });
       const dlDir = path.join(app.getPath('downloads'), 'Pulsar', 'funnel', `${Date.now()}_${u}`);
       fs.mkdirSync(dlDir, { recursive: true });
-      const dl = await runDownload(urls[u], dlDir, (r) =>
+      const onDl = (r: { percent?: number; label?: string }) =>
         send(win, {
           id: 'download',
           stage: 'downloading',
           percent: r.percent != null ? Math.max(2, Math.round(r.percent * 0.1)) : undefined,
           stageLabel: `${u + 1}/${urls.length}: ${r.label}`,
-        })
-      );
+        });
+      let dl = await runDownload(urls[u], dlDir, onDl);
+      // Instagram/приватное: если нужна авторизация — пробуем куки из браузеров.
+      if ('error' in dl && NEEDS_COOKIES.test(dl.error) && !cancelled) {
+        for (const b of COOKIE_BROWSERS) {
+          if (cancelled) break;
+          send(win, { id: 'download', stage: 'downloading', stageLabel: `${u + 1}/${urls.length}: вход через куки ${b}…` });
+          const d2 = await runDownload(urls[u], dlDir, onDl, b);
+          if ('ok' in d2) { dl = d2; break; }
+          dl = d2;
+        }
+      }
       if (cancelled) break;
       if ('error' in dl) {
         logF('download ERROR:', urls[u], dl.error);
