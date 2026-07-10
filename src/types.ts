@@ -34,6 +34,7 @@ export const EFFECT_NAMES: EffectName[] = [
 
 // 10 фильтров вкладки FILTERS (§8 ТЗ). «Нет» = activeFilter === null.
 export type FilterName =
+  | 'cinematic'
   | 'warm'
   | 'cool'
   | 'vintage'
@@ -45,6 +46,7 @@ export type FilterName =
   | 'vignette';
 
 export const FILTER_NAMES: FilterName[] = [
+  'cinematic',
   'warm',
   'cool',
   'vintage',

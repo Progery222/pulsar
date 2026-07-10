@@ -12,6 +12,13 @@ export interface FilterMeta {
 export const FILTERS: FilterMeta[] = [
   { key: 'none', label: 'Нет', css: 'none', ffmpeg: '' },
   {
+    key: 'cinematic',
+    label: 'Cinematic',
+    css: 'contrast(1.06) saturate(0.92) brightness(1.02)',
+    ffmpeg:
+      "curves=all='0/0.03 0.25/0.22 0.5/0.5 0.75/0.78 1/0.96',colorbalance=rs=-0.06:bs=0.08:rh=0.07:bh=-0.05,eq=saturation=0.92,noise=alls=6:allf=t,vignette=PI/5",
+  },
+  {
     key: 'warm',
     label: 'Warm',
     css: 'sepia(0.25) saturate(1.2) hue-rotate(-10deg)',
