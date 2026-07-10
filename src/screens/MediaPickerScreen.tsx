@@ -1,5 +1,6 @@
 import { useState, type DragEvent } from 'react';
 import { useProjectStore } from '../store/projectStore';
+import { useUIStore } from '../store/uiStore';
 import type { MediaFile } from '../types';
 import { fileName, formatTime, isVideoFile, mediaUrl } from '../utils/media';
 import { showToast } from '../store/toastStore';

@@ -3,6 +3,7 @@ import { removeBackground } from '@imgly/background-removal';
 import { useUIStore } from '../store/uiStore';
 import { mediaUrl } from '../utils/media';
 import { TEMPLATES, type TemplateDef } from './templates';
+import { MONTAGE_TEMPLATES, applyMontageTemplate } from './montageTemplates';
 
 type Phase = 'gallery' | 'edit' | 'rendering' | 'done';
 type Format = '9:16' | '1:1' | '16:9';
@@ -19,6 +20,7 @@ export default function TemplatesApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
 
   const [phase, setPhase] = useState<Phase>('gallery');
+  const [tab, setTab] = useState<'photo' | 'montage'>('photo');
   const [tpl, setTpl] = useState<TemplateDef | null>(null);
 
   const [srcUrl, setSrcUrl] = useState<string | null>(null);
@@ -119,22 +121,52 @@ export default function TemplatesApp() {
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
         <Header onHome={() => setAppMode('select')} title="Шаблоны" />
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
-          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 18 }}>
-            Выбери понравившийся пример — дальше добавишь своё фото и текст.
-          </p>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-            {TEMPLATES.map((t) => (
-              <button key={t.id} onClick={() => chooseTemplate(t)} className="tpl-card"
-                style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
-                <video src={t.preview} autoPlay loop muted playsInline
-                  style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-                <div style={{ padding: '10px 12px' }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</div>
-                  <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>{t.tag}</div>
-                </div>
-              </button>
+          {/* Переключатель категорий */}
+          <div style={{ display: 'inline-flex', gap: 4, background: 'var(--bg-tertiary)', padding: 4, borderRadius: 10, marginBottom: 18 }}>
+            {([['photo', '🖼️ Фото-шаблоны'], ['montage', '🎬 Видео-монтаж']] as const).map(([k, label]) => (
+              <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 16px', borderRadius: 7, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', background: tab === k ? 'var(--accent-green)' : 'transparent', color: tab === k ? '#000' : 'var(--text-secondary)' }}>{label}</button>
             ))}
           </div>
+
+          {tab === 'photo' ? (
+            <>
+              <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
+                Выбери пример — дальше добавишь своё фото и текст.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
+                {TEMPLATES.map((t) => (
+                  <button key={t.id} onClick={() => chooseTemplate(t)}
+                    style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
+                    <video src={t.preview} autoPlay loop muted playsInline
+                      style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
+                    <div style={{ padding: '10px 12px' }}>
+                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</div>
+                      <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>{t.tag}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          ) : (
+            <>
+              <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
+                Выбери стиль → кинь свои ролики (напр. 10 из поездки) → соберётся монтаж под биты.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+                {MONTAGE_TEMPLATES.map((t) => (
+                  <button key={t.id} onClick={() => applyMontageTemplate(t)}
+                    style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16, border: '1px solid var(--border)', borderRadius: 14, cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
+                    <div style={{ width: 52, height: 52, borderRadius: 13, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, background: `${t.accent}22`, border: `1px solid ${t.accent}55` }}>{t.icon}</div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</div>
+                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{t.tag}</div>
+                      <div style={{ fontSize: 11, color: t.accent, marginTop: 4 }}>{t.duration}с · {t.format}</div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
