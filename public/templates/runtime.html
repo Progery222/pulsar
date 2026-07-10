@@ -1,0 +1,118 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#000; }
+  #stage { position:fixed; inset:0; overflow:hidden; }
+</style>
+</head>
+<body>
+  <div id="stage"></div>
+<script>
+// ── Data-driven runtime шаблонов. Рендер-модуль (electron) вызывает:
+//   initTemplate({ id, dur, fontsDir, data })  — собрать шаблон
+//   seek(t)                                     — позиционировать все анимации на время t
+// Затем покадрово capturePage. Всё в относительных единицах (vw/vh) → любой формат.
+
+const clamp01 = (x) => (x < 0 ? 0 : x > 1 ? 1 : x);
+const seg = (t, a, b) => clamp01((t - a) / (b - a));
+const eoc = (x) => 1 - Math.pow(1 - x, 3);            // easeOutCubic
+const eio = (x) => (x < 0.5 ? 4*x*x*x : 1 - Math.pow(-2*x + 2, 3)/2);
+const eob = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3*Math.pow(x-1,3) + c1*Math.pow(x-1,2); };
+
+const TEMPLATES = {};
+const reg = (id, fn) => { TEMPLATES[id] = fn; };
+const el = (tag, css, html) => { const e = document.createElement(tag); if (css) e.style.cssText = css; if (html != null) e.innerHTML = html; return e; };
+
+// Инжект шрифтов из переданной папки (dev: assets/fonts, prod: resources/fonts).
+function injectFonts(dir) {
+  const url = (f) => `url('file:///${dir.replace(/\\/g,'/').replace(/ /g,'%20')}/${f}')`;
+  const s = el('style');
+  s.textContent =
+    `@font-face{font-family:'Oswald';src:${url('Oswald.ttf')};font-weight:700;}` +
+    `@font-face{font-family:'Montserrat';src:${url('Montserrat.ttf')};}` +
+    `@font-face{font-family:'RussoOne';src:${url('RussoOne.ttf')};}` +
+    `@font-face{font-family:'Rubik';src:${url('Rubik.ttf')};}`;
+  document.head.appendChild(s);
+}
+
+// ────────────────────────────────────────────────────────────────
+// Шаблон STORY — кино/эстетика (matte-фон, свечение, cutout, shine-текст).
+reg('story', (stage, d) => {
+  const accent = d.accent || '#a9d2ff';
+  const bg1 = d.bg1 || '#21456e', bg2 = d.bg2 || '#12233c', bg3 = d.bg3 || '#060b0f';
+  stage.appendChild(el('div', `position:absolute;inset:-10%;will-change:transform;background:
+     radial-gradient(90% 55% at 32% 20%, rgba(120,180,255,0.40), transparent 60%),
+     radial-gradient(80% 50% at 78% 82%, rgba(90,140,220,0.28), transparent 60%),
+     linear-gradient(160deg, ${bg1} 0%, ${bg2} 44%, ${bg3} 100%);`)).id = 'bg';
+  stage.appendChild(el('div', `position:absolute;left:50%;top:56%;width:78vw;height:78vw;transform:translate(-50%,-50%);
+     background:radial-gradient(circle, rgba(150,205,255,0.34), transparent 60%);filter:blur(2vw);will-change:transform,opacity;`)).id = 'blob';
+  [['d1','18%','30%','1.6vw'],['d2','80%','40%','1.1vw'],['d3','72%','66%','2vw']].forEach(([id,l,tp,sz]) => {
+    const e = el('div', `position:absolute;left:${l};top:${tp};width:${sz};height:${sz};border-radius:50%;background:rgba(200,225,255,0.55);filter:blur(0.2vw);will-change:transform,opacity;`);
+    e.id = id; stage.appendChild(e);
+  });
+  const subj = el('img', `position:absolute;left:50%;top:52%;width:40vw;transform:translate(-50%,-50%);filter:drop-shadow(0 3vh 4vh rgba(0,0,0,0.55));will-change:transform,opacity;`);
+  subj.id = 'subject'; subj.src = d.subjectImage || ''; stage.appendChild(subj);
+  const title = el('div', `position:absolute;left:0;width:100%;top:12%;text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:11vw;letter-spacing:0.4vw;color:#fff;text-transform:uppercase;will-change:transform,filter,clip-path;`, d.title || '');
+  title.id = 'title';
+  const shine = el('div', `position:absolute;inset:0;background:linear-gradient(100deg,transparent 40%,rgba(255,255,255,0.85) 50%,transparent 60%);-webkit-background-clip:text;background-clip:text;color:transparent;background-size:220% 100%;pointer-events:none;`, d.title || '');
+  shine.className = 'shine'; title.appendChild(shine); stage.appendChild(title);
+  stage.appendChild(el('div', `position:absolute;left:50%;top:calc(12% + 14vw);width:17vw;height:0.4vh;margin-left:-8.5vw;background:linear-gradient(90deg,transparent,${accent},transparent);transform-origin:center;will-change:transform;`)).id = 'line';
+  const sub = el('div', `position:absolute;left:0;width:100%;top:calc(12% + 16vw);text-align:center;font-family:'Montserrat',sans-serif;font-size:3.5vw;letter-spacing:0.6vw;color:#d3e2ff;text-transform:lowercase;will-change:transform,opacity;`, d.subtitle || '');
+  sub.id = 'sub'; stage.appendChild(sub);
+  if (d.cta) {
+    const cta = el('div', `position:absolute;left:0;width:100%;top:80%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:600;font-size:3.1vw;letter-spacing:0.3vw;color:#0a1420;text-transform:uppercase;will-change:transform,opacity;`,
+      `<span style="display:inline-block;background:#fff;padding:1.9vh 4.6vw;border-radius:100px;box-shadow:0 1.4vh 3vh rgba(0,0,0,0.35);">${d.cta}</span>`);
+    cta.id = 'cta'; stage.appendChild(cta);
+  }
+  stage.appendChild(el('div', `position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 80% at 50% 45%,transparent 55%,rgba(0,0,0,0.38) 100%);`));
+  const grain = el('div', `position:absolute;inset:0;opacity:0.07;mix-blend-mode:overlay;pointer-events:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");`);
+  grain.id = 'grain'; stage.appendChild(grain);
+
+  const g = (id) => document.getElementById(id);
+  return (t) => {
+    g('bg').style.transform = `scale(1.08) translate(${Math.sin(t*0.3)*1.2}vw,${Math.cos(t*0.25)*1.2}vh)`;
+    g('blob').style.transform = `translate(-50%,-50%) scale(${1+0.05*Math.sin(t*0.9)})`;
+    g('blob').style.opacity = String(0.8+0.2*Math.sin(t*1.2));
+    [['d1',1.4,0.7],['d2',-1.0,1.1],['d3',0.8,-0.6]].forEach(([id,ax,ay]) => {
+      const e = g(id); e.style.transform = `translate(${Math.sin(t*0.6+ax)*ax}vw,${Math.cos(t*0.5+ay)*ay}vh)`;
+      e.style.opacity = String(clamp01(seg(t,0.6,1.4))*(0.5+0.3*Math.sin(t+ax)));
+    });
+    const title = g('title');
+    title.style.clipPath = `inset(${(1-eio(seg(t,0.05,0.85)))*100}% 0 0 0)`;
+    title.style.filter = `blur(${(1-eoc(seg(t,0.05,0.7)))*1.2}vw)`;
+    title.style.transform = `translateY(${(1-eoc(seg(t,0.05,0.85)))*3.5}vh)`;
+    title.querySelector('.shine').style.backgroundPosition = `${120-seg(t,0.7,1.6)*240}% 0`;
+    g('line').style.transform = `scaleX(${eoc(seg(t,0.35,1.05))})`;
+    const st = eoc(seg(t,0.5,1.25));
+    g('sub').style.opacity = String(st); g('sub').style.transform = `translateY(${(1-st)*2}vh)`;
+    const sp = eob(seg(t,0.35,1.15));
+    const subj = g('subject');
+    subj.style.opacity = String(clamp01(seg(t,0.35,0.9)));
+    subj.style.transform = `translate(-50%,-50%) translateY(${(1-sp)*9+Math.sin(t*1.4)*1.1}vh) rotate(${(1-clamp01(sp))*-4}deg) scale(${0.82+0.18*clamp01(sp)})`;
+    const cta = g('cta');
+    if (cta) { const ct = eob(seg(t,1.5,2.15)); cta.style.opacity = String(clamp01(seg(t,1.5,2.0)));
+      cta.style.transform = `scale(${(0.86+0.14*clamp01(ct))*(t>2.1?1+0.02*Math.sin((t-2.1)*4):1)})`; }
+    g('grain').style.transform = `translate(${(Math.sin(t*30)*10).toFixed(0)}px,${(Math.cos(t*27)*10).toFixed(0)}px)`;
+  };
+});
+
+// ────────────────────────────────────────────────────────────────
+let SEEK = null, DUR = 6;
+window.initTemplate = function (cfg) {
+  const stage = document.getElementById('stage');
+  stage.innerHTML = '';
+  DUR = cfg.dur || 6;
+  if (cfg.fontsDir) injectFonts(cfg.fontsDir);
+  const fn = TEMPLATES[cfg.id] || TEMPLATES.story;
+  SEEK = fn(stage, cfg.data || {});
+  window.seek(0);
+  return true;
+};
+window.seek = function (t) { if (SEEK) SEEK(t, DUR); };
+window.templateIds = () => Object.keys(TEMPLATES);
+</script>
+</body>
+</html>

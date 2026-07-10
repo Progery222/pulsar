@@ -40,6 +40,7 @@ import { registerDownloadHandlers } from './ipc/download';
 import { registerFunnelHandlers } from './ipc/funnel';
 import { registerUpdaterHandlers } from './ipc/updater';
 import { registerProExportHandlers } from './ipc/proExport';
+import { registerTemplateHandlers } from './ipc/templateRender';
 import { registerFeedbackHandlers } from './ipc/feedback';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
@@ -196,6 +197,7 @@ app.whenReady().then(() => {
   registerFunnelHandlers();
   registerUpdaterHandlers();
   registerProExportHandlers();
+  registerTemplateHandlers();
   registerFeedbackHandlers();
   createWindow();
 });

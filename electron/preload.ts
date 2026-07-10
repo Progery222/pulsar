@@ -71,6 +71,28 @@ const electronAPI = {
   proMakeProxy: (src: string): Promise<string | null> => ipcRenderer.invoke('pro:makeProxy', src),
   proProbeVideo: (src: string): Promise<{ codec: string; pixFmt: string; width: number; height: number; bitrate: number } | null> => ipcRenderer.invoke('pro:probeVideo', src),
 
+  // --- Шаблоны-композиции (HTML→Chromium→ffmpeg) ---
+  templateIds: (): Promise<string[]> => ipcRenderer.invoke('template:ids'),
+  renderTemplate: (
+    opts: {
+      templateId: string;
+      data: Record<string, unknown>;
+      width: number;
+      height: number;
+      fps: number;
+      durationSec: number;
+      outputPath: string;
+      musicPath?: string | null;
+      musicStart?: number;
+    }
+  ): Promise<{ ok: true; path: string } | { error: string }> => ipcRenderer.invoke('template:render', opts),
+  cancelTemplate: (): Promise<{ ok: true }> => ipcRenderer.invoke('template:cancel'),
+  onTemplateProgress: (cb: (percent: number) => void): (() => void) => {
+    const listener = (_e: unknown, percent: number) => cb(percent);
+    ipcRenderer.on('template:progress', listener);
+    return () => ipcRenderer.removeListener('template:progress', listener);
+  },
+
   // Обратная связь (баг-репорт) -> Telegram.
   sendFeedback: (text: string): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('feedback:send', text),
   sendFeedbackPhoto: (text: string, base64: string): Promise<{ ok: true } | { error: string }> => ipcRenderer.invoke('feedback:sendPhoto', text, base64),
