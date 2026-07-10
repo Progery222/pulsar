@@ -199,6 +199,20 @@ export default function ModeSelector() {
             </svg>
           }
         />
+        <ModeCard
+          index={8}
+          title="Шаблоны (AI)"
+          description="Фото → вырезка фона → дизайн-шаблон с анимацией и текстом → видео в тренде"
+          onClick={() => setAppMode('templates')}
+          icon={
+            <svg {...I(38)}>
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18" />
+              <path d="M9 21V9" />
+              <circle cx="15" cy="15" r="1.6" fill="currentColor" stroke="none" />
+            </svg>
+          }
+        />
       </div>
 
       {/* Вспомогательные разделы: очередь и история — мини-окна; настройки — экран. */}

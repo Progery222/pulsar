@@ -15,6 +15,7 @@ import EditorScreen from './screens/EditorScreen';
 import ProEditor from './pro/ProEditor';
 import StudioHost from './studio/StudioHost';
 import CutoutScreen from './screens/CutoutScreen';
+import TemplatesApp from './templates/TemplatesApp';
 import ModeSelector from './screens/ModeSelector';
 import VubApp from './vub/VubApp';
 import CleanerApp from './cleaner/CleanerApp';
@@ -242,6 +243,18 @@ function App() {
       <>
         <Chrome>
           <CutoutScreen />
+        </Chrome>
+        <Overlays />
+      </>
+    );
+  }
+
+  // Шаблоны-композиции (фото → cutout → дизайн-шаблон → рендер).
+  if (appMode === 'templates') {
+    return (
+      <>
+        <Chrome>
+          <TemplatesApp />
         </Chrome>
         <Overlays />
       </>
