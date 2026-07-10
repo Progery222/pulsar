@@ -121,6 +121,83 @@ reg('story', (stage, d) => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// Шаблон NEON — хайп/color-block (неон, глоу, кинетик-текст).
+reg('neon', (stage, d) => {
+  const accent = d.accent || '#00e5ff';
+  stage.appendChild(el('div', `position:absolute;inset:-12%;background:linear-gradient(150deg,#12021f 0%,#1a0530 50%,#05010c 100%);`)).id = 'bg';
+  stage.appendChild(el('div', `position:absolute;left:22%;top:24%;width:70vw;height:70vw;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(255,45,149,0.55),transparent 60%);filter:blur(3vw);mix-blend-mode:screen;will-change:transform;`)).id = 'n1';
+  stage.appendChild(el('div', `position:absolute;left:80%;top:70%;width:64vw;height:64vw;transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,rgba(0,229,255,0.5),transparent 60%);filter:blur(3vw);mix-blend-mode:screen;will-change:transform;`)).id = 'n2';
+  stage.appendChild(el('div', `position:absolute;left:-10%;top:60%;width:120%;height:13vh;background:linear-gradient(90deg,${accent},transparent);transform:rotate(-8deg);opacity:0.22;filter:blur(0.5vw);will-change:opacity;`)).id = 'bar';
+  const subj = el('img', `position:absolute;left:50%;top:54%;width:44vw;transform:translate(-50%,-50%);filter:drop-shadow(0 0 3vw ${accent}) drop-shadow(0 3vh 3vh rgba(0,0,0,0.6));will-change:transform,opacity;`);
+  subj.id = 'subject'; subj.src = d.subjectImage || ''; stage.appendChild(subj);
+  const title = el('div', `position:absolute;left:0;width:100%;top:8%;text-align:center;font-family:'RussoOne',sans-serif;font-size:13vw;color:#fff;text-transform:uppercase;letter-spacing:0.2vw;text-shadow:0 0 2vw ${accent},0 0 0.6vw #fff;will-change:transform,opacity;`, d.title || '');
+  title.id = 'title'; stage.appendChild(title);
+  const sub = el('div', `position:absolute;left:0;width:100%;top:calc(8% + 15vw);text-align:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:3.8vw;letter-spacing:0.4vw;text-transform:uppercase;will-change:transform,opacity;`,
+    `<span style="background:${accent};color:#0a0a0a;padding:0.6vh 2vw;border-radius:6px;">${d.subtitle || ''}</span>`);
+  sub.id = 'sub'; stage.appendChild(sub);
+  if (d.cta) {
+    const cta = el('div', `position:absolute;left:0;width:100%;top:82%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:3.2vw;color:#fff;text-transform:uppercase;will-change:transform,opacity;`,
+      `<span style="display:inline-block;border:2px solid ${accent};padding:1.4vh 4vw;border-radius:100px;box-shadow:0 0 2vw ${accent};">${d.cta}</span>`);
+    cta.id = 'cta'; stage.appendChild(cta);
+  }
+  const grain = el('div', `position:absolute;inset:0;opacity:0.08;mix-blend-mode:overlay;pointer-events:none;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");`);
+  grain.id = 'grain'; stage.appendChild(grain);
+  const g = (id) => document.getElementById(id);
+  return (t) => {
+    g('n1').style.transform = `translate(calc(-50% + ${Math.sin(t*0.7)*3}vw),calc(-50% + ${Math.cos(t*0.6)*3}vh))`;
+    g('n2').style.transform = `translate(calc(-50% + ${Math.cos(t*0.6)*3}vw),calc(-50% + ${Math.sin(t*0.5)*3}vh))`;
+    g('bar').style.opacity = String(0.16+0.12*Math.sin(t*3));
+    const title = g('title');
+    title.style.opacity = String(clamp01(seg(t,0.1,0.5)));
+    title.style.transform = `translateY(${(1-eoc(seg(t,0.1,0.8)))*-4}vh) scale(${0.8+0.2*clamp01(eob(seg(t,0.1,0.8)))})`;
+    g('sub').style.opacity = String(clamp01(seg(t,0.4,0.8)));
+    g('sub').style.transform = `scale(${0.7+0.3*clamp01(eob(seg(t,0.4,1.1)))})`;
+    const sp = eob(seg(t,0.3,1.0)); const subj = g('subject');
+    subj.style.opacity = String(clamp01(seg(t,0.3,0.8)));
+    const jit = t < 1.2 ? Math.sin(t*57)*1.0 : 0;
+    subj.style.transform = `translate(-50%,-50%) translateX(${jit}vw) scale(${0.8+0.2*clamp01(sp)})`;
+    const cta = g('cta'); if (cta) { cta.style.opacity = String(clamp01(seg(t,1.4,1.9))); cta.style.transform = `scale(${0.85+0.15*clamp01(eob(seg(t,1.4,2.0)))})`; }
+    g('grain').style.transform = `translate(${(Math.sin(t*40)*12).toFixed(0)}px,${(Math.cos(t*33)*12).toFixed(0)}px)`;
+  };
+});
+
+// Шаблон MINIMAL — чисто/эстетика (светлый фон, элегантная типографика).
+reg('minimal', (stage, d) => {
+  const accent = d.accent || '#c8a26a';
+  stage.appendChild(el('div', `position:absolute;inset:0;background:linear-gradient(180deg,#f6f3ee 0%,#e9e2d6 100%);`)).id = 'bg';
+  stage.appendChild(el('div', `position:absolute;left:50%;top:60%;width:52vw;height:10vw;transform:translate(-50%,-50%);background:radial-gradient(ellipse,rgba(0,0,0,0.14),transparent 70%);filter:blur(1.4vw);will-change:opacity;`)).id = 'floor';
+  const subj = el('img', `position:absolute;left:50%;top:54%;width:42vw;transform:translate(-50%,-50%);filter:drop-shadow(0 3vh 3vh rgba(0,0,0,0.28));will-change:transform,opacity;`);
+  subj.id = 'subject'; subj.src = d.subjectImage || ''; stage.appendChild(subj);
+  const eye = el('div', `position:absolute;left:0;width:100%;top:9%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:600;font-size:2.3vw;letter-spacing:1.4vw;color:${accent};text-transform:uppercase;will-change:transform,opacity;`, d.eyebrow || '');
+  eye.id = 'eyebrow'; stage.appendChild(eye);
+  const title = el('div', `position:absolute;left:0;width:100%;top:12.5%;text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:10vw;letter-spacing:0.3vw;color:#1a1a1a;text-transform:uppercase;will-change:transform,opacity,clip-path;`, d.title || '');
+  title.id = 'title'; stage.appendChild(title);
+  stage.appendChild(el('div', `position:absolute;left:50%;top:calc(12.5% + 12vw);width:12vw;height:0.35vh;margin-left:-6vw;background:${accent};transform-origin:center;will-change:transform;`)).id = 'line';
+  const sub = el('div', `position:absolute;left:0;width:100%;top:calc(12.5% + 14vw);text-align:center;font-family:'Montserrat',sans-serif;font-size:3.2vw;letter-spacing:0.5vw;color:#555;text-transform:lowercase;will-change:transform,opacity;`, d.subtitle || '');
+  sub.id = 'sub'; stage.appendChild(sub);
+  if (d.cta) {
+    const cta = el('div', `position:absolute;left:0;width:100%;top:82%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:600;font-size:3vw;color:#fff;text-transform:uppercase;will-change:transform,opacity;`,
+      `<span style="display:inline-block;background:#1a1a1a;padding:1.6vh 4.5vw;border-radius:100px;">${d.cta}</span>`);
+    cta.id = 'cta'; stage.appendChild(cta);
+  }
+  const g = (id) => document.getElementById(id);
+  return (t) => {
+    const ey = eoc(seg(t,0.0,0.6)); g('eyebrow').style.opacity = String(ey); g('eyebrow').style.transform = `translateY(${(1-ey)*1.2}vh)`;
+    const title = g('title');
+    title.style.clipPath = `inset(0 0 ${(1-eio(seg(t,0.15,0.95)))*100}% 0)`;
+    title.style.transform = `translateY(${(1-eoc(seg(t,0.15,0.95)))*2}vh)`;
+    title.style.opacity = String(clamp01(seg(t,0.15,0.5)));
+    g('line').style.transform = `scaleX(${eoc(seg(t,0.4,1.0))})`;
+    const st = eoc(seg(t,0.55,1.25)); g('sub').style.opacity = String(st); g('sub').style.transform = `translateY(${(1-st)*1.5}vh)`;
+    const sp = eob(seg(t,0.35,1.15)); const subj = g('subject');
+    subj.style.opacity = String(clamp01(seg(t,0.35,0.9)));
+    subj.style.transform = `translate(-50%,-50%) translateY(${(1-sp)*6+Math.sin(t*1.3)*0.8}vh) scale(${0.88+0.12*clamp01(sp)})`;
+    g('floor').style.opacity = String(clamp01(seg(t,0.5,1.1)));
+    const cta = g('cta'); if (cta) { cta.style.opacity = String(clamp01(seg(t,1.5,2.0))); cta.style.transform = `scale(${0.9+0.1*clamp01(eob(seg(t,1.5,2.1)))})`; }
+  };
+});
+
+// ────────────────────────────────────────────────────────────────
 let SEEK = null, DUR = 6;
 window.initTemplate = function (cfg) {
   const stage = document.getElementById('stage');
