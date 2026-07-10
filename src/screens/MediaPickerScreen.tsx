@@ -163,7 +163,13 @@ export default function MediaPickerScreen() {
     }
 
     setMediaFiles(selectedFiles);
-    setScreen('music');
+    // Монтаж-шаблон уже выбрал трек → сразу в обработку, минуя выбор музыки.
+    if (useUIStore.getState().skipMusic) {
+      useUIStore.getState().setSkipMusic(false);
+      setScreen('processing');
+    } else {
+      setScreen('music');
+    }
   }
 
   const canNext = selectedIds.length >= 1;

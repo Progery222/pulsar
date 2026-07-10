@@ -27,6 +27,9 @@ interface UIState {
   // Мастер первичной настройки / установки движков.
   showSetup: boolean;
   setShowSetup: (value: boolean) => void;
+  // Монтаж-шаблон предвыбрал трек → пропустить экран выбора музыки.
+  skipMusic: boolean;
+  setSkipMusic: (value: boolean) => void;
 }
 
 export const useUIStore = create<UIState>((set) => ({
@@ -46,4 +49,6 @@ export const useUIStore = create<UIState>((set) => ({
   setShowHistory: (value) => set({ showHistory: value }),
   showSetup: false,
   setShowSetup: (value) => set({ showSetup: value }),
+  skipMusic: false,
+  setSkipMusic: (value) => set({ skipMusic: value }),
 }));
