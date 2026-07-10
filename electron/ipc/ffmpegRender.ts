@@ -402,7 +402,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
           ['out']
         );
       }
-      await runCommand(cmd.noAudio().outputOptions(['-pix_fmt', 'yuv420p']).output(filteredPath), hooks);
+      await runCommand(cmd.noAudio().outputOptions(['-pix_fmt', 'yuv420p', '-crf', '16', '-preset', 'medium']).output(filteredPath), hooks);
       videoSource = filteredPath;
     }
     progress(68);
@@ -471,7 +471,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
 
     const basePath = path.join(tmpDir, 'base.mp4');
     const baseCmd = ffmpeg().input(videoSource);
-    const baseVenc = await videoEncoderOptions({ preset: 'fast', crf: 23 });
+    const baseVenc = await videoEncoderOptions({ preset: 'slow', crf: 18 });
     const baseOut = [
       '-map', '0:v:0', ...baseVenc,
       '-t', String(req.duration), '-pix_fmt', 'yuv420p',
@@ -517,8 +517,8 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
 
       const cmd = ffmpeg(basePath);
       const copyVenc = await videoEncoderOptions({
-        preset: 'fast',
-        crf: enc ? enc.crf : 23,
+        preset: enc ? 'fast' : 'medium',
+        crf: enc ? enc.crf : 18,
         gop: enc ? enc.gop : undefined,
       });
       const oo = ['-map', '0:v:0', ...copyVenc, '-pix_fmt', 'yuv420p'];

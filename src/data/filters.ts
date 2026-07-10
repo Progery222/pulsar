@@ -34,15 +34,15 @@ export const FILTERS: FilterMeta[] = [
     key: 'vcr',
     label: 'VCR',
     css: 'saturate(1.3) contrast(1.1)',
-    ffmpeg: 'noise=alls=18:allf=t,curves=r=0/0.05',
+    ffmpeg: 'curves=r=0/0.05,eq=saturation=1.2:contrast=1.08,noise=alls=10:allf=t',
   },
   {
     key: 'glitch',
     label: 'Glitch',
     css: 'hue-rotate(20deg) saturate(1.4)',
-    ffmpeg: 'noise=alls=15:allf=t,rgbashift=rh=4:bh=-4',
+    ffmpeg: 'rgbashift=rh=4:bh=-4,eq=saturation=1.25,noise=alls=8:allf=t',
   },
-  { key: 'film', label: 'Film', css: 'contrast(1.05) sepia(0.15)', ffmpeg: 'noise=alls=20:allf=t' },
+  { key: 'film', label: 'Film', css: 'contrast(1.05) sepia(0.15)', ffmpeg: "curves=all='0/0.02 0.5/0.52 1/0.98',eq=saturation=1.06,noise=alls=7:allf=t" },
   {
     key: 'lightLeak',
     label: 'Light Leak',
