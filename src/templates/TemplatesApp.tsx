@@ -20,7 +20,7 @@ export default function TemplatesApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
 
   const [phase, setPhase] = useState<Phase>('gallery');
-  const [tab, setTab] = useState<'photo' | 'montage'>('photo');
+  const [tab, setTab] = useState<'photo' | 'montage'>('montage');
   const [tpl, setTpl] = useState<TemplateDef | null>(null);
 
   const [srcUrl, setSrcUrl] = useState<string | null>(null);
@@ -123,7 +123,7 @@ export default function TemplatesApp() {
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
           {/* Переключатель категорий */}
           <div style={{ display: 'inline-flex', gap: 4, background: 'var(--bg-tertiary)', padding: 4, borderRadius: 10, marginBottom: 18 }}>
-            {([['photo', '🖼️ Фото-шаблоны'], ['montage', '🎬 Видео-монтаж']] as const).map(([k, label]) => (
+            {([['montage', '🔥 Тренды'], ['photo', '🖼️ Фото-постеры']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 16px', borderRadius: 7, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', background: tab === k ? 'var(--accent-green)' : 'transparent', color: tab === k ? '#000' : 'var(--text-secondary)' }}>{label}</button>
             ))}
           </div>
@@ -150,17 +150,27 @@ export default function TemplatesApp() {
           ) : (
             <>
               <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Выбери стиль → кинь свои ролики (напр. 10 из поездки) → соберётся монтаж под биты.
+                Выбери тренд → кинь свои ролики (напр. 10 из поездки) → соберётся монтаж под биты.
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 14 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 16 }}>
                 {MONTAGE_TEMPLATES.map((t) => (
                   <button key={t.id} onClick={() => applyMontageTemplate(t)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 16, border: '1px solid var(--border)', borderRadius: 14, cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
-                    <div style={{ width: 52, height: 52, borderRadius: 13, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, background: `${t.accent}22`, border: `1px solid ${t.accent}55` }}>{t.icon}</div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 2 }}>{t.tag}</div>
-                      <div style={{ fontSize: 11, color: t.accent, marginTop: 4 }}>{t.duration}с · {t.format}</div>
+                    style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
+                    <div style={{ position: 'relative' }}>
+                      <video src={t.preview} autoPlay loop muted playsInline
+                        style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
+                      {/* Бейдж использований (CapCut-стиль) */}
+                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 20, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', fontSize: 11, fontWeight: 600, color: '#fff' }}>
+                        <span style={{ fontSize: 11 }}>▶</span>{t.uses}
+                      </div>
+                      {/* Длительность */}
+                      <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{t.duration}с</div>
+                    </div>
+                    <div style={{ padding: '9px 11px' }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span>{t.icon}</span>{t.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{t.tag}</div>
                     </div>
                   </button>
                 ))}
