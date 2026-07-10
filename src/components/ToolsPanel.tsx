@@ -1,15 +1,16 @@
 import { useRef, useState, type PointerEvent } from 'react';
 import { useProjectStore } from '../store/projectStore';
-import { EFFECT_NAMES, type EffectName, type FilterName, type MediaFile } from '../types';
+import type { MediaFile } from '../types';
 import { fileName, formatTime, isVideoFile, mediaUrl } from '../utils/media';
 import { regenerateMontage } from '../utils/regenerate';
+import { TEMPLATES, applyTemplate } from '../data/templates';
 import TweakModal from './TweakModal';
 
 type ToolKey = 'videos' | 'style' | 'tweak' | 'duration' | 'segment' | 'mood' | 'transition' | 'text' | 'fade' | 'format';
 
 const TOOLS: { key: ToolKey; icon: string; label: string }[] = [
   { key: 'videos', icon: '▦', label: 'Videos' },
-  { key: 'style', icon: '✨', label: 'Стиль' },
+  { key: 'style', icon: '🎞', label: 'Шаблоны' },
   { key: 'tweak', icon: '🎚', label: 'Tweak' },
   { key: 'duration', icon: '⏱', label: 'Duration' },
   { key: 'segment', icon: '〜', label: 'Segment' },
@@ -18,25 +19,6 @@ const TOOLS: { key: ToolKey; icon: string; label: string }[] = [
   { key: 'text', icon: 'T', label: 'Текст' },
   { key: 'fade', icon: '▣', label: 'Fade' },
   { key: 'format', icon: '▭', label: 'Format' },
-];
-
-// Пресеты монтажа в один клик: ритм + эффекты + переходы + грейд разом.
-interface StylePreset {
-  key: string;
-  title: string;
-  desc: string;
-  mood: 'mellow' | 'natural' | 'energetic';
-  transition: 'none' | 'dissolve' | 'slide' | 'zoom' | 'mix';
-  filter: FilterName | null;
-  filterIntensity: number;
-  effects: Partial<Record<EffectName, 1 | 2>>;
-}
-const STYLES: StylePreset[] = [
-  { key: 'clean', title: 'Чистый', desc: 'Плавно, без эффектов. Мягкое растворение.', mood: 'natural', transition: 'dissolve', filter: null, filterIntensity: 0, effects: {} },
-  { key: 'dynamic', title: 'Динамичный', desc: 'Энергично: зум и тряска по битам, микс переходов.', mood: 'energetic', transition: 'mix', filter: null, filterIntensity: 0, effects: { zoom: 2, shake: 1, flash: 1 } },
-  { key: 'hype', title: 'Хайп', desc: 'Жёстко: быстрые резы, RGB-глитч, VCR-грейд.', mood: 'energetic', transition: 'slide', filter: 'vcr', filterIntensity: 40, effects: { fastCut: 2, rgb: 2, glitch: 1 } },
-  { key: 'aesthetic', title: 'Эстетика', desc: 'Мягко и тепло: засветка, лёгкий зум.', mood: 'mellow', transition: 'dissolve', filter: 'lightLeak', filterIntensity: 55, effects: { leak: 1, zoom: 1 } },
-  { key: 'retro', title: 'Ретро', desc: 'Плёнка: винтаж-грейд, призма, hue-сдвиг.', mood: 'natural', transition: 'dissolve', filter: 'vintage', filterIntensity: 60, effects: { hue: 1, prism: 1 } },
 ];
 
 const TEXT_COLORS = ['#FFFFFF', '#FFE000', '#00E0FF', '#FF3B6B', '#0D0D0D', '#CCFF00'];
@@ -261,24 +243,10 @@ export default function ToolsPanel() {
   const setFade = useProjectStore((s) => s.setFade);
   const setFormat = useProjectStore((s) => s.setFormat);
   const setTransition = useProjectStore((s) => s.setTransition);
-  const setActiveEffect = useProjectStore((s) => s.setActiveEffect);
-  const setActiveFilter = useProjectStore((s) => s.setActiveFilter);
-  const setFilterIntensity = useProjectStore((s) => s.setFilterIntensity);
 
   const [active, setActive] = useState<ToolKey>('style');
   const [modal, setModal] = useState<'none' | 'videos' | 'tweak'>('none');
   const [activeStyle, setActiveStyle] = useState<string | null>(null);
-
-  function applyStyle(s: StylePreset) {
-    EFFECT_NAMES.forEach((e) => setActiveEffect(e, 0));
-    (Object.entries(s.effects) as [EffectName, 1 | 2][]).forEach(([e, lvl]) => setActiveEffect(e, lvl));
-    setMood(s.mood);
-    setTransition(s.transition);
-    setActiveFilter(s.filter);
-    setFilterIntensity(s.filterIntensity);
-    setActiveStyle(s.key);
-    regenerateMontage();
-  }
 
   function onToolClick(key: ToolKey) {
     if (key === 'videos') setModal('videos');
@@ -321,27 +289,43 @@ export default function ToolsPanel() {
         {active === 'style' && (
           <div className="flex flex-col gap-3 p-4">
             <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: 0 }}>
-              Готовый стиль монтажа в один клик — настраивает ритм, эффекты, переходы и грейд разом.
+              Готовый шаблон «в стиле» TikTok в один клик — задаёт ритм, эффекты, переходы, грейд, длительность и формат разом.
             </p>
-            {STYLES.map((s) => {
-              const sel = s.key === activeStyle;
+            {TEMPLATES.map((t) => {
+              const sel = t.key === activeStyle;
               return (
                 <button
-                  key={s.key}
-                  onClick={() => applyStyle(s)}
+                  key={t.key}
+                  onClick={() => {
+                    applyTemplate(t);
+                    setActiveStyle(t.key);
+                  }}
                   className="rounded-card p-4 text-left"
                   style={{
                     backgroundColor: 'var(--bg-tertiary)',
                     border: sel ? '2px solid var(--accent-green)' : '2px solid transparent',
                   }}
                 >
-                  <div className="font-semibold" style={{ fontSize: 15, color: sel ? 'var(--accent-green)' : 'var(--text-primary)' }}>{s.title}</div>
-                  <div className="mt-1 text-text-secondary" style={{ fontSize: 12 }}>{s.desc}</div>
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: 18 }}>{t.icon}</span>
+                    <span className="font-semibold" style={{ fontSize: 15, color: sel ? 'var(--accent-green)' : 'var(--text-primary)' }}>{t.title}</span>
+                  </div>
+                  <div className="mt-1 text-text-secondary" style={{ fontSize: 12 }}>{t.desc}</div>
+                  <div className="mt-2 flex flex-wrap gap-1">
+                    {[`${t.duration}с`, t.format, ...(t.musicCategory ? [`♪ ${t.musicCategory}`] : [])].map((chip) => (
+                      <span
+                        key={chip}
+                        style={{ fontSize: 10, color: 'var(--text-secondary)', backgroundColor: 'var(--bg-secondary)', borderRadius: 4, padding: '1px 6px' }}
+                      >
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
                 </button>
               );
             })}
             <p style={{ fontSize: 11, color: 'var(--text-secondary)', margin: 0 }}>
-              После выбора стиля можно докрутить вручную в Mood / Эффекты / Переходы.
+              Музыку шаблон не меняет — выбери трек кнопкой ♪ (в чипе — подходящий жанр). После можно докрутить в Mood / Эффекты / Переходы.
             </p>
           </div>
         )}
