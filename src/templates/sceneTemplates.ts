@@ -18,6 +18,15 @@ export const FILTERS: { key: string; label: string }[] = [
   { key: 'cinema', label: 'Кино' },
 ];
 
+// Оверлеи на фон (анимированные слои поверх кадра).
+export const OVERLAYS: { key: string; label: string }[] = [
+  { key: 'none', label: 'Нет' },
+  { key: 'leak', label: 'Лайтлики' },
+  { key: 'bokeh', label: 'Боке' },
+  { key: 'dust', label: 'Пыль' },
+  { key: 'sparkle', label: 'Блёстки' },
+];
+
 export const TRANSITIONS: { key: Transition; label: string }[] = [
   { key: 'fade', label: 'Растворение' },
   { key: 'wipe', label: 'Плашка-свайп' },
@@ -64,6 +73,7 @@ export interface SceneTemplate {
   slotCount: number; // сколько фото требует шаблон
   music?: string; // трек-пресет по умолчанию (id из tracks.json)
   filter?: string; // фильтр-грейд по умолчанию (ключ из FILTERS)
+  overlay?: string; // оверлей по умолчанию (ключ из OVERLAYS)
   scenes: SceneSpec[];
 }
 
@@ -100,7 +110,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'wait-for-it', name: 'Wait For It', tag: 'TikTok · интрига', accent: '#7c5cff',
-    preview: 'templates/previews/scenes-wait-for-it.mp4', slotCount: 1, music: 'track_015', filter: 'vhs',
+    preview: 'templates/previews/scenes-wait-for-it.mp4', slotCount: 1, music: 'track_015', filter: 'vhs', overlay: 'sparkle',
     scenes: [
       { type: 'hook', dur: 1.4, trans: 'fade', pos: 'center', text: 'подожди...', hint: '👀' },
       { type: 'countdown', dur: 1.5, trans: 'punch', count: 3, caption: 'готов?' },
@@ -120,7 +130,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'photo-dump', name: 'Photo Dump', tag: 'TikTok · эстетика', accent: '#c8a26a',
-    preview: 'templates/previews/scenes-photo-dump.mp4', slotCount: 4, music: 'track_012', filter: 'vintage',
+    preview: 'templates/previews/scenes-photo-dump.mp4', slotCount: 4, music: 'track_012', filter: 'vintage', overlay: 'dust',
     scenes: [
       { type: 'cover', dur: 1.3, trans: 'fade', slot: 0, kicker: 'дамп', text: '01' },
       { type: 'cover', dur: 1.3, trans: 'fade', slot: 1, kicker: '', text: '02' },
@@ -245,7 +255,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'neon-nights', name: 'Neon Nights', tag: 'неон · вайб', accent: '#7c5cff',
-    preview: 'templates/previews/scenes-neon-nights.mp4', slotCount: 2, music: 'track_020', filter: 'vivid',
+    preview: 'templates/previews/scenes-neon-nights.mp4', slotCount: 2, music: 'track_020', filter: 'vivid', overlay: 'bokeh',
     scenes: [
       { type: 'text', dur: 1.2, trans: 'fade', kicker: 'tonight', text: 'NEON NIGHTS', size: 14, align: 'center' },
       { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'после заката', text: 'GO OUT' },
@@ -285,13 +295,55 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       { type: 'cta', dur: 1.4, trans: 'zoom', title: 'убедился?', cta: 'Попробовать' },
     ],
   },
+  {
+    key: 'grwm', name: 'Get Ready', tag: 'GRWM · сборы', accent: '#ff5c8a',
+    preview: 'templates/previews/scenes-grwm.mp4', slotCount: 3, music: 'track_017', filter: 'warm', overlay: 'bokeh',
+    scenes: [
+      { type: 'hook', dur: 1.5, trans: 'fade', pos: 'top', text: 'соберись со мной', hint: 'смотри 👀' },
+      { type: 'cover', dur: 1.3, trans: 'wipe', slot: 0, kicker: 'шаг 1', text: 'БАЗА' },
+      { type: 'cover', dur: 1.3, trans: 'swipe', slot: 1, kicker: 'шаг 2', text: 'ОБРАЗ' },
+      { type: 'cover', dur: 1.3, trans: 'mirror', slot: 2, kicker: 'готово', text: 'ВАЙБ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'как тебе?', cta: 'Подпишись 🔥' },
+    ],
+  },
+  {
+    key: 'storytime', name: 'Storytime', tag: 'история · зацеп', accent: '#00e5ff',
+    preview: 'templates/previews/scenes-storytime.mp4', slotCount: 1, music: 'track_003', filter: 'none',
+    scenes: [
+      { type: 'hook', dur: 1.6, trans: 'fade', pos: 'center', text: 'storytime: как это случилось', hint: 'жди концовку 👀' },
+      { type: 'text', dur: 1.2, trans: 'swipeUp', kicker: 'и вот', text: 'ВСЁ ПОВЕРНУЛОСЬ', size: 13, align: 'left' },
+      { type: 'cover', dur: 1.4, trans: 'glitchcut', slot: 0, kicker: 'итог', text: 'ВОТ ТАК' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'а у тебя было?', cta: 'Пиши 👇' },
+    ],
+  },
+  {
+    key: 'transformation', name: 'Transformation', tag: 'до/после · вау', accent: '#3ad1c0',
+    preview: 'templates/previews/scenes-transformation.mp4', slotCount: 2, music: 'track_011', filter: 'none', overlay: 'sparkle',
+    scenes: [
+      { type: 'hook', dur: 1.4, trans: 'fade', pos: 'top', text: 'смотри до конца', hint: 'трансформация 👀' },
+      { type: 'beforeafter', dur: 1.9, trans: 'wipe', slot: 0, slot2: 1, text: 'было', caption: 'стало' },
+      { type: 'stat', dur: 1.3, trans: 'punch', kicker: 'результат', text: '×2', caption: 'за 30 дней' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'хочешь так же?', cta: 'Начать' },
+    ],
+  },
+  {
+    key: 'day-in-life', name: 'Day in Life', tag: 'влог · день', accent: '#ffcc4d',
+    preview: 'templates/previews/scenes-day-in-life.mp4', slotCount: 3, music: 'track_009', filter: 'warm', overlay: 'leak',
+    scenes: [
+      { type: 'text', dur: 1.1, trans: 'fade', kicker: 'vlog', text: 'DAY IN MY LIFE', size: 13, align: 'center' },
+      { type: 'cover', dur: 1.3, trans: 'wipe', slot: 0, kicker: 'утро', text: '08:00' },
+      { type: 'cover', dur: 1.3, trans: 'swipe', slot: 1, kicker: 'день', text: '14:00' },
+      { type: 'cover', dur: 1.3, trans: 'mirror', slot: 2, kicker: 'вечер', text: '21:00' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'как прошёл твой?', cta: 'Расскажи 👇' },
+    ],
+  },
 ];
 
 // Категории для галереи (порядок = порядок отображения).
 export const TEMPLATE_CATEGORIES: { name: string; keys: string[] }[] = [
-  { name: '🔥 Тренды TikTok', keys: ['pov-story', 'this-or-that', 'three-tips', 'wait-for-it', 'tag-friend', 'photo-dump', 'glitch-drop'] },
-  { name: '🛒 Продажи и товар', keys: ['flash-sale', 'promo-drop', 'glow-up', 'event-teaser'] },
-  { name: '🎬 Истории и Reels', keys: ['story-reel', 'kinetic-trio', 'clip-reel', 'mirror-fashion', 'split-story', 'neon-nights'] },
+  { name: '🔥 Тренды TikTok', keys: ['pov-story', 'this-or-that', 'three-tips', 'wait-for-it', 'tag-friend', 'photo-dump', 'glitch-drop', 'grwm', 'storytime'] },
+  { name: '🛒 Продажи и товар', keys: ['flash-sale', 'promo-drop', 'glow-up', 'event-teaser', 'transformation'] },
+  { name: '🎬 Истории и Reels', keys: ['story-reel', 'kinetic-trio', 'clip-reel', 'mirror-fashion', 'split-story', 'neon-nights', 'day-in-life'] },
   { name: '💬 Польза, цитаты, отзывы', keys: ['top-reasons', 'bold-quote', 'how-to', 'reviews'] },
 ];
 

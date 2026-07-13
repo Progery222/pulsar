@@ -337,6 +337,22 @@ function sceneRunner(stage, d, scenes) {
   let grainEl = null;
   if (F.grain > 0) { grainEl = el('div', `position:absolute;inset:-20%;opacity:${F.grain};mix-blend-mode:overlay;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");will-change:transform;`); fx.appendChild(grainEl); }
 
+  // Оверлеи на весь кадр: лайтлики / боке / пыль / блёстки (d.overlay).
+  const ovEls = [];
+  const OV = d.overlay || 'none';
+  if (OV === 'leak') {
+    [['rgba(255,170,80,0.35)', '14%', '20%', '58vw'], ['rgba(255,90,140,0.30)', '84%', '74%', '50vw'], ['rgba(120,180,255,0.24)', '62%', '10%', '42vw']].forEach((a, i) => {
+      const e = el('div', `position:absolute;left:${a[1]};top:${a[2]};width:${a[3]};height:${a[3]};transform:translate(-50%,-50%);border-radius:50%;background:radial-gradient(circle,${a[0]},transparent 62%);filter:blur(3vw);mix-blend-mode:screen;will-change:transform,opacity;`);
+      fx.appendChild(e); ovEls.push({ e, i, type: 'leak' });
+    });
+  } else if (OV === 'bokeh') {
+    for (let i = 0; i < 14; i++) { const sz = 2 + (i % 5); const e = el('div', `position:absolute;left:${(i * 67) % 100}%;top:${(i * 37) % 100}%;width:${sz}vw;height:${sz}vw;border-radius:50%;background:radial-gradient(circle, rgba(255,255,255,0.5), transparent 60%);mix-blend-mode:screen;filter:blur(0.4vw);will-change:transform,opacity;`); fx.appendChild(e); ovEls.push({ e, i, type: 'bokeh' }); }
+  } else if (OV === 'dust') {
+    for (let i = 0; i < 26; i++) { const e = el('div', `position:absolute;left:${(i * 53) % 100}%;top:${(i * 29) % 100}%;width:0.4vw;height:0.4vw;border-radius:50%;background:rgba(255,255,255,0.75);will-change:transform,opacity;`); fx.appendChild(e); ovEls.push({ e, i, type: 'dust' }); }
+  } else if (OV === 'sparkle') {
+    for (let i = 0; i < 18; i++) { const e = el('div', `position:absolute;left:${(i * 71) % 100}%;top:${(i * 43) % 100}%;width:0.9vw;height:0.9vw;background:#fff;clip-path:polygon(50% 0,60% 40%,100% 50%,60% 60%,50% 100%,40% 60%,0 50%,40% 40%);will-change:opacity,transform;`); fx.appendChild(e); ovEls.push({ e, i, type: 'sparkle' }); }
+  }
+
   const reset = (r) => { r.style.opacity = '1'; r.style.transform = 'none'; r.style.clipPath = 'none'; };
   const applyTrans = (type, A, B, p, accent) => {
     reset(A); reset(B); wipe.style.opacity = '0';
@@ -360,10 +376,10 @@ function sceneRunner(stage, d, scenes) {
         wipe.style.opacity = String(Math.sin(clamp01(p) * Math.PI)); wipe.style.background = '#fff'; wipe.style.transform = 'none'; wipe.textContent = '';
         break;
       }
-      case 'punch': { // зум-удар: B влетает из крупного с овершутом
-        A.style.opacity = String(1 - clamp01(p * 2)); A.style.transform = `scale(${1 - 0.3 * p})`;
-        const e = eob(clamp01((p - 0.1) / 0.9));
-        B.style.opacity = String(clamp01((p - 0.12) * 2.2)); B.style.transform = `scale(${1.7 - 0.7 * e})`;
+      case 'punch': { // зум-удар: B влетает из крупного (масштаб не опускается ниже 1 — без чёрных краёв)
+        A.style.opacity = String(1 - clamp01(p * 2)); A.style.transform = `scale(${(1 + 0.15 * p).toFixed(3)})`;
+        const e = eoc(clamp01((p - 0.1) / 0.9));
+        B.style.opacity = String(clamp01((p - 0.12) * 2.2)); B.style.transform = `scale(${Math.max(1, 1.55 - 0.55 * e).toFixed(3)})`;
         break;
       }
       case 'glitchcut': { // глитч-рез: резкая смена + rgb-дёрганье
@@ -401,6 +417,12 @@ function sceneRunner(stage, d, scenes) {
       renders[ci](localAuthored);
     }
     if (grainEl) grainEl.style.transform = `translate(${(Math.sin(t * 30) * 8).toFixed(0)}px, ${(Math.cos(t * 27) * 8).toFixed(0)}px)`;
+    for (const o of ovEls) {
+      if (o.type === 'leak') { o.e.style.transform = `translate(calc(-50% + ${(Math.sin(t * 0.4 + o.i) * 4).toFixed(2)}vw), calc(-50% + ${(Math.cos(t * 0.35 + o.i) * 4).toFixed(2)}vh))`; o.e.style.opacity = String(0.7 + 0.3 * Math.sin(t * 0.6 + o.i)); }
+      else if (o.type === 'bokeh') { const y = ((o.i * 7 + t * 4) % 120) - 10; o.e.style.transform = `translateY(${(-y).toFixed(1)}vh)`; o.e.style.opacity = String(0.3 + 0.3 * Math.abs(Math.sin(t * 0.5 + o.i))); }
+      else if (o.type === 'dust') { const y = ((o.i * 5 + t * 3) % 110) - 5; o.e.style.transform = `translate(${(Math.sin(t * 0.6 + o.i) * 2).toFixed(2)}vw, ${(-y).toFixed(1)}vh)`; o.e.style.opacity = String(0.4 + 0.4 * Math.abs(Math.sin(t + o.i))); }
+      else if (o.type === 'sparkle') { o.e.style.opacity = String(Math.max(0, Math.sin(t * 3 + o.i * 1.7))); o.e.style.transform = `scale(${(0.5 + 0.5 * Math.abs(Math.sin(t * 3 + o.i))).toFixed(2)}) rotate(${(t * 40 + o.i * 30).toFixed(0)}deg)`; }
+    }
   };
 }
 
@@ -447,7 +469,7 @@ function scenePhoto(root, d, opts) {
       const want = Math.max(0, Math.min(startOff + lt, dur - 0.05));
       if (Math.abs(vid.currentTime - want) > 0.03) { try { vid.currentTime = want; } catch (e) {} }
       vid.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
-      vid.style.transform = `scale(${(1.06 - 0.06 * clamp01(eob(seg(lt, 0, 0.6))))})`;
+      vid.style.transform = `scale(${(1.08 - 0.05 * clamp01(eoc(seg(lt, 0, 0.6)))).toFixed(3)})`;
     } else {
       const sp = eob(seg(lt, 0.0, 0.7));
       media.style.opacity = String(clamp01(seg(lt, 0.0, 0.4)));
@@ -513,7 +535,7 @@ function sceneCover(root, d, opts) {
   const title = el('div', `position:absolute;left:6%;right:6%;bottom:6%;font-family:'Oswald',sans-serif;font-weight:700;font-size:9.5vw;line-height:0.96;text-transform:uppercase;color:#fff;will-change:transform,opacity,clip-path;`, opts.text || opts.title || ''); root.appendChild(title);
   return (lt) => {
     seekVid(mo, lt);
-    mo.media.style.transform = `scale(${1.08 - 0.08 * clamp01(eob(seg(lt, 0, 0.9)))})`;
+    mo.media.style.transform = `scale(${(1.1 - 0.07 * clamp01(eoc(seg(lt, 0, 0.9)))).toFixed(3)})`;
     mo.media.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
     kick.style.opacity = String(clamp01(seg(lt, 0.25, 0.55))); kick.style.transform = `translateY(${(1 - eoc(seg(lt, 0.25, 0.7))) * 2}vh)`;
     title.style.opacity = String(clamp01(seg(lt, 0.3, 0.6))); title.style.clipPath = `inset(${(1 - eio(seg(lt, 0.3, 0.95))) * 100}% 0 0 0)`;
@@ -621,7 +643,7 @@ function scenePrice(root, d, opts) {
   const badge = opts.badge ? el('div', `position:absolute;right:8%;top:11%;transform:rotate(8deg);font-family:'RussoOne',sans-serif;font-size:4.6vw;color:#0a0a0a;background:${accent};padding:1vh 2vw;border-radius:1vw;will-change:transform,opacity;`, opts.badge) : null;
   if (badge) root.appendChild(badge);
   return (lt) => {
-    if (mo) { seekVid(mo, lt); mo.media.style.transform = `scale(${1.06 - 0.06 * clamp01(eob(seg(lt, 0, 0.9)))})`; }
+    if (mo) { seekVid(mo, lt); mo.media.style.transform = `scale(${(1.08 - 0.05 * clamp01(eoc(seg(lt, 0, 0.9)))).toFixed(3)})`; }
     name.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
     old.style.opacity = String(clamp01(seg(lt, 0.3, 0.55)));
     price.style.opacity = String(clamp01(seg(lt, 0.4, 0.7))); price.style.transform = `scale(${0.55 + 0.45 * clamp01(eob(seg(lt, 0.4, 0.9)))})`;
@@ -666,7 +688,7 @@ function sceneHook(root, d, opts) {
   const hint = opts.hint ? el('div', `position:absolute;left:0;width:100%;bottom:9%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:3.6vw;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.7);will-change:opacity,transform;`, opts.hint) : null;
   if (hint) root.appendChild(hint);
   return (lt) => {
-    if (mo) { seekVid(mo, lt); mo.media.style.transform = `scale(${1.08 - 0.08 * clamp01(eob(seg(lt, 0, 0.9)))})`; }
+    if (mo) { seekVid(mo, lt); mo.media.style.transform = `scale(${(1.1 - 0.07 * clamp01(eoc(seg(lt, 0, 0.9)))).toFixed(3)})`; }
     cap.style.opacity = String(clamp01(seg(lt, 0, 0.28)));
     cap.style.transform = `translateY(${(1 - eoc(seg(lt, 0, 0.5))) * -1.5}vh)`;
     if (hint) { const pulse = 0.65 + 0.35 * Math.abs(Math.sin(lt * 3.2)); hint.style.opacity = String(clamp01(seg(lt, 0.4, 0.7)) * pulse); hint.style.transform = `scale(${0.96 + 0.04 * Math.abs(Math.sin(lt * 3.2))})`; }

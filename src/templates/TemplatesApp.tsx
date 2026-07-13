@@ -3,7 +3,7 @@ import { removeBackground } from '@imgly/background-removal';
 import { useUIStore } from '../store/uiStore';
 import { mediaUrl } from '../utils/media';
 import {
-  SCENE_TEMPLATES, TEMPLATE_CATEGORIES, TRANSITIONS, FILTERS,
+  SCENE_TEMPLATES, TEMPLATE_CATEGORIES, TRANSITIONS, FILTERS, OVERLAYS,
   type SceneTemplate, type SceneSpec, type Transition,
 } from './sceneTemplates';
 import tracksData from '../data/tracks.json';
@@ -22,6 +22,12 @@ const FORMATS: Record<Format, { w: number; h: number; label: string; ratio: numb
 };
 
 const ACCENTS = ['#ff5c8a', '#ccff00', '#00e5ff', '#a9d2ff', '#ffcc4d', '#7c5cff', '#3ad1c0', '#c8a26a', '#ffffff'];
+
+// Сохранённый пользователем шаблон (в localStorage) — конфиг без медиа.
+type SavedTemplate = SceneTemplate & { saved: true; format?: Format; musicPath?: string; musicName?: string; musicStart?: number };
+const SAVED_KEY = 'pulsar.savedTemplates';
+const loadSaved = (): SavedTemplate[] => { try { return JSON.parse(localStorage.getItem(SAVED_KEY) || '[]'); } catch { return []; } };
+const persistSaved = (list: SavedTemplate[]) => { try { localStorage.setItem(SAVED_KEY, JSON.stringify(list)); } catch { /* noop */ } };
 
 // Прозрачный плейсхолдер-силуэт, пока в слот не загружено фото.
 const PLACEHOLDER =
@@ -77,6 +83,7 @@ export default function TemplatesApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
 
   const [phase, setPhase] = useState<Phase>('gallery');
+  const [saved, setSaved] = useState<SavedTemplate[]>(loadSaved);
 
   // Выбранный сцена-шаблон + редактируемая копия сцен.
   const [tpl, setTpl] = useState<SceneTemplate | null>(null);
@@ -88,6 +95,7 @@ export default function TemplatesApp() {
 
   const [accent, setAccent] = useState('#ff5c8a');
   const [filter, setFilter] = useState('none');
+  const [overlay, setOverlay] = useState('none');
   const [format, setFormat] = useState<Format>('9:16');
   const [musicPath, setMusicPath] = useState<string | null>(null);
   const [musicName, setMusicName] = useState<string | null>(null);
@@ -147,9 +155,9 @@ export default function TemplatesApp() {
       const firstImg = slots.find((s): s is { kind: 'image'; orig: string; cut: string | null; useCut: boolean } => !!s && s.kind === 'image');
       const mapSlot = (s: Slot) =>
         !s ? { i: PLACEHOLDER, o: PLACEHOLDER } : s.kind === 'image' ? { i: imgSrc(s), o: s.orig } : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start, path: s.path };
-      return { accent, filter, subjectImage: firstImg ? imgSrc(firstImg) : PLACEHOLDER, slots: slots.map(mapSlot), scenes };
+      return { accent, filter, overlay, subjectImage: firstImg ? imgSrc(firstImg) : PLACEHOLDER, slots: slots.map(mapSlot), scenes };
     },
-    [accent, filter, slots, scenes]
+    [accent, filter, overlay, slots, scenes]
   );
 
   const seekEngine = useCallback((tt: number) => {
@@ -229,17 +237,21 @@ export default function TemplatesApp() {
   }
 
   function chooseTemplate(tt: SceneTemplate) {
+    const sv = tt as SavedTemplate;
     setTpl(tt);
     setScenes(tt.scenes.map((s) => ({ ...s })));
     setSlots(new Array(tt.slotCount).fill(null));
     setAccent(tt.accent);
     setFilter(tt.filter || 'none');
-    // Музыка-пресет шаблона (можно сменить в панели).
-    const track = trackById(tt.music);
-    setMusicPath(track?.file || null);
-    setMusicName(track?.title || null);
-    setMusicStart(0);
-    setMusicDur(track?.duration || 0);
+    setOverlay(tt.overlay || 'none');
+    if (sv.format) setFormat(sv.format);
+    // Музыка: у сохранённого — свой путь/старт; иначе трек-пресет.
+    if (sv.saved && sv.musicPath) {
+      setMusicPath(sv.musicPath); setMusicName(sv.musicName || null); setMusicStart(sv.musicStart || 0); setMusicDur(0);
+    } else {
+      const track = trackById(tt.music);
+      setMusicPath(track?.file || null); setMusicName(track?.title || null); setMusicStart(0); setMusicDur(track?.duration || 0);
+    }
     setSelIdx(0);
     tRef.current = 0;
     setT(0);
@@ -382,6 +394,40 @@ export default function TemplatesApp() {
   function musicMove(e: React.PointerEvent) { if (musicDragRef.current) musicApply(e.clientX, musicDragRef.current.grab); }
   function musicUp() { musicDragRef.current = null; }
 
+  // Сохранить текущую настройку шаблона (тексты/акцент/фильтр/оверлей/музыка) в «Сохранённые».
+  function saveCurrent() {
+    if (!tpl) return;
+    const name = window.prompt('Название шаблона:', `${tpl.name} — моё`);
+    if (!name) return;
+    const item: SavedTemplate = {
+      saved: true,
+      key: `saved-${Date.now()}`,
+      name,
+      tag: 'сохранённый',
+      accent,
+      filter,
+      overlay,
+      preview: tpl.preview,
+      slotCount: tpl.slotCount,
+      scenes: scenes.map((s) => ({ ...s })),
+      format,
+      musicPath: musicPath || undefined,
+      musicName: musicName || undefined,
+      musicStart,
+    };
+    const next = [item, ...saved.filter((s) => s.name !== name)];
+    setSaved(next);
+    persistSaved(next);
+    showSavedToast();
+  }
+  function removeSaved(key: string) {
+    const next = saved.filter((s) => s.key !== key);
+    setSaved(next);
+    persistSaved(next);
+  }
+  const [savedToast, setSavedToast] = useState(false);
+  function showSavedToast() { setSavedToast(true); setTimeout(() => setSavedToast(false), 1800); }
+
   async function render() {
     if (!tpl) return;
     const filled = slots.filter(Boolean).length;
@@ -423,24 +469,33 @@ export default function TemplatesApp() {
   if (phase === 'gallery') {
     const byKey = new Map(SCENE_TEMPLATES.map((t) => [t.key, t]));
     const usedKeys = new Set(TEMPLATE_CATEGORIES.flatMap((c) => c.keys));
-    const cats = TEMPLATE_CATEGORIES.map((c) => ({ name: c.name, items: c.keys.map((k) => byKey.get(k)).filter((x): x is SceneTemplate => !!x) }));
+    const cats: { name: string; items: SceneTemplate[] }[] = [];
+    if (saved.length) cats.push({ name: '⭐ Сохранённые', items: saved });
+    TEMPLATE_CATEGORIES.forEach((c) => cats.push({ name: c.name, items: c.keys.map((k) => byKey.get(k)).filter((x): x is SceneTemplate => !!x) }));
     const other = SCENE_TEMPLATES.filter((t) => !usedKeys.has(t.key));
     if (other.length) cats.push({ name: '✦ Другое', items: other });
 
-    const card = (tt: SceneTemplate) => (
-      <button key={tt.key} onClick={() => chooseTemplate(tt)}
-        style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
-        <div style={{ position: 'relative' }}>
-          <video src={tt.preview} autoPlay loop muted playsInline
-            style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-          <div style={{ position: 'absolute', bottom: 5, right: 5, padding: '1px 5px', borderRadius: 5, background: 'rgba(0,0,0,0.6)', fontSize: 9.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
-        </div>
-        <div style={{ padding: '6px 8px' }}>
-          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tt.name}</div>
-          <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tt.tag}</div>
-        </div>
-      </button>
-    );
+    const card = (tt: SceneTemplate) => {
+      const isSaved = (tt as SavedTemplate).saved === true;
+      return (
+        <button key={tt.key} onClick={() => chooseTemplate(tt)}
+          style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left', position: 'relative' }}>
+          <div style={{ position: 'relative' }}>
+            <video src={tt.preview} autoPlay loop muted playsInline
+              style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
+            <div style={{ position: 'absolute', bottom: 5, right: 5, padding: '1px 5px', borderRadius: 5, background: 'rgba(0,0,0,0.6)', fontSize: 9.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
+            {isSaved && (
+              <button onClick={(e) => { e.stopPropagation(); e.preventDefault(); if (window.confirm(`Удалить «${tt.name}»?`)) removeSaved(tt.key); }}
+                title="Удалить" style={{ position: 'absolute', top: 4, right: 4, width: 20, height: 20, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'rgba(0,0,0,0.65)', color: '#fff', fontSize: 12, lineHeight: 1 }}>✕</button>
+            )}
+          </div>
+          <div style={{ padding: '6px 8px' }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tt.name}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tt.tag}</div>
+          </div>
+        </button>
+      );
+    };
 
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
@@ -469,6 +524,9 @@ export default function TemplatesApp() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       <Header onHome={() => setAppMode('select')} title={tpl?.name || 'Шаблон'} onBack={done ? undefined : () => setPhase('gallery')} />
+      {savedToast && (
+        <div style={{ position: 'fixed', top: 64, left: '50%', transform: 'translateX(-50%)', zIndex: 100, background: 'var(--accent-green)', color: '#000', fontWeight: 700, fontSize: 13, padding: '8px 16px', borderRadius: 20, boxShadow: '0 6px 20px rgba(0,0,0,0.4)' }}>⭐ Шаблон сохранён</div>
+      )}
       <audio ref={audioRef} src={audioBlob || undefined} preload="auto"
         onLoadedMetadata={(e) => { if (Number.isFinite(e.currentTarget.duration)) setMusicDur(e.currentTarget.duration); }} />
 
@@ -504,7 +562,10 @@ export default function TemplatesApp() {
               {/* Транспорт */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <button onClick={togglePlay} style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 15 }}>{playing ? '⏸' : '▶'}</button>
-                <button onClick={() => setSfxOn((v) => !v)} title="Звук переходов" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-tertiary)', color: sfxOn ? 'var(--accent-green)' : 'var(--text-secondary)', fontSize: 14 }}>{sfxOn ? '🔊' : '🔇'}</button>
+                <button onClick={() => setSfxOn((v) => !v)} title="Звуки на переходах (whoosh/удар)"
+                  style={{ height: 34, padding: '0 12px', borderRadius: 17, border: `1px solid ${sfxOn ? 'var(--accent-green)' : 'var(--border)'}`, cursor: 'pointer', background: sfxOn ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: sfxOn ? '#000' : 'var(--text-secondary)', fontSize: 12, fontWeight: 600, whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: 5 }}>
+                  {sfxOn ? '🔊' : '🔇'} Звуки переходов
+                </button>
                 <input type="range" min={0} max={1000} value={Math.round((t / totalDur) * 1000)} onChange={(e) => scrub(Number(e.target.value) / 1000)} style={{ flex: 1, accentColor: 'var(--accent-green)' }} />
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)', width: 74, textAlign: 'right' }}>{t.toFixed(1)} / {totalDur.toFixed(1)}с</span>
               </div>
@@ -808,6 +869,16 @@ export default function TemplatesApp() {
                   ))}
                 </div>
               </Group>
+              <Group label="Оверлей на фон">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {OVERLAYS.map((o) => (
+                    <button key={o.key} onClick={() => setOverlay(o.key)}
+                      style={{ padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: overlay === o.key ? '1px solid var(--accent-green)' : '1px solid var(--border)', background: overlay === o.key ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: overlay === o.key ? '#000' : 'var(--text-primary)' }}>
+                      {o.label}
+                    </button>
+                  ))}
+                </div>
+              </Group>
               <Group label="Формат">
                 <div style={{ display: 'flex', gap: 8 }}>
                   {(Object.keys(FORMATS) as Format[]).map((f) => (
@@ -827,6 +898,7 @@ export default function TemplatesApp() {
                 </label>
               </Group>
               {renderErr && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{renderErr}</div>}
+              <button onClick={saveCurrent} style={btn(false)}>⭐ Сохранить шаблон</button>
               <button onClick={render} disabled={phase === 'rendering'} style={{ ...btn(true), height: 44, fontSize: 15, opacity: phase === 'rendering' ? 0.6 : 1 }}>
                 {phase === 'rendering' ? `Рендер… ${progress}%` : '✨ Сгенерировать'}
               </button>

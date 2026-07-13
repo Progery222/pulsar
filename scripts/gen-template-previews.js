@@ -69,7 +69,7 @@ const JOBS = VTEST ? [
   },
   {
     id: 'scenes', out: 'scenes-wait-for-it', dur: 5.8,
-    data: { accent: '#7c5cff', filter: 'vhs', subjectImage: SUBJECT, slots: S1, scenes: [
+    data: { accent: '#7c5cff', filter: 'vhs', overlay: 'sparkle', subjectImage: SUBJECT, slots: S1, scenes: [
       { type: 'hook', dur: 1.4, trans: 'fade', pos: 'center', text: 'подожди...', hint: '👀' },
       { type: 'countdown', dur: 1.5, trans: 'punch', count: 3, caption: 'готов?' },
       { type: 'cover', dur: 1.5, trans: 'glitchcut', slot: 0, kicker: 'бум', text: 'ВОТ ОНО' },
@@ -87,7 +87,7 @@ const JOBS = VTEST ? [
   },
   {
     id: 'scenes', out: 'scenes-photo-dump', dur: 6.6,
-    data: { accent: '#c8a26a', filter: 'vintage', subjectImage: SUBJECT, slots: S4, scenes: [
+    data: { accent: '#c8a26a', filter: 'vintage', overlay: 'dust', subjectImage: SUBJECT, slots: S4, scenes: [
       { type: 'cover', dur: 1.3, trans: 'fade', slot: 0, kicker: 'дамп', text: '01' },
       { type: 'cover', dur: 1.3, trans: 'fade', slot: 1, kicker: '', text: '02' },
       { type: 'cover', dur: 1.3, trans: 'fade', slot: 2, kicker: '', text: '03' },
@@ -106,7 +106,7 @@ const JOBS = VTEST ? [
   },
   {
     id: 'scenes', out: 'scenes-neon-nights', dur: 6.9,
-    data: { accent: '#7c5cff', filter: 'vivid', subjectImage: SUBJECT, slots: S2, scenes: [
+    data: { accent: '#7c5cff', filter: 'vivid', overlay: 'bokeh', subjectImage: SUBJECT, slots: S2, scenes: [
       { type: 'text', dur: 1.2, trans: 'fade', kicker: 'tonight', text: 'NEON NIGHTS', size: 14, align: 'center' },
       { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'после заката', text: 'GO OUT' },
       { type: 'quote', dur: 1.5, trans: 'flash', text: 'живи ярко', caption: 'night mode' },
@@ -140,6 +140,44 @@ const JOBS = VTEST ? [
       { type: 'quote', dur: 1.4, trans: 'swipeUp', text: 'советую всем', caption: '★★★★★' },
       { type: 'cover', dur: 1.4, trans: 'mirror', slot: 0, kicker: 'присоединяйся', text: 'ТЫ СЛЕДУЮЩИЙ' },
       { type: 'cta', dur: 1.4, trans: 'zoom', title: 'убедился?', cta: 'Попробовать' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-grwm', dur: 6.8,
+    data: { accent: '#ff5c8a', filter: 'warm', overlay: 'bokeh', subjectImage: SUBJECT, slots: S3, scenes: [
+      { type: 'hook', dur: 1.5, trans: 'fade', pos: 'top', text: 'соберись со мной', hint: 'смотри 👀' },
+      { type: 'cover', dur: 1.3, trans: 'wipe', slot: 0, kicker: 'шаг 1', text: 'БАЗА' },
+      { type: 'cover', dur: 1.3, trans: 'swipe', slot: 1, kicker: 'шаг 2', text: 'ОБРАЗ' },
+      { type: 'cover', dur: 1.3, trans: 'mirror', slot: 2, kicker: 'готово', text: 'ВАЙБ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'как тебе?', cta: 'Подпишись 🔥' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-storytime', dur: 5.6,
+    data: { accent: '#00e5ff', filter: 'none', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'hook', dur: 1.6, trans: 'fade', pos: 'center', text: 'storytime: как это случилось', hint: 'жди концовку 👀' },
+      { type: 'text', dur: 1.2, trans: 'swipeUp', kicker: 'и вот', text: 'ВСЁ ПОВЕРНУЛОСЬ', size: 13, align: 'left' },
+      { type: 'cover', dur: 1.4, trans: 'glitchcut', slot: 0, kicker: 'итог', text: 'ВОТ ТАК' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'а у тебя было?', cta: 'Пиши 👇' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-transformation', dur: 6.0,
+    data: { accent: '#3ad1c0', filter: 'none', overlay: 'sparkle', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'hook', dur: 1.4, trans: 'fade', pos: 'top', text: 'смотри до конца', hint: 'трансформация 👀' },
+      { type: 'beforeafter', dur: 1.9, trans: 'wipe', slot: 0, slot2: 1, text: 'было', caption: 'стало' },
+      { type: 'stat', dur: 1.3, trans: 'punch', kicker: 'результат', text: '×2', caption: 'за 30 дней' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'хочешь так же?', cta: 'Начать' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-day-in-life', dur: 6.3,
+    data: { accent: '#ffcc4d', filter: 'warm', overlay: 'leak', subjectImage: SUBJECT, slots: S3, scenes: [
+      { type: 'text', dur: 1.1, trans: 'fade', kicker: 'vlog', text: 'DAY IN MY LIFE', size: 13, align: 'center' },
+      { type: 'cover', dur: 1.3, trans: 'wipe', slot: 0, kicker: 'утро', text: '08:00' },
+      { type: 'cover', dur: 1.3, trans: 'swipe', slot: 1, kicker: 'день', text: '14:00' },
+      { type: 'cover', dur: 1.3, trans: 'mirror', slot: 2, kicker: 'вечер', text: '21:00' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'как прошёл твой?', cta: 'Расскажи 👇' },
     ] },
   },
   {
