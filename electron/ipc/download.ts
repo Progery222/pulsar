@@ -18,6 +18,18 @@ function ffmpegDir(): string | null {
 }
 
 const VIDEO_EXT = /\.(mp4|mov|avi|webm|mkv)$/i;
+const AUDIO_EXT = /\.(mp3|m4a|aac|wav|opus|ogg)$/i;
+
+function pickAudio(dir: string): string | null {
+  let best: { p: string; size: number } | null = null;
+  for (const name of fs.readdirSync(dir)) {
+    if (!AUDIO_EXT.test(name)) continue;
+    const full = path.join(dir, name);
+    const size = fs.statSync(full).size;
+    if (!best || size > best.size) best = { p: full, size };
+  }
+  return best?.p ?? null;
+}
 
 function sendProgress(ev: { stage?: string; percent?: number; line?: string }) {
   BrowserWindow.getAllWindows().forEach((w) => w.webContents.send('download-progress', ev));
@@ -120,7 +132,73 @@ function runDownload(url: string, outDir: string, cookiesBrowser?: string): Prom
   });
 }
 
+// Скачивание только АУДИО (yt-dlp -x mp3) — трендовый звук по ссылке для монтажа.
+function runAudioDownload(url: string, outDir: string, cookiesBrowser?: string): Promise<{ ok: true; path: string } | { error: string }> {
+  return new Promise((resolve) => {
+    const args = [
+      '-m', 'yt_dlp',
+      '--no-playlist', '--no-warnings', '--newline',
+      '-x', '--audio-format', 'mp3', '--audio-quality', '0',
+      '-o', path.join(outDir, '%(title).80B.%(ext)s'),
+    ];
+    if (cookiesBrowser) args.push('--cookies-from-browser', cookiesBrowser);
+    const dir = ffmpegDir();
+    if (dir) args.push('--ffmpeg-location', dir);
+    args.push(url);
+
+    sendProgress({ stage: 'download', percent: 0, line: 'Получаю аудио…' });
+    const child = spawn(pyCmd(), args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
+    let stderr = '';
+    const onOut = (chunk: Buffer) => {
+      const s = chunk.toString();
+      const m = [...s.matchAll(/\[download\]\s+(\d+(?:\.\d+)?)%/g)];
+      if (m.length) sendProgress({ stage: 'download', percent: parseFloat(m[m.length - 1][1]) });
+      if (/ExtractAudio|Destination.*\.mp3|\[ffmpeg\]/i.test(s)) sendProgress({ stage: 'merge', percent: 100, line: 'Извлекаю дорожку…' });
+    };
+    child.stdout.on('data', onOut);
+    child.stderr.on('data', (c: Buffer) => { stderr += c.toString(); onOut(c); });
+    child.on('error', (err) => resolve({ error: `Не удалось запустить yt-dlp: ${err.message}` }));
+    child.on('close', (code) => {
+      if (code !== 0) {
+        const tail = stderr.trim().split(/\r?\n/).filter(Boolean).pop() ?? `код ${code}`;
+        resolve({ error: `Ошибка загрузки: ${tail}` });
+        return;
+      }
+      const file = pickAudio(outDir);
+      if (!file) { resolve({ error: 'Аудио скачано, но не найдено на диске' }); return; }
+      sendProgress({ stage: 'done', percent: 100, line: 'Готово' });
+      resolve({ ok: true, path: file });
+    });
+  });
+}
+
 export function registerDownloadHandlers() {
+  // Аудио по ссылке (для монтажа под трендовый звук) → mp3 в Downloads/Pulsar/audio.
+  ipcMain.handle('download:audio', async (_e, url: string) => {
+    if (!url || !/^https?:\/\//i.test(url.trim())) return { error: 'Введите корректную ссылку (http/https)' };
+    if (!(await ytdlpInstalled())) {
+      const inst = await installYtdlp();
+      if ('error' in inst) return inst;
+      if (!(await ytdlpInstalled())) return { error: 'yt-dlp не установился. Проверьте Python.' };
+    }
+    const outDir = path.join(app.getPath('downloads'), 'Pulsar', 'audio', String(Date.now()));
+    fs.mkdirSync(outDir, { recursive: true });
+    try {
+      let r = await runAudioDownload(url.trim(), outDir);
+      if ('error' in r && NEEDS_COOKIES.test(r.error)) {
+        for (const b of COOKIE_BROWSERS) {
+          sendProgress({ stage: 'download', line: `Требуется вход — пробую куки из ${b}…` });
+          const r2 = await runAudioDownload(url.trim(), outDir, b);
+          if ('ok' in r2) return r2;
+          r = r2;
+        }
+      }
+      return r;
+    } catch (err) {
+      return { error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+
   // url — ссылка; baseDir (необязательно) — куда сохранять (иначе Downloads/Pulsar).
   // Каждое скачивание идёт в свою подпапку-таймстамп, чтобы файлы не перемешивались.
   ipcMain.handle('download:url', async (_e, url: string, baseDir?: string) => {

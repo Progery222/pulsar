@@ -202,6 +202,8 @@ const electronAPI = {
   // Скачивание видео по ссылке (TikTok, YouTube, Instagram, …). baseDir — необязательная папка.
   downloadVideo: (url: string, baseDir?: string): Promise<{ ok: true; path: string } | { error: string }> =>
     ipcRenderer.invoke('download:url', url, baseDir),
+  downloadAudio: (url: string): Promise<{ ok: true; path: string } | { error: string }> =>
+    ipcRenderer.invoke('download:audio', url),
   onDownloadProgress: (
     cb: (e: { stage?: string; percent?: number; line?: string }) => void
   ): (() => void) => {

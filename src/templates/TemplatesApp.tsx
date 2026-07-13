@@ -8,9 +8,10 @@ import {
 } from './sceneTemplates';
 import tracksData from '../data/tracks.json';
 
-type Track = { id: string; title: string; file: string; duration?: number };
+type Track = { id: string; title: string; file: string; duration?: number; artist?: string; category?: string; bpm?: number };
+const ALL_TRACKS = tracksData as Track[];
 const trackById = (id?: string): Track | undefined =>
-  id ? (tracksData as Track[]).find((x) => x.id === id) : undefined;
+  id ? ALL_TRACKS.find((x) => x.id === id) : undefined;
 
 type Phase = 'gallery' | 'edit' | 'rendering' | 'done';
 type Format = '9:16' | '1:1' | '16:9';
@@ -99,6 +100,9 @@ export default function TemplatesApp() {
   const [format, setFormat] = useState<Format>('9:16');
   const [musicPath, setMusicPath] = useState<string | null>(null);
   const [musicName, setMusicName] = useState<string | null>(null);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [dlBusy, setDlBusy] = useState(false);
+  const [musicQuery, setMusicQuery] = useState('');
   const [musicStart, setMusicStart] = useState(0);
   const [musicDur, setMusicDur] = useState(0);
   const musicStartRef = useRef(0);
@@ -334,6 +338,32 @@ export default function TemplatesApp() {
   async function pickMusic() {
     const p = await window.electronAPI.selectAudio();
     if (p) { setMusicPath(p); setMusicName(p.split(/[\\/]/).pop() || null); setMusicStart(0); setMusicDur(0); }
+  }
+  function selectTrack(tr: Track) {
+    setMusicPath(tr.file); setMusicName(tr.title); setMusicStart(0); setMusicDur(tr.duration || 0);
+  }
+  async function fetchTrack() {
+    const u = linkUrl.trim();
+    if (!u) return;
+    setDlBusy(true); setRenderErr(null);
+    try {
+      const r = await window.electronAPI.downloadAudio(u);
+      if ('error' in r) setRenderErr(r.error);
+      else { setMusicPath(r.path); setMusicName(r.path.split(/[\\/]/).pop() || null); setMusicStart(0); setMusicDur(0); setLinkUrl(''); }
+    } finally { setDlBusy(false); }
+  }
+  // Прослушивание трека в списке (отдельный аудио-элемент).
+  const previewRef = useRef<HTMLAudioElement | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
+  function togglePreview(tr: Track) {
+    if (previewId === tr.id) { previewRef.current?.pause(); setPreviewId(null); return; }
+    if (!previewRef.current) previewRef.current = new Audio();
+    const a = previewRef.current;
+    fetch(mediaUrl(tr.file)).then((res) => res.blob()).then((b) => {
+      a.src = URL.createObjectURL(b); a.currentTime = 0; a.volume = 0.8; void a.play().catch(() => {});
+    }).catch(() => {});
+    a.onended = () => setPreviewId(null);
+    setPreviewId(tr.id);
   }
 
   function patchScene(i: number, patch: Partial<SceneSpec>) {
@@ -890,16 +920,51 @@ export default function TemplatesApp() {
                 </div>
               </Group>
               <Group label="Музыка">
-                <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                  <button onClick={pickMusic} style={btn(false)}>{musicPath ? 'Сменить трек' : 'Выбрать трек'}</button>
-                  {musicPath && <button onClick={() => { setMusicPath(null); setMusicName(null); }} title="Без музыки" style={{ ...btn(false), width: 'auto', padding: '9px 12px' }}>✕</button>}
-                </div>
-                {!musicPath && (
-                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
-                    Без музыки — трендовый звук добавишь прямо в TikTok при публикации (там он легальный и «родной» для трендов).
+                {musicPath && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, background: 'var(--bg-tertiary)' }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()}</span>
+                    <button onClick={() => { setMusicPath(null); setMusicName(null); }} title="Убрать музыку" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>✕</button>
                   </div>
                 )}
-                {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()} <span style={{ opacity: 0.7 }}>· сдвиг трека — под таймлайном</span></div>}
+                {!musicPath && (
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                    Выбери из библиотеки, скачай по ссылке или свой файл. Для TikTok можно вообще без музыки — добавишь трендовый звук при публикации.
+                  </div>
+                )}
+
+                {/* Поиск по библиотеке */}
+                <input value={musicQuery} onChange={(e) => setMusicQuery(e.target.value)} placeholder="🔎 поиск по библиотеке…"
+                  style={{ width: '100%', padding: '7px 10px', borderRadius: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 12.5 }} />
+                <div style={{ maxHeight: 200, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  {ALL_TRACKS.filter((tr) => {
+                    const q = musicQuery.trim().toLowerCase();
+                    return !q || `${tr.title} ${tr.artist || ''} ${tr.category || ''}`.toLowerCase().includes(q);
+                  }).map((tr) => {
+                    const active = musicPath === tr.file;
+                    return (
+                      <div key={tr.id} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '5px 6px', borderRadius: 7, background: active ? 'rgba(204,255,0,0.12)' : 'transparent', border: active ? '1px solid var(--accent-green)' : '1px solid transparent' }}>
+                        <button onClick={() => togglePreview(tr)} title="Прослушать" style={{ width: 24, height: 24, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 11 }}>{previewId === tr.id ? '⏸' : '▶'}</button>
+                        <button onClick={() => selectTrack(tr)} style={{ flex: 1, minWidth: 0, textAlign: 'left', border: 'none', background: 'transparent', cursor: 'pointer', padding: 0 }}>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tr.title}</div>
+                          <div style={{ fontSize: 10, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tr.artist} · {tr.category}{tr.bpm ? ` · ${tr.bpm} BPM` : ''}</div>
+                        </button>
+                        {active && <span style={{ color: 'var(--accent-green)', fontSize: 13, flexShrink: 0 }}>✓</span>}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Скачать трек по ссылке */}
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <input value={linkUrl} onChange={(e) => setLinkUrl(e.target.value)} placeholder="ссылка на трек (TikTok/YT/SoundCloud)"
+                    style={{ flex: 1, minWidth: 0, padding: '7px 10px', borderRadius: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 12 }} />
+                  <button onClick={fetchTrack} disabled={dlBusy || !linkUrl.trim()} style={{ ...btn(false), width: 'auto', padding: '0 12px', opacity: dlBusy || !linkUrl.trim() ? 0.6 : 1 }}>{dlBusy ? '…' : '⬇'}</button>
+                </div>
+                {dlBusy && <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Тяну аудио по ссылке…</div>}
+
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={pickMusic} style={{ ...btn(false), flex: 1 }}>📁 Свой файл</button>
+                </div>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={clipAudio} onChange={(e) => setClipAudio(e.target.checked)} style={{ accentColor: 'var(--accent-green)' }} />
                   Звук из видео-клипов
