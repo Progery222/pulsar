@@ -4,7 +4,20 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import ffmpegStatic from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
 import { videoEncoderOptions } from './encoder';
+
+const ffprobeBin = ffprobeStatic.path?.replace('app.asar', 'app.asar.unpacked');
+function hasAudioStream(file: string): Promise<boolean> {
+  if (!ffprobeBin) return Promise.resolve(false);
+  return new Promise((resolve) => {
+    const p = spawn(ffprobeBin, ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file], { windowsHide: true });
+    let out = '';
+    p.stdout.on('data', (d) => { out += d.toString(); });
+    p.on('error', () => resolve(false));
+    p.on('close', () => resolve(out.trim().length > 0));
+  });
+}
 
 // Мини-Remotion на нашем Chromium: шаблон (public/templates/runtime.html) рендерится
 // в скрытом окне покадрово (capturePage) → PNG → ffmpeg склейка + музыка → mp4.
@@ -40,6 +53,7 @@ export interface TemplateRenderOpts {
   outputPath: string;
   musicPath?: string | null;
   musicStart?: number;
+  clipAudio?: boolean; // подмешивать звук из видео-клипов сцен
 }
 
 export interface TemplateRenderHooks {
@@ -108,12 +122,18 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
   const args = ['-y', '-hide_banner', '-loglevel', 'error', '-framerate', String(fps), '-i', path.join(framesDir, 'f%05d.png')];
 
   // Аудио-входы: [музыка?][sfx...]; собираем filter_complex-микс.
+  // Пресет-трек приходит относительным (assets/music/...) — резолвим к ресурсам.
+  const musicFile = opts.musicPath
+    ? (path.isAbsolute(opts.musicPath)
+        ? opts.musicPath
+        : path.join(app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd()), opts.musicPath))
+    : null;
   const mixParts: string[] = [];
   const filters: string[] = [];
   let inIdx = 1; // 0 — кадры
-  if (opts.musicPath) {
+  if (musicFile && fs.existsSync(musicFile)) {
     if (opts.musicStart && opts.musicStart > 0) args.push('-ss', String(opts.musicStart));
-    args.push('-i', opts.musicPath);
+    args.push('-i', musicFile);
     filters.push(`[${inIdx}:a]volume=0.85[m]`);
     mixParts.push('[m]');
     inIdx++;
@@ -139,6 +159,25 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
         }
       }
       acc += scenes[i].dur || 1.5;
+    }
+  }
+  // Звук из видео-клипов: для сцены со слот-видео берём его аудио в окне сцены.
+  if (opts.clipAudio && scenes.length) {
+    const dslots = Array.isArray((data as { slots?: unknown }).slots) ? (data as { slots: unknown[] }).slots : [];
+    const authored = scenes.reduce((s, x) => s + (x.dur || 1.5), 0) || 1;
+    const factor = durationSec / authored;
+    let acc2 = 0;
+    for (let i = 0; i < scenes.length; i++) {
+      const sc = scenes[i] as { dur?: number; slot?: number };
+      const slot = typeof sc.slot === 'number' ? (dslots[sc.slot] as { path?: string; start?: number } | undefined) : undefined;
+      if (slot && slot.path && fs.existsSync(slot.path) && (await hasAudioStream(slot.path))) {
+        const dl = Math.round(acc2 * factor * 1000);
+        args.push('-ss', String(slot.start || 0), '-t', String(((sc.dur || 1.5) * factor).toFixed(3)), '-i', slot.path);
+        filters.push(`[${inIdx}:a]adelay=${dl}|${dl},volume=1.0[c${inIdx}]`);
+        mixParts.push(`[c${inIdx}]`);
+        inIdx++;
+      }
+      acc2 += sc.dur || 1.5;
     }
   }
 

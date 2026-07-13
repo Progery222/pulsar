@@ -4,9 +4,14 @@ import { useUIStore } from '../store/uiStore';
 import { mediaUrl } from '../utils/media';
 import { MONTAGE_TEMPLATES, applyMontageTemplate } from './montageTemplates';
 import {
-  SCENE_TEMPLATES, TRANSITIONS, sceneTemplateDuration,
+  SCENE_TEMPLATES, TRANSITIONS,
   type SceneTemplate, type SceneSpec, type Transition,
 } from './sceneTemplates';
+import tracksData from '../data/tracks.json';
+
+type Track = { id: string; title: string; file: string };
+const trackById = (id?: string): Track | undefined =>
+  id ? (tracksData as Track[]).find((x) => x.id === id) : undefined;
 
 type Phase = 'gallery' | 'edit' | 'rendering' | 'done';
 type Format = '9:16' | '1:1' | '16:9';
@@ -55,10 +60,14 @@ function sceneLabel(s: SceneSpec): string {
     case 'stat': return s.text || 'цифра';
     case 'list': return s.title || 'список';
     case 'quote': return s.text || 'цитата';
+    case 'beforeafter': return 'до/после';
+    case 'price': return s.price || 'ценник';
+    case 'countdown': return 'отсчёт';
   }
 }
 const SCENE_KIND: Record<SceneSpec['type'], string> = {
-  text: 'текст', photo: 'фото', cover: 'кадр', split: 'сплит', stat: 'цифра', list: 'список', quote: 'цитата', cta: 'CTA',
+  text: 'текст', photo: 'фото', cover: 'кадр', split: 'сплит', stat: 'цифра', list: 'список', quote: 'цитата',
+  beforeafter: 'до/после', price: 'ценник', countdown: 'отсчёт', cta: 'CTA',
 };
 
 export default function TemplatesApp() {
@@ -78,6 +87,9 @@ export default function TemplatesApp() {
   const [accent, setAccent] = useState('#ff5c8a');
   const [format, setFormat] = useState<Format>('9:16');
   const [musicPath, setMusicPath] = useState<string | null>(null);
+  const [musicName, setMusicName] = useState<string | null>(null);
+  const [clipAudio, setClipAudio] = useState(true);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Живое превью.
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -100,6 +112,14 @@ export default function TemplatesApp() {
     const mk = (n: string) => { const a = new Audio(sfxUrl(n)); a.volume = 0.55; return a; };
     sfxRef.current = { whoosh: mk('whoosh'), impact: mk('impact'), pop: mk('pop') };
   }, []);
+  // Музыка в живом превью через blob (media:// напрямую в <audio> в Electron ненадёжен).
+  const [audioBlob, setAudioBlob] = useState<string | null>(null);
+  useEffect(() => {
+    if (!musicPath) { setAudioBlob(null); return; }
+    let alive = true; let url: string | null = null;
+    fetch(mediaUrl(musicPath)).then((r) => r.blob()).then((b) => { if (!alive) return; url = URL.createObjectURL(b); setAudioBlob(url); }).catch(() => {});
+    return () => { alive = false; if (url) URL.revokeObjectURL(url); };
+  }, [musicPath]);
 
   const [progress, setProgress] = useState(0);
   const [output, setOutput] = useState<string | null>(null);
@@ -118,7 +138,7 @@ export default function TemplatesApp() {
     (forRender = false) => {
       const firstImg = slots.find((s): s is { kind: 'image'; src: string; orig: string } => !!s && s.kind === 'image');
       const mapSlot = (s: Slot) =>
-        !s ? { i: PLACEHOLDER, o: PLACEHOLDER } : s.kind === 'image' ? { i: s.src, o: s.orig } : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start };
+        !s ? { i: PLACEHOLDER, o: PLACEHOLDER } : s.kind === 'image' ? { i: s.src, o: s.orig } : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start, path: s.path };
       return { accent, subjectImage: firstImg?.src || PLACEHOLDER, slots: slots.map(mapSlot), scenes };
     },
     [accent, slots, scenes]
@@ -154,7 +174,7 @@ export default function TemplatesApp() {
         const dt = (ts - lastTsRef.current) / 1000;
         lastTsRef.current = ts;
         let nt = tRef.current + dt;
-        if (nt >= totalDur) nt = 0;
+        if (nt >= totalDur) { nt = 0; if (audioRef.current) audioRef.current.currentTime = 0; }
         tRef.current = nt;
         setT(nt);
         seekEngine(nt);
@@ -186,12 +206,18 @@ export default function TemplatesApp() {
   function togglePlay() {
     playRef.current = !playRef.current;
     setPlaying(playRef.current);
+    const a = audioRef.current;
+    if (a) {
+      if (playRef.current) { try { a.currentTime = tRef.current; void a.play(); } catch { /* noop */ } }
+      else a.pause();
+    }
   }
   function scrub(v: number) {
     const nt = v * totalDur;
     tRef.current = nt;
     setT(nt);
     seekEngine(nt);
+    if (audioRef.current) { try { audioRef.current.currentTime = nt; } catch { /* noop */ } }
   }
 
   function chooseTemplate(tt: SceneTemplate) {
@@ -199,6 +225,10 @@ export default function TemplatesApp() {
     setScenes(tt.scenes.map((s) => ({ ...s })));
     setSlots(new Array(tt.slotCount).fill(null));
     setAccent(tt.accent);
+    // Музыка-пресет шаблона (можно сменить в панели).
+    const track = trackById(tt.music);
+    setMusicPath(track?.file || null);
+    setMusicName(track?.title || null);
     setSelIdx(0);
     tRef.current = 0;
     setT(0);
@@ -268,7 +298,7 @@ export default function TemplatesApp() {
 
   async function pickMusic() {
     const p = await window.electronAPI.selectAudio();
-    if (p) setMusicPath(p);
+    if (p) { setMusicPath(p); setMusicName(p.split(/[\\/]/).pop() || null); }
   }
 
   function patchScene(i: number, patch: Partial<SceneSpec>) {
@@ -326,6 +356,7 @@ export default function TemplatesApp() {
       durationSec: totalDur,
       outputPath: out,
       musicPath: musicPath || undefined,
+      clipAudio,
     });
     if ('error' in res) {
       setRenderErr(res.error);
@@ -360,7 +391,6 @@ export default function TemplatesApp() {
                     <div style={{ position: 'relative' }}>
                       <video src={tt.preview} autoPlay loop muted playsInline
                         style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 20, background: 'rgba(0,0,0,0.6)', fontSize: 11, fontWeight: 600, color: '#fff' }}>▶{tt.uses}</div>
                       <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
                     </div>
                     <div style={{ padding: '9px 11px' }}>
@@ -383,7 +413,6 @@ export default function TemplatesApp() {
                     <div style={{ position: 'relative' }}>
                       <video src={tt.preview} autoPlay loop muted playsInline
                         style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 20, background: 'rgba(0,0,0,0.6)', fontSize: 11, fontWeight: 600, color: '#fff' }}>▶{tt.uses}</div>
                       <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.duration}с</div>
                     </div>
                     <div style={{ padding: '9px 11px' }}>
@@ -407,6 +436,7 @@ export default function TemplatesApp() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       <Header onHome={() => setAppMode('select')} title={tpl?.name || 'Шаблон'} onBack={done ? undefined : () => setPhase('gallery')} />
+      <audio ref={audioRef} src={audioBlob || undefined} preload="auto" />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {/* Живое превью + таймлайн */}
@@ -628,6 +658,52 @@ export default function TemplatesApp() {
                       <Field label="Автор/подпись" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
                     </>
                   )}
+                  {sel.type === 'beforeafter' && (
+                    <>
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <label style={{ flex: 1 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>«До»</span>
+                          <select value={sel.slot} onChange={(e) => patchScene(selIdx, { slot: Number(e.target.value) })} style={selectStyle}>
+                            {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
+                          </select>
+                        </label>
+                        <label style={{ flex: 1 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>«После»</span>
+                          <select value={sel.slot2} onChange={(e) => patchScene(selIdx, { slot2: Number(e.target.value) })} style={selectStyle}>
+                            {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                      <Field label="Метка «до»" value={sel.text || ''} onChange={(v) => patchScene(selIdx, { text: v })} />
+                      <Field label="Метка «после»" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
+                    </>
+                  )}
+                  {sel.type === 'price' && (
+                    <>
+                      <Field label="Название" value={sel.text || ''} onChange={(v) => patchScene(selIdx, { text: v })} />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <div style={{ flex: 1 }}><Field label="Старая цена" value={sel.old || ''} onChange={(v) => patchScene(selIdx, { old: v })} /></div>
+                        <div style={{ flex: 1 }}><Field label="Цена" value={sel.price || ''} onChange={(v) => patchScene(selIdx, { price: v })} /></div>
+                      </div>
+                      <Field label="Бейдж скидки" value={sel.badge || ''} onChange={(v) => patchScene(selIdx, { badge: v })} />
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Фон (слот, опц.)</span>
+                        <select value={sel.slot ?? -1} onChange={(e) => patchScene(selIdx, { slot: Number(e.target.value) < 0 ? undefined : Number(e.target.value) })} style={selectStyle}>
+                          <option value={-1}>без фото</option>
+                          {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
+                        </select>
+                      </label>
+                    </>
+                  )}
+                  {sel.type === 'countdown' && (
+                    <>
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Считать с · {sel.count ?? 3}</span>
+                        <input type="range" min={1} max={9} step={1} value={sel.count ?? 3} onChange={(e) => patchScene(selIdx, { count: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
+                      </label>
+                      <Field label="Подпись" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
+                    </>
+                  )}
                   <label style={{ display: 'block' }}>
                     <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Длительность сцены · {sel.dur.toFixed(1)}с</span>
                     <input type="range" min={0.4} max={6} step={0.1} value={sel.dur} onChange={(e) => patchScene(selIdx, { dur: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
@@ -652,9 +728,13 @@ export default function TemplatesApp() {
               <Group label="Музыка">
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={pickMusic} style={btn(false)}>{musicPath ? 'Сменить трек' : 'Выбрать трек'}</button>
-                  {musicPath && <button onClick={() => setMusicPath(null)} style={{ ...btn(false), width: 'auto', padding: '9px 12px' }}>✕</button>}
+                  {musicPath && <button onClick={() => { setMusicPath(null); setMusicName(null); }} style={{ ...btn(false), width: 'auto', padding: '9px 12px' }}>✕</button>}
                 </div>
-                {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>{musicPath.split(/[\\/]/).pop()}</div>}
+                {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()}</div>}
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={clipAudio} onChange={(e) => setClipAudio(e.target.checked)} style={{ accentColor: 'var(--accent-green)' }} />
+                  Звук из видео-клипов
+                </label>
               </Group>
               {renderErr && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{renderErr}</div>}
               <button onClick={render} disabled={phase === 'rendering'} style={{ ...btn(true), height: 44, fontSize: 15, opacity: phase === 'rendering' ? 0.6 : 1 }}>

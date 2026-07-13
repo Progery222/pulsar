@@ -566,6 +566,66 @@ function sceneQuote(root, d, opts) {
   };
 }
 
+// СЦЕНА BEFORE/AFTER — «после» вытесняет «до» шторкой + подписи.
+function sceneBeforeAfter(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = '#000';
+  const before = mkMedia(root, slotMedia(d.slots && d.slots[opts.slot != null ? opts.slot : 0]), true);
+  const afterWrap = el('div', `position:absolute;inset:0;overflow:hidden;will-change:clip-path;`); root.appendChild(afterWrap);
+  const after = mkMedia(afterWrap, slotMedia(d.slots && d.slots[opts.slot2 != null ? opts.slot2 : 1]), true);
+  const line = el('div', `position:absolute;top:0;bottom:0;width:0.6vw;background:${accent};box-shadow:0 0 3vw ${accent};will-change:left;`); root.appendChild(line);
+  const lb = el('div', `position:absolute;left:5%;bottom:8%;font-family:'Montserrat',sans-serif;font-weight:800;font-size:3.2vw;letter-spacing:0.4vw;text-transform:uppercase;color:#fff;background:rgba(0,0,0,0.55);padding:0.6vh 1.6vw;will-change:opacity;`, opts.text || 'before'); root.appendChild(lb);
+  const la = el('div', `position:absolute;right:5%;bottom:8%;font-family:'Montserrat',sans-serif;font-weight:800;font-size:3.2vw;letter-spacing:0.4vw;text-transform:uppercase;color:#0a0a0a;background:${accent};padding:0.6vh 1.6vw;will-change:opacity;`, opts.caption || 'after'); root.appendChild(la);
+  return (lt) => {
+    seekVid(before, lt); seekVid(after, lt);
+    const pct = clamp01(seg(lt, 0.15, 0.9)) * 100;
+    afterWrap.style.clipPath = `inset(0 ${100 - pct}% 0 0)`;
+    line.style.left = `calc(${pct}% - 0.3vw)`;
+    lb.style.opacity = String(clamp01(seg(lt, 0, 0.3))); la.style.opacity = String(clamp01(seg(lt, 0.35, 0.6)));
+  };
+}
+
+// СЦЕНА PRICE — карточка товара: старая цена (зачёркнута) + новая + бейдж скидки.
+function scenePrice(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ff2d6b';
+  root.style.background = '#0a0a0c';
+  let mo = null;
+  const m = slotMedia(d.slots && d.slots[opts.slot != null ? opts.slot : 0]);
+  if (m && (m.orig || m.src)) { mo = mkMedia(root, m, true); root.appendChild(el('div', `position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.82));`)); }
+  const name = el('div', `position:absolute;left:0;width:100%;top:18%;text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:7vw;text-transform:uppercase;color:#fff;will-change:opacity;`, opts.text || opts.title || ''); root.appendChild(name);
+  const old = el('div', `position:absolute;left:0;width:100%;top:50%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:600;font-size:5vw;color:#b9b9b9;text-decoration:line-through;will-change:opacity;`, opts.old || ''); root.appendChild(old);
+  const price = el('div', `position:absolute;left:0;width:100%;top:56%;text-align:center;font-family:'RussoOne',sans-serif;font-size:18vw;color:${accent};will-change:transform,opacity;`, opts.price || opts.caption || ''); root.appendChild(price);
+  const badge = opts.badge ? el('div', `position:absolute;right:8%;top:11%;transform:rotate(8deg);font-family:'RussoOne',sans-serif;font-size:4.6vw;color:#0a0a0a;background:${accent};padding:1vh 2vw;border-radius:1vw;will-change:transform,opacity;`, opts.badge) : null;
+  if (badge) root.appendChild(badge);
+  return (lt) => {
+    if (mo) { seekVid(mo, lt); mo.media.style.transform = `scale(${1.06 - 0.06 * clamp01(eob(seg(lt, 0, 0.9)))})`; }
+    name.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
+    old.style.opacity = String(clamp01(seg(lt, 0.3, 0.55)));
+    price.style.opacity = String(clamp01(seg(lt, 0.4, 0.7))); price.style.transform = `scale(${0.55 + 0.45 * clamp01(eob(seg(lt, 0.4, 0.9)))})`;
+    if (badge) { badge.style.opacity = String(clamp01(seg(lt, 0.6, 0.85))); badge.style.transform = `rotate(8deg) scale(${0.5 + 0.5 * clamp01(eob(seg(lt, 0.6, 1)))})`; }
+  };
+}
+
+// СЦЕНА COUNTDOWN — крупный обратный отсчёт (3·2·1) с пульсирующим кольцом.
+function sceneCountdown(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = opts.bg || `radial-gradient(circle at 50% 45%, ${accent}26, #0a0a0c 65%)`;
+  const ring = el('div', `position:absolute;left:50%;top:44%;width:62vw;height:62vw;transform:translate(-50%,-50%);border:0.9vw solid ${accent};border-radius:50%;opacity:0.5;will-change:transform,opacity;`); root.appendChild(ring);
+  const num = el('div', `position:absolute;left:0;width:100%;top:22%;text-align:center;font-family:'RussoOne',sans-serif;font-size:42vw;line-height:1;color:#fff;will-change:transform,opacity;`, '3'); root.appendChild(num);
+  const label = el('div', `position:absolute;left:0;width:100%;top:78%;text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:5vw;letter-spacing:0.4vw;text-transform:uppercase;color:${accent};will-change:opacity;`, opts.caption || ''); root.appendChild(label);
+  const count = Math.max(1, Math.min(9, opts.count || 3));
+  return (lt) => {
+    const D = opts.dur || 3; const per = D / count;
+    const i = Math.min(count - 1, Math.floor(lt / per)); const local = clamp01((lt - i * per) / per);
+    num.textContent = String(count - i);
+    num.style.transform = `scale(${1.35 - 0.35 * eoc(local)})`;
+    num.style.opacity = String(1 - Math.max(0, (local - 0.85) / 0.15));
+    ring.style.transform = `translate(-50%,-50%) scale(${0.55 + 0.5 * eoc(local)})`;
+    ring.style.opacity = String((1 - local) * 0.6);
+    label.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
+  };
+}
+
 // Data-driven сцена из спецификации (тип + контент + переход). Используется
 // редактором: сцены приходят как d.scenes и редактируются вживую.
 function sceneFromSpec(spec, d) {
@@ -580,6 +640,9 @@ function sceneFromSpec(spec, d) {
     case 'stat': return { dur, trans, build: (r) => sceneStat(r, d, o) };
     case 'list': return { dur, trans, build: (r) => sceneList(r, d, o) };
     case 'quote': return { dur, trans, build: (r) => sceneQuote(r, d, o) };
+    case 'beforeafter': return { dur, trans, build: (r) => sceneBeforeAfter(r, d, o) };
+    case 'price': return { dur, trans, build: (r) => scenePrice(r, d, o) };
+    case 'countdown': return { dur, trans, build: (r) => sceneCountdown(r, d, o) };
     default: return { dur, trans, build: (r) => scenePhoto(r, d, { slot: spec.slot || 0, caption: spec.caption || '', from: spec.from || 'left', capBottom: spec.capBottom, kenScale: spec.kenScale, bg: spec.bg, w: spec.w, accent: d.accent }) };
   }
 }

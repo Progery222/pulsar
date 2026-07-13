@@ -41,6 +41,24 @@ const JOBS = VTEST ? [
   { id: 'kinetic', out: 'kinetic', dur: 3, data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
   { id: 'glitch', out: 'glitch', dur: 3, data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
   {
+    id: 'scenes', out: 'scenes-flash-sale', dur: 6.2,
+    data: { accent: '#ff2d6b', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'countdown', dur: 1.6, trans: 'fade', count: 3, caption: 'sale starts in' },
+      { type: 'price', dur: 1.8, trans: 'punch', slot: 0, text: 'SNEAKERS', old: '$120', price: '$59', badge: '-50%' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 1, kicker: 'limited stock', text: 'GRAB IT' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'today only', cta: 'Shop now' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-glow-up', dur: 5.7,
+    data: { accent: '#3ad1c0', subjectImage: SUBJECT, slots: S3, scenes: [
+      { type: 'text', dur: 1.0, trans: 'fade', kicker: 'the results', text: 'GLOW UP', size: 15, align: 'center' },
+      { type: 'beforeafter', dur: 1.9, trans: 'wipe', slot: 0, slot2: 1, text: 'before', caption: 'after' },
+      { type: 'cover', dur: 1.4, trans: 'mirror', slot: 2, kicker: 'day 30', text: 'NEW YOU' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'your turn', cta: 'Start now' },
+    ] },
+  },
+  {
     id: 'scenes', out: 'scenes-promo-drop', dur: 5.4,
     data: { accent: '#ff2d6b', subjectImage: SUBJECT, slots: S2, scenes: [
       { type: 'cover', dur: 1.4, trans: 'fade', slot: 0, kicker: 'new arrival', text: 'SUMMER SALE' },

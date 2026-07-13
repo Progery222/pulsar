@@ -27,13 +27,17 @@ export type SceneSpec =
   | { type: 'stat'; dur: number; trans: Transition; kicker?: string; text: string; caption?: string; bg?: string }
   | { type: 'list'; dur: number; trans: Transition; title?: string; items: string[]; bg?: string }
   | { type: 'quote'; dur: number; trans: Transition; text: string; caption?: string; bg?: string }
+  | { type: 'beforeafter'; dur: number; trans: Transition; slot: number; slot2: number; text?: string; caption?: string }
+  | { type: 'price'; dur: number; trans: Transition; slot?: number; text?: string; old?: string; price?: string; badge?: string }
+  | { type: 'countdown'; dur: number; trans: Transition; count?: number; caption?: string; bg?: string }
   | { type: 'cta'; dur: number; trans: Transition; title?: string; cta?: string; bg?: string };
 
 // Сколько медиа-слотов реально нужно шаблону (макс. индекс слота + 1).
 export const templateSlotCount = (scenes: SceneSpec[]): number =>
   scenes.reduce((mx, s) => {
     if (s.type === 'photo' || s.type === 'cover') return Math.max(mx, s.slot + 1);
-    if (s.type === 'split') return Math.max(mx, s.slot + 1, s.slot2 + 1);
+    if (s.type === 'split' || s.type === 'beforeafter') return Math.max(mx, s.slot + 1, s.slot2 + 1);
+    if (s.type === 'price' && s.slot != null) return Math.max(mx, s.slot + 1);
     return mx;
   }, 0);
 
@@ -43,15 +47,36 @@ export interface SceneTemplate {
   tag: string;
   accent: string;
   preview: string;
-  uses: string;
+  uses?: string;
   slotCount: number; // сколько фото требует шаблон
+  music?: string; // трек-пресет по умолчанию (id из tracks.json)
   scenes: SceneSpec[];
 }
 
 export const SCENE_TEMPLATES: SceneTemplate[] = [
   {
+    key: 'flash-sale', name: 'Flash Sale', tag: 'ценник · отсчёт', accent: '#ff2d6b',
+    preview: 'templates/previews/scenes-flash-sale.mp4', uses: '', slotCount: 2, music: 'track_002',
+    scenes: [
+      { type: 'countdown', dur: 1.6, trans: 'fade', count: 3, caption: 'sale starts in' },
+      { type: 'price', dur: 1.8, trans: 'punch', slot: 0, text: 'SNEAKERS', old: '$120', price: '$59', badge: '-50%' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 1, kicker: 'limited stock', text: 'GRAB IT' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'today only', cta: 'Shop now' },
+    ],
+  },
+  {
+    key: 'glow-up', name: 'Glow Up', tag: 'до/после · трансформация', accent: '#3ad1c0',
+    preview: 'templates/previews/scenes-glow-up.mp4', uses: '', slotCount: 3, music: 'track_011',
+    scenes: [
+      { type: 'text', dur: 1.0, trans: 'fade', kicker: 'the results', text: 'GLOW UP', size: 15, align: 'center' },
+      { type: 'beforeafter', dur: 1.9, trans: 'wipe', slot: 0, slot2: 1, text: 'before', caption: 'after' },
+      { type: 'cover', dur: 1.4, trans: 'mirror', slot: 2, kicker: 'day 30', text: 'NEW YOU' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'your turn', cta: 'Start now' },
+    ],
+  },
+  {
     key: 'promo-drop', name: 'Promo Drop', tag: 'товар · распродажа', accent: '#ff2d6b',
-    preview: 'templates/previews/scenes-promo-drop.mp4', uses: '2.8M', slotCount: 2,
+    preview: 'templates/previews/scenes-promo-drop.mp4', uses: '2.8M', slotCount: 2, music: 'track_001',
     scenes: [
       { type: 'cover', dur: 1.4, trans: 'fade', slot: 0, kicker: 'new arrival', text: 'SUMMER SALE' },
       { type: 'stat', dur: 1.2, trans: 'punch', kicker: 'up to', text: '-50%', caption: 'today only' },
@@ -61,7 +86,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'top-reasons', name: 'Top Reasons', tag: 'список · инфо', accent: '#ccff00',
-    preview: 'templates/previews/scenes-top-reasons.mp4', uses: '1.9M', slotCount: 1,
+    preview: 'templates/previews/scenes-top-reasons.mp4', uses: '1.9M', slotCount: 1, music: 'track_017',
     scenes: [
       { type: 'text', dur: 1.2, trans: 'fade', kicker: 'why', text: '3 REASONS', size: 15, align: 'center', bg: 'linear-gradient(180deg,#f4f1ea,#e7e0d3)', color: '#141414' },
       { type: 'list', dur: 2.4, trans: 'swipeUp', title: 'why us', items: ['fast & easy', 'best price', 'loved by 10k+'] },
@@ -71,7 +96,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'split-story', name: 'Split Story', tag: 'сплит · динамика', accent: '#00e5ff',
-    preview: 'templates/previews/scenes-split-story.mp4', uses: '3.3M', slotCount: 3,
+    preview: 'templates/previews/scenes-split-story.mp4', uses: '3.3M', slotCount: 3, music: 'track_007',
     scenes: [
       { type: 'text', dur: 1.1, trans: 'fade', kicker: 'this vs that', text: 'YOU DECIDE', size: 15, align: 'left' },
       { type: 'split', dur: 1.6, trans: 'swipe', slot: 0, slot2: 1, caption: 'vs' },
@@ -82,7 +107,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'bold-quote', name: 'Bold Quote', tag: 'цитаты · типографика', accent: '#ffcc4d',
-    preview: 'templates/previews/scenes-bold-quote.mp4', uses: '1.4M', slotCount: 1,
+    preview: 'templates/previews/scenes-bold-quote.mp4', uses: '1.4M', slotCount: 1, music: 'track_005',
     scenes: [
       { type: 'quote', dur: 1.6, trans: 'fade', text: 'dream big', caption: 'day one' },
       { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'the journey', text: 'KEEP GOING' },
@@ -92,7 +117,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'story-reel', name: 'Story Reel', tag: 'мультисцена · переходы', accent: '#ff5c8a',
-    preview: 'templates/previews/scenes-story-reel.mp4', uses: '2.4M', slotCount: 2,
+    preview: 'templates/previews/scenes-story-reel.mp4', uses: '2.4M', slotCount: 2, music: 'track_009',
     scenes: [
       { type: 'text', dur: 1.3, trans: 'fade', kicker: 'presenting', text: 'SUMMER', size: 16, align: 'left' },
       { type: 'photo', dur: 1.5, trans: 'wipe', slot: 0, caption: 'look 01', from: 'left' },
@@ -102,7 +127,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'kinetic-trio', name: 'Kinetic Trio', tag: 'драйв · текст+фото', accent: '#ccff00',
-    preview: 'templates/previews/scenes-kinetic-trio.mp4', uses: '3.1M', slotCount: 2,
+    preview: 'templates/previews/scenes-kinetic-trio.mp4', uses: '3.1M', slotCount: 2, music: 'track_008',
     scenes: [
       { type: 'text', dur: 1.1, trans: 'fade', kicker: 'drop 02', text: 'GO CRAZY', size: 15, align: 'left' },
       { type: 'photo', dur: 1.3, trans: 'swipe', slot: 0, caption: 'move 01', from: 'left' },
@@ -113,7 +138,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'clip-reel', name: 'Clip Reel', tag: 'видео · драйв', accent: '#00e5ff',
-    preview: 'templates/previews/scenes-clip-reel.mp4', uses: '4.0M', slotCount: 3,
+    preview: 'templates/previews/scenes-clip-reel.mp4', uses: '4.0M', slotCount: 3, music: 'track_015',
     scenes: [
       { type: 'text', dur: 1.0, trans: 'fade', kicker: 'now', text: 'CLIP REEL', size: 15, align: 'center' },
       { type: 'photo', dur: 1.4, trans: 'flash', slot: 0, caption: 'clip 01', from: 'left' },
@@ -124,7 +149,7 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
   },
   {
     key: 'mirror-fashion', name: 'Mirror Fashion', tag: 'fashion · зеркала', accent: '#c8a26a',
-    preview: 'templates/previews/scenes-mirror-fashion.mp4', uses: '1.6M', slotCount: 3,
+    preview: 'templates/previews/scenes-mirror-fashion.mp4', uses: '1.6M', slotCount: 3, music: 'track_006',
     scenes: [
       { type: 'text', dur: 1.2, trans: 'fade', kicker: 'the edit', text: 'AW 2026', size: 15, align: 'center' },
       { type: 'photo', dur: 1.4, trans: 'mirror', slot: 0, caption: '01', from: 'left' },
