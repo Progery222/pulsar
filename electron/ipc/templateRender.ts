@@ -54,6 +54,7 @@ export interface TemplateRenderOpts {
   musicPath?: string | null;
   musicStart?: number;
   clipAudio?: boolean; // подмешивать звук из видео-клипов сцен
+  sfx?: boolean; // звуки переходов (по умолчанию выкл)
 }
 
 export interface TemplateRenderHooks {
@@ -142,7 +143,7 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
   const scenes = Array.isArray((data as { scenes?: unknown }).scenes)
     ? ((data as { scenes: { dur?: number; trans?: string }[] }).scenes)
     : [];
-  if (scenes.length > 1) {
+  if (opts.sfx && scenes.length > 1) {
     const authored = scenes.reduce((s, x) => s + (x.dur || 1.5), 0) || 1;
     const factor = durationSec / authored;
     let acc = 0;

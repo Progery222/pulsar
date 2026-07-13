@@ -87,6 +87,7 @@ const electronAPI = {
       musicPath?: string | null;
       musicStart?: number;
       clipAudio?: boolean;
+      sfx?: boolean;
     }
   ): Promise<{ ok: true; path: string } | { error: string }> => ipcRenderer.invoke('template:render', opts),
   cancelTemplate: (): Promise<{ ok: true }> => ipcRenderer.invoke('template:cancel'),

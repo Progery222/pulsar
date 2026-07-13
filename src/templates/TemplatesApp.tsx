@@ -49,6 +49,9 @@ type Slot =
   | null;
 const fileUrl = (p: string) => encodeURI('file:///' + p.replace(/\\/g, '/'));
 
+// Псевдо-waveform (детерминированные столбцы) — как в монтаже.
+const BARS = Array.from({ length: 150 }, (_, i) => 0.2 + 0.8 * Math.abs(Math.sin(i * 0.5) * Math.cos(i * 0.13)));
+
 function sceneLabel(s: SceneSpec): string {
   switch (s.type) {
     case 'text': return s.text || 'текст';
@@ -108,8 +111,8 @@ export default function TemplatesApp() {
   const scenesRef = useRef<SceneSpec[]>(scenes);
   const sfxRef = useRef<Record<string, HTMLAudioElement>>({});
   const lastSceneRef = useRef(0);
-  const [sfxOn, setSfxOn] = useState(true);
-  const sfxOnRef = useRef(true);
+  const [sfxOn, setSfxOn] = useState(false);
+  const sfxOnRef = useRef(false);
   useEffect(() => { scenesRef.current = scenes; }, [scenes]);
   useEffect(() => { sfxOnRef.current = sfxOn; }, [sfxOn]);
   useEffect(() => {
@@ -352,6 +355,33 @@ export default function TemplatesApp() {
     window.addEventListener('pointerup', onHandleUp);
   }
 
+  // Сдвиг музыки перетаскиванием окна по waveform-полосе (как MusicTimeline монтажа).
+  const musicStripRef = useRef<HTMLDivElement>(null);
+  const musicDragRef = useRef<{ grab: number } | null>(null);
+  function musicApply(clientX: number, grab: number) {
+    const rect = musicStripRef.current?.getBoundingClientRect();
+    if (!rect || musicDur <= 0) return;
+    const win = Math.min(1, totalDur / musicDur);
+    const pos = (clientX - rect.left) / rect.width;
+    const left = Math.max(0, Math.min(1 - win, pos - grab));
+    const v = Number((left * musicDur).toFixed(2));
+    setMusicStart(v);
+    if (audioRef.current) { try { audioRef.current.currentTime = v + tRef.current; } catch { /* noop */ } }
+  }
+  function musicDown(e: React.PointerEvent) {
+    const rect = musicStripRef.current?.getBoundingClientRect();
+    if (!rect || musicDur <= 0) return;
+    const win = Math.min(1, totalDur / musicDur);
+    const left = Math.max(0, Math.min(1 - win, musicStart / musicDur));
+    const pos = (e.clientX - rect.left) / rect.width;
+    const grab = pos >= left && pos <= left + win ? pos - left : win / 2;
+    musicDragRef.current = { grab };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    musicApply(e.clientX, grab);
+  }
+  function musicMove(e: React.PointerEvent) { if (musicDragRef.current) musicApply(e.clientX, musicDragRef.current.grab); }
+  function musicUp() { musicDragRef.current = null; }
+
   async function render() {
     if (!tpl) return;
     const filled = slots.filter(Boolean).length;
@@ -378,6 +408,7 @@ export default function TemplatesApp() {
       musicPath: musicPath || undefined,
       musicStart: musicStart > 0 ? musicStart : undefined,
       clipAudio,
+      sfx: sfxOn,
     });
     if ('error' in res) {
       setRenderErr(res.error);
@@ -398,15 +429,15 @@ export default function TemplatesApp() {
 
     const card = (tt: SceneTemplate) => (
       <button key={tt.key} onClick={() => chooseTemplate(tt)}
-        style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
+        style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 11, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
         <div style={{ position: 'relative' }}>
           <video src={tt.preview} autoPlay loop muted playsInline
             style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-          <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
+          <div style={{ position: 'absolute', bottom: 5, right: 5, padding: '1px 5px', borderRadius: 5, background: 'rgba(0,0,0,0.6)', fontSize: 9.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
         </div>
-        <div style={{ padding: '9px 11px' }}>
-          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tt.name}</div>
-          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tt.tag}</div>
+        <div style={{ padding: '6px 8px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tt.name}</div>
+          <div style={{ fontSize: 10, color: 'var(--text-secondary)', marginTop: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{tt.tag}</div>
         </div>
       </button>
     );
@@ -419,9 +450,9 @@ export default function TemplatesApp() {
             Выбери шаблон → загрузи фото/видео по слотам → правь тексты, переходы, музыку вживую → рендер.
           </p>
           {cats.map((cat) => cat.items.length > 0 && (
-            <div key={cat.name} style={{ marginBottom: 26 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, letterSpacing: 0.3 }}>{cat.name}</div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+            <div key={cat.name} style={{ marginBottom: 18 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 8, letterSpacing: 0.3 }}>{cat.name}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(118px, 1fr))', gap: 10 }}>
                 {cat.items.map(card)}
               </div>
             </div>
@@ -507,6 +538,21 @@ export default function TemplatesApp() {
                 {/* Playhead */}
                 <div style={{ position: 'absolute', top: -2, bottom: -2, left: `${(t / totalDur) * 100}%`, width: 2, background: 'var(--accent-green)', pointerEvents: 'none' }} />
               </div>
+
+              {/* Музыка под таймлайном: тяни окно — сдвигай трек */}
+              {musicPath && musicDur > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10.5, color: 'var(--text-secondary)' }}>
+                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '55%' }}>🎵 {musicName || 'трек'}</span>
+                    <span>тяни — сдвинуть · {musicStart.toFixed(1)} / {Math.floor(musicDur)}с</span>
+                  </div>
+                  <div ref={musicStripRef} onPointerDown={musicDown} onPointerMove={musicMove} onPointerUp={musicUp}
+                    style={{ position: 'relative', height: 38, display: 'flex', alignItems: 'center', gap: 1, overflow: 'hidden', borderRadius: 8, background: 'var(--bg-tertiary)', cursor: 'grab', touchAction: 'none' }}>
+                    {BARS.map((h, i) => (<div key={i} style={{ flex: 1, height: `${h * 100}%`, background: 'var(--text-secondary)', opacity: 0.4 }} />))}
+                    <div style={{ position: 'absolute', top: 0, height: '100%', left: `${Math.min(1, Math.max(0, musicStart / musicDur)) * 100}%`, width: `${Math.min(1, totalDur / musicDur) * 100}%`, border: '2px solid var(--accent-green)', borderRadius: 6, background: 'rgba(204,255,0,0.14)', pointerEvents: 'none' }} />
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -774,16 +820,7 @@ export default function TemplatesApp() {
                   <button onClick={pickMusic} style={btn(false)}>{musicPath ? 'Сменить трек' : 'Выбрать трек'}</button>
                   {musicPath && <button onClick={() => { setMusicPath(null); setMusicName(null); }} style={{ ...btn(false), width: 'auto', padding: '9px 12px' }}>✕</button>}
                 </div>
-                {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()}</div>}
-                {musicPath && musicDur > 0 && (
-                  <label style={{ display: 'block', marginTop: 8 }}>
-                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Начало трека · {musicStart.toFixed(1)}с {musicDur ? `(трек ${Math.floor(musicDur)}с)` : ''}</span>
-                    <input type="range" min={0} max={Math.max(0, Number((musicDur - totalDur).toFixed(1)))} step={0.5}
-                      value={Math.min(musicStart, Math.max(0, musicDur - totalDur))} disabled={musicDur <= totalDur}
-                      onChange={(e) => { const v = Number(e.target.value); setMusicStart(v); if (audioRef.current) { try { audioRef.current.currentTime = v + tRef.current; } catch { /* noop */ } } }}
-                      style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
-                  </label>
-                )}
+                {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()} <span style={{ opacity: 0.7 }}>· сдвиг трека — под таймлайном</span></div>}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={clipAudio} onChange={(e) => setClipAudio(e.target.checked)} style={{ accentColor: 'var(--accent-green)' }} />
                   Звук из видео-клипов
