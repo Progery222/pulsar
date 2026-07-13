@@ -892,8 +892,13 @@ export default function TemplatesApp() {
               <Group label="Музыка">
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={pickMusic} style={btn(false)}>{musicPath ? 'Сменить трек' : 'Выбрать трек'}</button>
-                  {musicPath && <button onClick={() => { setMusicPath(null); setMusicName(null); }} style={{ ...btn(false), width: 'auto', padding: '9px 12px' }}>✕</button>}
+                  {musicPath && <button onClick={() => { setMusicPath(null); setMusicName(null); }} title="Без музыки" style={{ ...btn(false), width: 'auto', padding: '9px 12px' }}>✕</button>}
                 </div>
+                {!musicPath && (
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', lineHeight: 1.4 }}>
+                    Без музыки — трендовый звук добавишь прямо в TikTok при публикации (там он легальный и «родной» для трендов).
+                  </div>
+                )}
                 {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()} <span style={{ opacity: 0.7 }}>· сдвиг трека — под таймлайном</span></div>}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={clipAudio} onChange={(e) => setClipAudio(e.target.checked)} style={{ accentColor: 'var(--accent-green)' }} />
