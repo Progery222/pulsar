@@ -198,6 +198,105 @@ reg('minimal', (stage, d) => {
 });
 
 // ────────────────────────────────────────────────────────────────
+// Шаблон KINETIC — драйв/бит-слэм: цвет-блоки, текст-плашки со слэмом,
+// панч-зум объекта + микро-шейк, нижняя маркиза, вспышки на битах.
+reg('kinetic', (stage, d) => {
+  const accent = d.accent || '#ccff00';
+  const alt = d.alt || '#ff2d6b';
+  const beats = [0.0,0.42,0.84,1.26,1.68,2.16,2.64,3.12,3.66,4.2,4.74,5.28,5.82];
+  const nb = (t) => { let b = 0; for (const x of beats) { if (x <= t) b = x; else break; } return b; };
+  const punch = (t, w = 0.13) => { const dt = t - nb(t); return Math.max(0, 1 - dt / w); };
+  const slamX = (t, a, fromPct) => (1 - clamp01(eob(seg(t, a, a + 0.34)))) * fromPct;
+
+  stage.appendChild(el('div', `position:absolute;inset:0;background:#0a0a0c;`));
+  const blk1 = el('div', `position:absolute;left:-20%;top:-12%;width:95%;height:72%;background:${accent};transform:rotate(-8deg);opacity:0.12;will-change:transform,opacity;`); blk1.id = 'blk1'; stage.appendChild(blk1);
+  const blk2 = el('div', `position:absolute;right:-20%;bottom:-12%;width:95%;height:64%;background:${alt};transform:rotate(-8deg);opacity:0.10;will-change:transform,opacity;`); blk2.id = 'blk2'; stage.appendChild(blk2);
+
+  const wrap = el('div', `position:absolute;inset:0;transform-origin:50% 50%;will-change:transform;`); wrap.id = 'wrap'; stage.appendChild(wrap);
+
+  const subj = el('img', `position:absolute;left:50%;top:56%;width:46vw;transform:translate(-50%,-50%);filter:drop-shadow(0 3vh 4vh rgba(0,0,0,0.6));will-change:transform,opacity;`);
+  subj.id = 'subject'; subj.src = d.subjectImage || ''; wrap.appendChild(subj);
+
+  if (d.eyebrow) {
+    const eye = el('div', `position:absolute;left:50%;top:8.5%;transform:translateX(-50%);font-family:'Montserrat',sans-serif;font-weight:700;font-size:2.6vw;letter-spacing:0.6vw;text-transform:uppercase;color:#0a0a0a;background:${accent};padding:1vh 2.4vw;will-change:transform,opacity;`, d.eyebrow);
+    eye.id = 'eyebrow'; wrap.appendChild(eye);
+  }
+  const title = el('div', `position:absolute;left:6%;top:15%;font-family:'RussoOne',sans-serif;font-size:12vw;line-height:0.96;text-transform:uppercase;color:#0a0a0a;background:${accent};padding:0.6vh 2.6vw;transform:skewX(-6deg);will-change:transform,opacity;`, d.title || '');
+  title.id = 'title'; wrap.appendChild(title);
+  const sub = el('div', `position:absolute;right:6%;top:30%;font-family:'Oswald',sans-serif;font-weight:700;font-size:5.2vw;letter-spacing:0.3vw;text-transform:uppercase;color:#fff;background:${alt};padding:0.5vh 2vw;transform:skewX(-6deg);will-change:transform,opacity;`, d.subtitle || '');
+  sub.id = 'sub'; wrap.appendChild(sub);
+
+  if (d.cta) {
+    const cta = el('div', `position:absolute;left:50%;top:80%;transform:translateX(-50%);font-family:'Montserrat',sans-serif;font-weight:800;font-size:3.4vw;letter-spacing:0.3vw;text-transform:uppercase;color:#0a0a0a;will-change:transform,opacity;`,
+      `<span style="display:inline-block;background:#fff;padding:1.7vh 4.6vw;border-radius:100px;box-shadow:0 1.2vh 3vh rgba(0,0,0,0.4);">${d.cta}</span>`);
+    cta.id = 'cta'; wrap.appendChild(cta);
+  }
+
+  const mqText = (((d.title || '') + ' • ' + (d.subtitle || '') + ' • ')).repeat(6);
+  const mq = el('div', `position:absolute;left:0;top:90.5%;width:100%;height:7%;overflow:hidden;background:${accent};display:flex;align-items:center;will-change:opacity;`); mq.id = 'mq';
+  const mqInner = el('div', `white-space:nowrap;font-family:'Oswald',sans-serif;font-weight:700;font-size:3vw;letter-spacing:0.3vw;text-transform:uppercase;color:#0a0a0a;will-change:transform;`, mqText);
+  mqInner.id = 'mqInner'; mq.appendChild(mqInner); wrap.appendChild(mq);
+
+  const flash = el('div', `position:absolute;inset:0;background:#fff;opacity:0;pointer-events:none;will-change:opacity;`); flash.id = 'flash'; stage.appendChild(flash);
+  stage.appendChild(el('div', `position:absolute;inset:0;pointer-events:none;background:radial-gradient(120% 80% at 50% 45%,transparent 55%,rgba(0,0,0,0.45) 100%);`));
+
+  const g = (id) => document.getElementById(id);
+  return (t) => {
+    wrap.style.transform = `scale(${1 + 0.02 * punch(t)})`;
+    g('blk1').style.opacity = String(0.10 + 0.12 * punch(t));
+    g('blk1').style.transform = `rotate(-8deg) translateX(${punch(t) * 1.5}vw)`;
+    g('blk2').style.opacity = String(0.08 + 0.12 * punch(t, 0.16));
+    const sp = eob(seg(t, 0.1, 0.7)); const subj = g('subject');
+    subj.style.opacity = String(clamp01(seg(t, 0.1, 0.5)));
+    const shx = Math.sin(t * 40) * 0.25 * punch(t), shy = Math.cos(t * 37) * 0.25 * punch(t);
+    subj.style.transform = `translate(-50%,-50%) translate(${shx}vw,${shy}vh) scale(${(0.8 + 0.2 * clamp01(sp)) * (1 + 0.03 * punch(t))})`;
+    const eye = g('eyebrow'); if (eye) { const e = eob(seg(t, 0.0, 0.4)); eye.style.opacity = String(clamp01(seg(t, 0.0, 0.3))); eye.style.transform = `translateX(-50%) scale(${0.6 + 0.4 * clamp01(e)})`; }
+    const ti = g('title'); ti.style.opacity = String(t >= 0.25 ? 1 : 0); ti.style.transform = `skewX(-6deg) translateX(${slamX(t, 0.25, -140)}%)`;
+    const su = g('sub'); su.style.opacity = String(t >= 0.6 ? 1 : 0); su.style.transform = `skewX(-6deg) translateX(${slamX(t, 0.6, 140)}%)`;
+    const cta = g('cta'); if (cta) { const c = eob(seg(t, 1.6, 2.15)); cta.style.opacity = String(clamp01(seg(t, 1.6, 2.0))); cta.style.transform = `translateX(-50%) scale(${(0.85 + 0.15 * clamp01(c)) * (1 + 0.03 * punch(t))})`; }
+    g('mqInner').style.transform = `translateX(${-(t * 14) % 50}%)`;
+    g('mq').style.opacity = String(clamp01(seg(t, 0.8, 1.2)));
+    const fb = [0.42, 1.68, 3.12, 4.2, 5.28]; let fl = 0; for (const b of fb) { const dt = t - b; if (dt >= 0 && dt < 0.1) fl = Math.max(fl, (1 - dt / 0.1) * 0.5); } g('flash').style.opacity = String(fl);
+  };
+});
+
+// ────────────────────────────────────────────────────────────────
+// Шаблон GLITCH — глитч/хайп: RGB-сплит, скан-строки, дёрганые плашки, глитч-бар.
+reg('glitch', (stage, d) => {
+  const accent = d.accent || '#00e5ff';
+  const hash = (x) => { const s = Math.sin(x * 127.1) * 43758.5453; return s - Math.floor(s); };
+  stage.appendChild(el('div', `position:absolute;inset:0;background:#07070a;`));
+  stage.appendChild(el('div', `position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,rgba(255,255,255,0.05) 0 1px,transparent 1px 3px);mix-blend-mode:overlay;`));
+  const wrap = el('div', `position:absolute;inset:0;will-change:transform;`); wrap.id = 'wrap'; stage.appendChild(wrap);
+  const subj = el('img', `position:absolute;left:50%;top:55%;width:46vw;transform:translate(-50%,-50%);filter:drop-shadow(0.6vw 0 0 rgba(255,0,80,0.55)) drop-shadow(-0.6vw 0 0 rgba(0,229,255,0.55)) drop-shadow(0 3vh 4vh rgba(0,0,0,0.6));will-change:transform,opacity;`);
+  subj.id = 'subject'; subj.src = d.subjectImage || ''; wrap.appendChild(subj);
+  if (d.eyebrow) { const eye = el('div', `position:absolute;left:0;width:100%;top:8%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:2.4vw;letter-spacing:1vw;text-transform:uppercase;color:${accent};will-change:opacity;`, d.eyebrow); eye.id = 'eyebrow'; wrap.appendChild(eye); }
+  const title = el('div', `position:absolute;left:0;width:100%;top:12%;text-align:center;font-family:'RussoOne',sans-serif;font-size:13vw;text-transform:uppercase;color:#fff;letter-spacing:0.2vw;will-change:transform,opacity,text-shadow,clip-path;`, d.title || '');
+  title.id = 'title'; wrap.appendChild(title);
+  const sub = el('div', `position:absolute;left:0;width:100%;top:calc(12% + 15vw);text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:4vw;letter-spacing:0.4vw;text-transform:uppercase;will-change:opacity,transform;`,
+    `<span style="background:${accent};color:#07070a;padding:0.5vh 2vw;">${d.subtitle || ''}</span>`);
+  sub.id = 'sub'; wrap.appendChild(sub);
+  if (d.cta) { const cta = el('div', `position:absolute;left:0;width:100%;top:82%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:800;font-size:3.2vw;text-transform:uppercase;color:#07070a;will-change:opacity,transform;`, `<span style="display:inline-block;background:${accent};padding:1.5vh 4.4vw;border-radius:6px;">${d.cta}</span>`); cta.id = 'cta'; wrap.appendChild(cta); }
+  const bar = el('div', `position:absolute;left:0;width:100%;height:6vh;background:${accent};opacity:0;mix-blend-mode:screen;pointer-events:none;will-change:transform,opacity;`); bar.id = 'bar'; stage.appendChild(bar);
+  const beats = [0.3, 0.8, 1.3, 1.8, 2.4, 3.0, 3.6, 4.2, 4.8, 5.4];
+  const g = (id) => document.getElementById(id);
+  return (t) => {
+    const tick = Math.floor(t * 12); const jx = (hash(tick) - 0.5) * 2; const on = hash(tick * 1.7) > 0.6;
+    const subj = g('subject'); subj.style.opacity = String(clamp01(seg(t, 0.1, 0.5)));
+    subj.style.transform = `translate(-50%,-50%) translateX(${on ? jx * 1.2 : 0}vw) scale(${0.85 + 0.15 * clamp01(eob(seg(t, 0.1, 0.8)))})`;
+    const ti = g('title'); ti.style.opacity = String(clamp01(seg(t, 0.2, 0.5)));
+    ti.style.clipPath = `inset(${(1 - eio(seg(t, 0.2, 0.9))) * 100}% 0 0 0)`;
+    const gx = on ? jx * 0.8 : 0;
+    ti.style.textShadow = `${(0.5 + gx).toFixed(2)}vw 0 rgba(255,0,80,0.85), ${(-0.5 + gx).toFixed(2)}vw 0 rgba(0,229,255,0.85)`;
+    ti.style.transform = `translateX(${on ? gx : 0}vw)`;
+    const su = g('sub'); su.style.opacity = String(clamp01(seg(t, 0.6, 0.9)) * (hash(tick * 2.3) > 0.15 ? 1 : 0.35));
+    const eye = g('eyebrow'); if (eye) eye.style.opacity = String(clamp01(seg(t, 0.0, 0.4)));
+    const cta = g('cta'); if (cta) { cta.style.opacity = String(clamp01(seg(t, 1.5, 1.9))); cta.style.transform = `scale(${0.9 + 0.1 * clamp01(eob(seg(t, 1.5, 2.1)))})`; }
+    let bo = 0, by = 0; for (const b of beats) { const dt = t - b; if (dt >= 0 && dt < 0.12) { bo = Math.max(bo, (1 - dt / 0.12) * 0.5); by = hash(b) * 90; } } g('bar').style.opacity = String(bo); g('bar').style.top = by + '%';
+  };
+});
+
+// ────────────────────────────────────────────────────────────────
 let SEEK = null, DUR = 6;
 window.initTemplate = function (cfg) {
   const stage = document.getElementById('stage');

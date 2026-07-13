@@ -13,6 +13,22 @@ export interface TemplateDef {
 
 export const TEMPLATES: TemplateDef[] = [
   {
+    id: 'kinetic',
+    name: 'Kinetic Pop',
+    tag: 'драйв · плашки',
+    preview: 'templates/previews/kinetic.mp4',
+    accent: '#ccff00',
+    defaults: { eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now' },
+  },
+  {
+    id: 'glitch',
+    name: 'Glitch Hype',
+    tag: 'глитч · rgb',
+    preview: 'templates/previews/glitch.mp4',
+    accent: '#00e5ff',
+    defaults: { eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it' },
+  },
+  {
     id: 'story',
     name: 'Simple Cinematic',
     tag: 'кино · эстетика',
