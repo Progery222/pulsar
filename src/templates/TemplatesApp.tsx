@@ -2,9 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { removeBackground } from '@imgly/background-removal';
 import { useUIStore } from '../store/uiStore';
 import { mediaUrl } from '../utils/media';
-import { MONTAGE_TEMPLATES, applyMontageTemplate } from './montageTemplates';
 import {
-  SCENE_TEMPLATES, TRANSITIONS, FILTERS,
+  SCENE_TEMPLATES, TEMPLATE_CATEGORIES, TRANSITIONS, FILTERS,
   type SceneTemplate, type SceneSpec, type Transition,
 } from './sceneTemplates';
 import tracksData from '../data/tracks.json';
@@ -75,7 +74,6 @@ export default function TemplatesApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
 
   const [phase, setPhase] = useState<Phase>('gallery');
-  const [tab, setTab] = useState<'scenes' | 'montage'>('scenes');
 
   // Выбранный сцена-шаблон + редактируемая копия сцен.
   const [tpl, setTpl] = useState<SceneTemplate | null>(null);
@@ -390,63 +388,44 @@ export default function TemplatesApp() {
     }
   }
 
-  // ── Галерея ──
+  // ── Галерея (по категориям) ──
   if (phase === 'gallery') {
+    const byKey = new Map(SCENE_TEMPLATES.map((t) => [t.key, t]));
+    const usedKeys = new Set(TEMPLATE_CATEGORIES.flatMap((c) => c.keys));
+    const cats = TEMPLATE_CATEGORIES.map((c) => ({ name: c.name, items: c.keys.map((k) => byKey.get(k)).filter((x): x is SceneTemplate => !!x) }));
+    const other = SCENE_TEMPLATES.filter((t) => !usedKeys.has(t.key));
+    if (other.length) cats.push({ name: '✦ Другое', items: other });
+
+    const card = (tt: SceneTemplate) => (
+      <button key={tt.key} onClick={() => chooseTemplate(tt)}
+        style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
+        <div style={{ position: 'relative' }}>
+          <video src={tt.preview} autoPlay loop muted playsInline
+            style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
+          <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
+        </div>
+        <div style={{ padding: '9px 11px' }}>
+          <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tt.name}</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tt.tag}</div>
+        </div>
+      </button>
+    );
+
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
         <Header onHome={() => setAppMode('select')} title="Шаблоны" />
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
-          <div style={{ display: 'inline-flex', gap: 4, background: 'var(--bg-tertiary)', padding: 4, borderRadius: 10, marginBottom: 18 }}>
-            {([['scenes', '🎬 Шаблоны'], ['montage', '🔥 Тренды']] as const).map(([k, label]) => (
-              <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 16px', borderRadius: 7, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', background: tab === k ? 'var(--accent-green)' : 'transparent', color: tab === k ? '#000' : 'var(--text-secondary)' }}>{label}</button>
-            ))}
-          </div>
-
-          {tab === 'scenes' ? (
-            <>
-              <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Многосценовые шаблоны с переходами. Выбери → загрузи фото по слотам → правь тексты/переходы вживую → рендер.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 16 }}>
-                {SCENE_TEMPLATES.map((tt) => (
-                  <button key={tt.key} onClick={() => chooseTemplate(tt)}
-                    style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
-                    <div style={{ position: 'relative' }}>
-                      <video src={tt.preview} autoPlay loop muted playsInline
-                        style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-                      <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
-                    </div>
-                    <div style={{ padding: '9px 11px' }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tt.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tt.tag}</div>
-                    </div>
-                  </button>
-                ))}
+          <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 20 }}>
+            Выбери шаблон → загрузи фото/видео по слотам → правь тексты, переходы, музыку вживую → рендер.
+          </p>
+          {cats.map((cat) => cat.items.length > 0 && (
+            <div key={cat.name} style={{ marginBottom: 26 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 12, letterSpacing: 0.3 }}>{cat.name}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 14 }}>
+                {cat.items.map(card)}
               </div>
-            </>
-          ) : (
-            <>
-              <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Выбери тренд → кинь свои ролики → соберётся монтаж под биты.
-              </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 16 }}>
-                {MONTAGE_TEMPLATES.map((tt) => (
-                  <button key={tt.id} onClick={() => applyMontageTemplate(tt)}
-                    style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
-                    <div style={{ position: 'relative' }}>
-                      <video src={tt.preview} autoPlay loop muted playsInline
-                        style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-                      <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.duration}с</div>
-                    </div>
-                    <div style={{ padding: '9px 11px' }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}><span>{tt.icon}</span>{tt.name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tt.tag}</div>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </>
-          )}
+            </div>
+          ))}
         </div>
       </div>
     );

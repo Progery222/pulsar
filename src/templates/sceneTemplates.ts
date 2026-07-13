@@ -233,6 +233,66 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       { type: 'cta', dur: 1.6, trans: 'zoom', title: 'quiet luxury', cta: 'Discover' },
     ],
   },
+  {
+    key: 'glitch-drop', name: 'Glitch Drop', tag: 'глитч · энергия', accent: '#00e5ff',
+    preview: 'templates/previews/scenes-glitch-drop.mp4', slotCount: 1, music: 'track_003', filter: 'vhs',
+    scenes: [
+      { type: 'hook', dur: 1.4, trans: 'fade', pos: 'center', text: 'ты не поверишь', hint: 'жди 👀' },
+      { type: 'cover', dur: 1.4, trans: 'glitchcut', slot: 0, kicker: 'смотри', text: 'ВОТ ТАК' },
+      { type: 'stat', dur: 1.3, trans: 'punch', kicker: 'результат', text: '10с', caption: 'и всё готово' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'хочешь так же?', cta: 'Подпишись' },
+    ],
+  },
+  {
+    key: 'neon-nights', name: 'Neon Nights', tag: 'неон · вайб', accent: '#7c5cff',
+    preview: 'templates/previews/scenes-neon-nights.mp4', slotCount: 2, music: 'track_020', filter: 'vivid',
+    scenes: [
+      { type: 'text', dur: 1.2, trans: 'fade', kicker: 'tonight', text: 'NEON NIGHTS', size: 14, align: 'center' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'после заката', text: 'GO OUT' },
+      { type: 'quote', dur: 1.5, trans: 'flash', text: 'живи ярко', caption: 'night mode' },
+      { type: 'cover', dur: 1.4, trans: 'mirror', slot: 1, kicker: 'вайб', text: 'FEEL IT' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'поймай момент', cta: 'Сохрани' },
+    ],
+  },
+  {
+    key: 'how-to', name: 'How To', tag: 'инструкция · польза', accent: '#ccff00',
+    preview: 'templates/previews/scenes-how-to.mp4', slotCount: 1, music: 'track_001', filter: 'none',
+    scenes: [
+      { type: 'hook', dur: 1.5, trans: 'fade', pos: 'top', text: 'как сделать это за минуту', hint: 'сохрани 🔖' },
+      { type: 'list', dur: 2.2, trans: 'swipeUp', title: 'шаги', items: ['открой шаблон', 'добавь фото/видео', 'жми рендер'] },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'готово', text: 'ВОТ И ВСЁ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'получилось?', cta: 'Подпишись 🔥' },
+    ],
+  },
+  {
+    key: 'event-teaser', name: 'Event Teaser', tag: 'событие · анонс', accent: '#ff2d6b',
+    preview: 'templates/previews/scenes-event-teaser.mp4', slotCount: 1, music: 'track_005', filter: 'warm',
+    scenes: [
+      { type: 'hook', dur: 1.3, trans: 'fade', pos: 'center', text: 'скоро', hint: 'не пропусти' },
+      { type: 'countdown', dur: 1.5, trans: 'punch', count: 3, caption: 'до старта' },
+      { type: 'cover', dur: 1.5, trans: 'wipe', slot: 0, kicker: 'save the date', text: '15 ИЮНЯ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'будешь?', cta: 'Напомнить' },
+    ],
+  },
+  {
+    key: 'reviews', name: 'Reviews', tag: 'отзывы · доверие', accent: '#3ad1c0',
+    preview: 'templates/previews/scenes-reviews.mp4', slotCount: 1, music: 'track_011', filter: 'none',
+    scenes: [
+      { type: 'text', dur: 1.1, trans: 'fade', kicker: 'отзывы', text: 'ЧТО ГОВОРЯТ', size: 14, align: 'center' },
+      { type: 'quote', dur: 1.4, trans: 'wipe', text: 'это топ, честно', caption: '★★★★★' },
+      { type: 'quote', dur: 1.4, trans: 'swipeUp', text: 'советую всем', caption: '★★★★★' },
+      { type: 'cover', dur: 1.4, trans: 'mirror', slot: 0, kicker: 'присоединяйся', text: 'ТЫ СЛЕДУЮЩИЙ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'убедился?', cta: 'Попробовать' },
+    ],
+  },
+];
+
+// Категории для галереи (порядок = порядок отображения).
+export const TEMPLATE_CATEGORIES: { name: string; keys: string[] }[] = [
+  { name: '🔥 Тренды TikTok', keys: ['pov-story', 'this-or-that', 'three-tips', 'wait-for-it', 'tag-friend', 'photo-dump', 'glitch-drop'] },
+  { name: '🛒 Продажи и товар', keys: ['flash-sale', 'promo-drop', 'glow-up', 'event-teaser'] },
+  { name: '🎬 Истории и Reels', keys: ['story-reel', 'kinetic-trio', 'clip-reel', 'mirror-fashion', 'split-story', 'neon-nights'] },
+  { name: '💬 Польза, цитаты, отзывы', keys: ['top-reasons', 'bold-quote', 'how-to', 'reviews'] },
 ];
 
 // Итоговая длительность = сумма длительностей сцен.

@@ -96,6 +96,53 @@ const JOBS = VTEST ? [
     ] },
   },
   {
+    id: 'scenes', out: 'scenes-glitch-drop', dur: 5.5,
+    data: { accent: '#00e5ff', filter: 'vhs', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'hook', dur: 1.4, trans: 'fade', pos: 'center', text: 'ты не поверишь', hint: 'жди 👀' },
+      { type: 'cover', dur: 1.4, trans: 'glitchcut', slot: 0, kicker: 'смотри', text: 'ВОТ ТАК' },
+      { type: 'stat', dur: 1.3, trans: 'punch', kicker: 'результат', text: '10с', caption: 'и всё готово' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'хочешь так же?', cta: 'Подпишись' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-neon-nights', dur: 6.9,
+    data: { accent: '#7c5cff', filter: 'vivid', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'text', dur: 1.2, trans: 'fade', kicker: 'tonight', text: 'NEON NIGHTS', size: 14, align: 'center' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'после заката', text: 'GO OUT' },
+      { type: 'quote', dur: 1.5, trans: 'flash', text: 'живи ярко', caption: 'night mode' },
+      { type: 'cover', dur: 1.4, trans: 'mirror', slot: 1, kicker: 'вайб', text: 'FEEL IT' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'поймай момент', cta: 'Сохрани' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-how-to', dur: 6.5,
+    data: { accent: '#ccff00', filter: 'none', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'hook', dur: 1.5, trans: 'fade', pos: 'top', text: 'как сделать это за минуту', hint: 'сохрани 🔖' },
+      { type: 'list', dur: 2.2, trans: 'swipeUp', title: 'шаги', items: ['открой шаблон', 'добавь фото/видео', 'жми рендер'] },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'готово', text: 'ВОТ И ВСЁ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'получилось?', cta: 'Подпишись 🔥' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-event-teaser', dur: 5.7,
+    data: { accent: '#ff2d6b', filter: 'warm', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'hook', dur: 1.3, trans: 'fade', pos: 'center', text: 'скоро', hint: 'не пропусти' },
+      { type: 'countdown', dur: 1.5, trans: 'punch', count: 3, caption: 'до старта' },
+      { type: 'cover', dur: 1.5, trans: 'wipe', slot: 0, kicker: 'save the date', text: '15 ИЮНЯ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'будешь?', cta: 'Напомнить' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-reviews', dur: 6.7,
+    data: { accent: '#3ad1c0', filter: 'none', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'text', dur: 1.1, trans: 'fade', kicker: 'отзывы', text: 'ЧТО ГОВОРЯТ', size: 14, align: 'center' },
+      { type: 'quote', dur: 1.4, trans: 'wipe', text: 'это топ, честно', caption: '★★★★★' },
+      { type: 'quote', dur: 1.4, trans: 'swipeUp', text: 'советую всем', caption: '★★★★★' },
+      { type: 'cover', dur: 1.4, trans: 'mirror', slot: 0, kicker: 'присоединяйся', text: 'ТЫ СЛЕДУЮЩИЙ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'убедился?', cta: 'Попробовать' },
+    ] },
+  },
+  {
     id: 'scenes', out: 'scenes-flash-sale', dur: 6.2,
     data: { accent: '#ff2d6b', subjectImage: SUBJECT, slots: S2, scenes: [
       { type: 'countdown', dur: 1.6, trans: 'fade', count: 3, caption: 'sale starts in' },
