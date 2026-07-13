@@ -31,6 +31,12 @@ const PLACEHOLDER =
 // URL движка и шрифтов относительно корня приложения (dev http / prod file).
 const RUNTIME_URL = new URL('templates/runtime.html', document.baseURI).href;
 const FONTS_URL = new URL('fonts/', document.baseURI).href;
+const sfxUrl = (n: string) => new URL(`templates/sfx/${n}.mp3`, document.baseURI).href;
+// Переход → звук (совпадает с рендером): свайпы/вайпы/зеркало — whoosh, удар/глитч/зум — impact, вспышка — pop.
+const TRANS_SFX_UI: Record<string, string | undefined> = {
+  text: 'whoosh', wipe: 'whoosh', swipe: 'whoosh', swipeUp: 'whoosh', mirror: 'whoosh',
+  zoom: 'impact', punch: 'impact', glitchcut: 'impact', flash: 'pop',
+};
 
 // Слот шаблона: фото (cutout-PNG) или видео-клип (путь + blob + длительность + трим-старт).
 type Slot =
@@ -83,6 +89,17 @@ export default function TemplatesApp() {
   const rafRef = useRef(0);
   const lastTsRef = useRef(0);
   const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const scenesRef = useRef<SceneSpec[]>(scenes);
+  const sfxRef = useRef<Record<string, HTMLAudioElement>>({});
+  const lastSceneRef = useRef(0);
+  const [sfxOn, setSfxOn] = useState(true);
+  const sfxOnRef = useRef(true);
+  useEffect(() => { scenesRef.current = scenes; }, [scenes]);
+  useEffect(() => { sfxOnRef.current = sfxOn; }, [sfxOn]);
+  useEffect(() => {
+    const mk = (n: string) => { const a = new Audio(sfxUrl(n)); a.volume = 0.55; return a; };
+    sfxRef.current = { whoosh: mk('whoosh'), impact: mk('impact'), pop: mk('pop') };
+  }, []);
 
   const [progress, setProgress] = useState(0);
   const [output, setOutput] = useState<string | null>(null);
@@ -141,6 +158,19 @@ export default function TemplatesApp() {
         tRef.current = nt;
         setT(nt);
         seekEngine(nt);
+        // SFX на входе в новую сцену (совпадает со стыком перехода).
+        const sc = scenesRef.current;
+        let idx = 0, acc = 0;
+        for (let i = 0; i < sc.length; i++) { if (nt >= acc - 1e-6) idx = i; acc += sc[i].dur; }
+        if (nt < 0.05) lastSceneRef.current = 0;
+        else if (idx > lastSceneRef.current) {
+          if (sfxOnRef.current) {
+            const nm = sc[idx] ? TRANS_SFX_UI[sc[idx].trans] : undefined;
+            const a = nm ? sfxRef.current[nm] : undefined;
+            if (a) { try { a.currentTime = 0; void a.play(); } catch { /* noop */ } }
+          }
+          lastSceneRef.current = idx;
+        }
       } else {
         lastTsRef.current = 0;
       }
@@ -410,6 +440,7 @@ export default function TemplatesApp() {
               {/* Транспорт */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <button onClick={togglePlay} style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 15 }}>{playing ? '⏸' : '▶'}</button>
+                <button onClick={() => setSfxOn((v) => !v)} title="Звук переходов" style={{ width: 34, height: 34, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-tertiary)', color: sfxOn ? 'var(--accent-green)' : 'var(--text-secondary)', fontSize: 14 }}>{sfxOn ? '🔊' : '🔇'}</button>
                 <input type="range" min={0} max={1000} value={Math.round((t / totalDur) * 1000)} onChange={(e) => scrub(Number(e.target.value) / 1000)} style={{ flex: 1, accentColor: 'var(--accent-green)' }} />
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)', width: 74, textAlign: 'right' }}>{t.toFixed(1)} / {totalDur.toFixed(1)}с</span>
               </div>

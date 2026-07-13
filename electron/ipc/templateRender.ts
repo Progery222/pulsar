@@ -21,6 +21,14 @@ function fontsDir(): string {
     ? path.join(process.resourcesPath, 'assets', 'fonts')
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'assets', 'fonts');
 }
+function sfxPath(name: string): string {
+  return path.join(process.env.VITE_PUBLIC || process.cwd(), 'templates', 'sfx', `${name}.mp3`);
+}
+// Переход → звук: свайпы/вайпы/зеркало — whoosh; удар/глитч/зум — impact; вспышка — pop.
+const TRANS_SFX: Record<string, string | null> = {
+  fade: null, text: 'whoosh', wipe: 'whoosh', swipe: 'whoosh', swipeUp: 'whoosh', mirror: 'whoosh',
+  zoom: 'impact', punch: 'impact', glitchcut: 'impact', flash: 'pop',
+};
 
 export interface TemplateRenderOpts {
   templateId: string;
@@ -94,16 +102,51 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
     if (!win.isDestroyed()) win.destroy();
   }
 
-  // Склейка кадров + музыка.
+  // Склейка кадров + музыка + SFX-переходы на стыках сцен.
   if (!ffmpegBin) throw new Error('ffmpeg не найден');
   const venc = await videoEncoderOptions({ preset: 'medium', crf: 18 });
   const args = ['-y', '-hide_banner', '-loglevel', 'error', '-framerate', String(fps), '-i', path.join(framesDir, 'f%05d.png')];
+
+  // Аудио-входы: [музыка?][sfx...]; собираем filter_complex-микс.
+  const mixParts: string[] = [];
+  const filters: string[] = [];
+  let inIdx = 1; // 0 — кадры
   if (opts.musicPath) {
     if (opts.musicStart && opts.musicStart > 0) args.push('-ss', String(opts.musicStart));
     args.push('-i', opts.musicPath);
+    filters.push(`[${inIdx}:a]volume=0.85[m]`);
+    mixParts.push('[m]');
+    inIdx++;
   }
+  // SFX на переходах: время стыка сцены i = сумма длительностей до i (масштаб к durationSec).
+  const scenes = Array.isArray((data as { scenes?: unknown }).scenes)
+    ? ((data as { scenes: { dur?: number; trans?: string }[] }).scenes)
+    : [];
+  if (scenes.length > 1) {
+    const authored = scenes.reduce((s, x) => s + (x.dur || 1.5), 0) || 1;
+    const factor = durationSec / authored;
+    let acc = 0;
+    for (let i = 0; i < scenes.length; i++) {
+      if (i > 0) {
+        const name = TRANS_SFX[scenes[i].trans || 'fade'];
+        const file = name ? sfxPath(name) : null;
+        if (file && fs.existsSync(file)) {
+          const dl = Math.max(0, Math.round(acc * factor * 1000) - 20); // чуть раньше стыка
+          args.push('-i', file);
+          filters.push(`[${inIdx}:a]adelay=${dl}|${dl},volume=0.7[s${inIdx}]`);
+          mixParts.push(`[s${inIdx}]`);
+          inIdx++;
+        }
+      }
+      acc += scenes[i].dur || 1.5;
+    }
+  }
+
   args.push('-map', '0:v:0');
-  if (opts.musicPath) args.push('-map', '1:a:0', '-c:a', 'aac', '-b:a', '192k', '-shortest');
+  if (mixParts.length > 0) {
+    const mix = `${filters.join(';')};${mixParts.join('')}amix=inputs=${mixParts.length}:normalize=0:duration=longest[aout]`;
+    args.push('-filter_complex', mix, '-map', '[aout]', '-c:a', 'aac', '-b:a', '192k');
+  }
   args.push('-vf', 'format=yuv420p', ...venc, '-r', String(fps), '-t', String(durationSec), outputPath);
 
   await new Promise<void>((resolve, reject) => {
