@@ -207,7 +207,7 @@ const electronAPI = {
   tiktokUses: (url: string): Promise<{ uses: number | null; title: string | null }> =>
     ipcRenderer.invoke('tiktok:uses', url),
   apifyTrending: (opts: { token: string; actor?: string; country?: string; limit?: number; input?: Record<string, unknown> }): Promise<
-    { items: { title: string; author: string; uses: number | null; link: string; playUrl: string }[] } | { error: string }
+    { items: { title: string; author: string; uses: number | null; link: string; playUrl: string }[]; sample?: unknown } | { error: string }
   > => ipcRenderer.invoke('apify:trending', opts),
   onDownloadProgress: (
     cb: (e: { stage?: string; percent?: number; line?: string }) => void

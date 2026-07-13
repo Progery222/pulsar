@@ -193,7 +193,7 @@ async function tiktokUses(url: string): Promise<{ uses: number | null; title: st
 }
 
 // Тренды TikTok через Apify (надёжно, free-тир): запускаем актёр и берём датасет.
-async function apifyTrending(opts: { token: string; actor?: string; country?: string; limit?: number; input?: Record<string, unknown> }): Promise<{ items: unknown[] } | { error: string }> {
+async function apifyTrending(opts: { token: string; actor?: string; country?: string; limit?: number; input?: Record<string, unknown> }): Promise<{ items: unknown[]; sample?: unknown } | { error: string }> {
   try {
     const token = (opts.token || '').trim();
     if (!token) return { error: 'Нужен Apify-токен' };
@@ -211,19 +211,31 @@ async function apifyTrending(opts: { token: string; actor?: string; country?: st
     if (!res.ok) return { error: `Apify ${res.status}: ${text.slice(0, 200)}` };
     let items: unknown;
     try { items = JSON.parse(text); } catch { return { error: 'Apify: неожиданный ответ' }; }
-    if (!Array.isArray(items)) return { error: 'Apify: пустой результат' };
-    const g = (o: Record<string, unknown>, keys: string[]): string | number | null => {
-      for (const k of keys) { const v = o[k]; if (v != null && v !== '') return v as string | number; }
-      return null;
+    if (!Array.isArray(items) || !items.length) return { error: 'Apify: пустой результат' };
+
+    // Рекурсивно собираем строковые/числовые/url поля, потом выбираем по смыслу ключа.
+    const mapItem = (it: unknown) => {
+      const strs: Record<string, string> = {}, nums: Record<string, number> = {}, urls: Record<string, string> = {};
+      const walk = (o: unknown) => {
+        if (!o || typeof o !== 'object') return;
+        for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
+          const key = k.toLowerCase();
+          if (typeof v === 'string') { if (/^https?:\/\//.test(v)) { if (!urls[key]) urls[key] = v; } else if (v.trim() && !strs[key]) strs[key] = v; }
+          else if (typeof v === 'number') { if (!nums[key]) nums[key] = v; }
+          else if (v && typeof v === 'object') walk(v);
+        }
+      };
+      walk(it);
+      const pick = <T>(dict: Record<string, T>, re: RegExp): T | null => { for (const k of Object.keys(dict)) if (re.test(k)) return dict[k]; return null; };
+      const title = pick(strs, /title|songname|musicname|trackname|clip.?name|^song$|^track$|^music$/) || pick(strs, /(^|_)name$/) || pick(strs, /name/) || 'Без названия';
+      const author = pick(strs, /author.?name|artist|creator|nickname|singer|uploader|author|user.?name/) || '';
+      const uses = pick(nums, /video.?count|post.?count|usage|uses|used|clip.?count|count/) ?? null;
+      const link = pick(urls, /share|item.?url|video.?url|tiktok|music.?url|detail|^url$|^link$/) || pick(urls, /url|link/) || '';
+      const playUrl = pick(urls, /play.?url|audio|music.?play|mp3|sound|media/) || '';
+      return { title, author, uses, link, playUrl };
     };
-    const list = (items as Record<string, unknown>[]).map((it) => ({
-      title: g(it, ['title', 'song_title', 'music_title', 'songName', 'name', 'clip_title']) || 'Без названия',
-      author: g(it, ['author', 'author_name', 'artist', 'singer', 'author_nickname']) || '',
-      uses: g(it, ['videoCount', 'video_count', 'uses', 'usage', 'postCount', 'post_count', 'user_count']),
-      link: g(it, ['url', 'link', 'music_url', 'tiktok_url', 'songUrl', 'share_url']) || '',
-      playUrl: g(it, ['playUrl', 'play_url', 'audio', 'audio_url', 'clipUrl', 'music_play_url']) || '',
-    }));
-    return { items: list };
+    const list = (items as unknown[]).map(mapItem);
+    return { items: list, sample: items[0] };
   } catch (e) {
     return { error: e instanceof Error ? e.message : String(e) };
   }

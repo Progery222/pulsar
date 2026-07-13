@@ -111,6 +111,7 @@ export default function TemplatesApp() {
   const [trendBusy, setTrendBusy] = useState(false);
   const [trendErr, setTrendErr] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(false);
+  const [trendSample, setTrendSample] = useState<unknown>(null);
   const [musicStart, setMusicStart] = useState(0);
   const [musicDur, setMusicDur] = useState(0);
   const musicStartRef = useRef(0);
@@ -376,9 +377,17 @@ export default function TemplatesApp() {
     setTrendBusy(true); setTrendErr(null);
     try {
       const r = await window.electronAPI.apifyTrending({ token: apifyToken.trim(), actor: apifyActor.trim() || undefined, limit: 25, input });
-      if ('error' in r) { setTrendErr(r.error); setTrendList([]); }
-      else { setTrendList(r.items); if (!r.items.length) setTrendErr('Пусто — актёр не отдал треки (проверь actor/input под его доки)'); }
+      if ('error' in r) { setTrendErr(r.error); setTrendList([]); setTrendSample(null); }
+      else { setTrendList(r.items); setTrendSample(r.sample ?? null); if (!r.items.length) setTrendErr('Пусто — актёр не отдал треки (проверь actor/input под его доки)'); }
     } finally { setTrendBusy(false); }
+  }
+  function togglePreviewUrl(id: string, url: string) {
+    if (previewId === id) { previewRef.current?.pause(); setPreviewId(null); return; }
+    if (!previewRef.current) previewRef.current = new Audio();
+    const a = previewRef.current;
+    a.src = url; a.currentTime = 0; a.volume = 0.85; void a.play().catch(() => {});
+    a.onended = () => setPreviewId(null);
+    setPreviewId(id);
   }
   async function useTrend(it: { title: string; uses: number | null; link: string; playUrl: string }) {
     const src = it.link || it.playUrl;
@@ -977,7 +986,8 @@ export default function TemplatesApp() {
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>🔥 Тренды TikTok</span>
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <button onClick={() => setShowToken((v) => !v)} title="Токен" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>🔑</button>
+                      {trendSample != null && <button onClick={() => window.alert(JSON.stringify(trendSample, null, 2).slice(0, 4000))} title="Показать сырые данные (для настройки)" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>🐞</button>}
+                      <button onClick={() => setShowToken((v) => !v)} title="Токен/актёр" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>🔑</button>
                       <button onClick={loadTrends} disabled={trendBusy} style={{ ...btn(false), width: 'auto', padding: '4px 10px', fontSize: 12 }}>{trendBusy ? '…' : '⟳ Обновить'}</button>
                     </div>
                   </div>
@@ -998,6 +1008,7 @@ export default function TemplatesApp() {
                       {trendList.map((it, i) => (
                         <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 5px', borderRadius: 6 }}>
                           <span style={{ fontSize: 10, color: 'var(--text-secondary)', width: 16, flexShrink: 0 }}>{i + 1}</span>
+                          {it.playUrl && <button onClick={() => togglePreviewUrl(`tr-${i}`, it.playUrl)} title="Прослушать" style={{ width: 22, height: 22, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 10 }}>{previewId === `tr-${i}` ? '⏸' : '▶'}</button>}
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title}</div>
                             <div style={{ fontSize: 9.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.author}{it.uses != null ? ` · 🎬 ${fmtUses(Number(it.uses))}` : ''}</div>
