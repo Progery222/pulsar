@@ -395,10 +395,13 @@ export default function TemplatesApp() {
   function musicUp() { musicDragRef.current = null; }
 
   // Сохранить текущую настройку шаблона (тексты/акцент/фильтр/оверлей/музыка) в «Сохранённые».
+  // (window.prompt в Electron не работает — имя генерим авто, с нумерацией.)
   function saveCurrent() {
     if (!tpl) return;
-    const name = window.prompt('Название шаблона:', `${tpl.name} — моё`);
-    if (!name) return;
+    const base = `${tpl.name} — моё`;
+    const names = new Set(saved.map((s) => s.name));
+    let name = base, n = 2;
+    while (names.has(name)) name = `${base} ${n++}`;
     const item: SavedTemplate = {
       saved: true,
       key: `saved-${Date.now()}`,
