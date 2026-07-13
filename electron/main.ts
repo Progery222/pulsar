@@ -145,6 +145,9 @@ app.whenReady().then(() => {
       let start = 0;
       let end = total - 1;
       let partial = false;
+      // Только для Range-запросов (нативный <video> стримит чанками) ограничиваем
+      // размер куска. Запрос без Range (fetch(...).blob() в превью/аудио) означает
+      // «отдай файл целиком» — иначе blob получится обрезанным до MAX_CHUNK и битым.
       if (rangeHeader) {
         const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
         start = match ? parseInt(match[1], 10) : 0;
@@ -154,9 +157,6 @@ app.whenReady().then(() => {
         if (!Number.isFinite(end) || end >= total) end = total - 1;
         if (end < start) end = start;
         if (openEnded && end - start + 1 > MAX_CHUNK) end = start + MAX_CHUNK - 1;
-        partial = true;
-      } else if (total > MAX_CHUNK) {
-        end = MAX_CHUNK - 1;
         partial = true;
       }
       const len = end - start + 1;
