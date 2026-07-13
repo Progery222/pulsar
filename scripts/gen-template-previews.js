@@ -60,6 +60,16 @@ const JOBS = VTEST ? [
     ] },
   },
   {
+    id: 'scenes', out: 'scenes-clip-reel', dur: 6.6,
+    data: { accent: '#00e5ff', subjectImage: SUBJECT, slots: S3, scenes: [
+      { type: 'text', dur: 1.0, trans: 'fade', kicker: 'now', text: 'CLIP REEL', size: 15, align: 'center' },
+      { type: 'photo', dur: 1.4, trans: 'flash', slot: 0, caption: 'clip 01', from: 'left' },
+      { type: 'photo', dur: 1.4, trans: 'glitchcut', slot: 1, caption: 'clip 02', from: 'right', capBottom: true },
+      { type: 'photo', dur: 1.4, trans: 'punch', slot: 2, caption: 'clip 03', from: 'left' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'follow', cta: 'Subscribe' },
+    ] },
+  },
+  {
     id: 'scenes', out: 'scenes-mirror-fashion', dur: 7.0,
     data: { accent: '#c8a26a', subjectImage: SUBJECT, slots: S3, scenes: [
       { type: 'text', dur: 1.2, trans: 'fade', kicker: 'the edit', text: 'AW 2026', size: 15, align: 'center' },

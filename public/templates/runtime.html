@@ -333,6 +333,27 @@ function sceneRunner(stage, d, scenes) {
         wipe.textContent = type === 'text' ? (d.title || '') : '';
         break;
       }
+      case 'flash': { // засветка: белая вспышка, жёсткая смена в середине
+        A.style.opacity = p < 0.5 ? '1' : '0'; B.style.opacity = p < 0.5 ? '0' : '1';
+        wipe.style.opacity = String(Math.sin(clamp01(p) * Math.PI)); wipe.style.background = '#fff'; wipe.style.transform = 'none'; wipe.textContent = '';
+        break;
+      }
+      case 'punch': { // зум-удар: B влетает из крупного с овершутом
+        A.style.opacity = String(1 - clamp01(p * 2)); A.style.transform = `scale(${1 - 0.3 * p})`;
+        const e = eob(clamp01((p - 0.1) / 0.9));
+        B.style.opacity = String(clamp01((p - 0.12) * 2.2)); B.style.transform = `scale(${1.7 - 0.7 * e})`;
+        break;
+      }
+      case 'glitchcut': { // глитч-рез: резкая смена + rgb-дёрганье
+        const hard = p < 0.45; const cur = hard ? A : B;
+        A.style.opacity = hard ? '1' : '0'; B.style.opacity = hard ? '0' : '1';
+        const near = Math.abs(p - 0.45) < 0.16;
+        cur.style.transform = `translateX(${near ? Math.round(Math.sin(p * 97) * 3) : 0}px)`;
+        wipe.style.opacity = near ? String(0.2 + 0.3 * Math.abs(Math.sin(p * 130))) : '0';
+        wipe.style.background = Math.sin(p * 220) > 0 ? 'rgba(255,0,80,0.65)' : 'rgba(0,229,255,0.65)';
+        wipe.style.transform = 'none'; wipe.textContent = '';
+        break;
+      }
       default: A.style.opacity = String(1-p); B.style.opacity = String(p);
     }
   };
@@ -396,10 +417,11 @@ function scenePhoto(root, d, opts) {
   }
   const plate = el('div', `position:absolute;left:6%;${opts.capBottom?'bottom:10%':'top:12%'};font-family:'Oswald',sans-serif;font-weight:700;font-size:6vw;letter-spacing:0.2vw;text-transform:uppercase;color:#0a0a0a;background:${accent};padding:0.6vh 2.4vw;transform:skewX(-6deg);will-change:transform,opacity;`, opts.caption || '');
   root.appendChild(plate);
+  const startOff = isVideo && slot.start ? slot.start : 0;
   return (lt) => {
     if (vid) {
-      const dur = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : (lt + 1);
-      const want = Math.max(0, Math.min(lt, dur - 0.05));
+      const dur = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : (lt + startOff + 1);
+      const want = Math.max(0, Math.min(startOff + lt, dur - 0.05));
       if (Math.abs(vid.currentTime - want) > 0.03) { try { vid.currentTime = want; } catch (e) {} }
       vid.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
       vid.style.transform = `scale(${(1.06 - 0.06 * clamp01(eob(seg(lt, 0, 0.6))))})`;

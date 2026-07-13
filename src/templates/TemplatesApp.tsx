@@ -32,8 +32,11 @@ const PLACEHOLDER =
 const RUNTIME_URL = new URL('templates/runtime.html', document.baseURI).href;
 const FONTS_URL = new URL('fonts/', document.baseURI).href;
 
-// Слот шаблона: фото (cutout-PNG) или видео-клип (путь + blob для живого превью).
-type Slot = { kind: 'image'; src: string } | { kind: 'video'; path: string; blob: string } | null;
+// Слот шаблона: фото (cutout-PNG) или видео-клип (путь + blob + длительность + трим-старт).
+type Slot =
+  | { kind: 'image'; src: string }
+  | { kind: 'video'; path: string; blob: string; dur: number; start: number }
+  | null;
 const fileUrl = (p: string) => encodeURI('file:///' + p.replace(/\\/g, '/'));
 
 const sceneLabel = (s: SceneSpec): string =>
@@ -85,7 +88,7 @@ export default function TemplatesApp() {
     (forRender = false) => {
       const firstImg = slots.find((s): s is { kind: 'image'; src: string } => !!s && s.kind === 'image');
       const mapSlot = (s: Slot) =>
-        !s ? PLACEHOLDER : s.kind === 'image' ? s.src : { v: forRender ? fileUrl(s.path) : s.blob };
+        !s ? PLACEHOLDER : s.kind === 'image' ? s.src : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start };
       return { accent, subjectImage: firstImg?.src || PLACEHOLDER, slots: slots.map(mapSlot), scenes };
     },
     [accent, slots, scenes]
@@ -195,7 +198,15 @@ export default function TemplatesApp() {
       // blob для живого превью (media:// напрямую в <video> в Electron ненадёжен).
       const blob = await fetch(mediaUrl(p)).then((r) => r.blob());
       const url = URL.createObjectURL(blob);
-      setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'video', path: p, blob: url } : s)));
+      // Длительность клипа — для трима.
+      const dur = await new Promise<number>((res) => {
+        const v = document.createElement('video');
+        v.preload = 'metadata';
+        v.onloadedmetadata = () => res(Number.isFinite(v.duration) ? v.duration : 0);
+        v.onerror = () => res(0);
+        v.src = url;
+      });
+      setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'video', path: p, blob: url, dur, start: 0 } : s)));
     } catch {
       setRenderErr('Не удалось загрузить видео');
     } finally {
@@ -217,6 +228,9 @@ export default function TemplatesApp() {
 
   function patchScene(i: number, patch: Partial<SceneSpec>) {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? ({ ...s, ...patch } as SceneSpec) : s)));
+  }
+  function setSlotStart(slotIdx: number, start: number) {
+    setSlots((prev) => prev.map((s, i) => (i === slotIdx && s && s.kind === 'video' ? { ...s, start } : s)));
   }
 
   // Изменение длительности сцены перетаскиванием края на таймлайне.
@@ -476,11 +490,23 @@ export default function TemplatesApp() {
                     <>
                       <Field label="Подпись" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
                       <label style={{ display: 'block' }}>
-                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Слот фото</span>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Слот медиа</span>
                         <select value={sel.slot} onChange={(e) => patchScene(selIdx, { slot: Number(e.target.value) })} style={selectStyle}>
-                          {slots.map((_, i) => <option key={i} value={i}>Фото {i + 1}</option>)}
+                          {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
                         </select>
                       </label>
+                      {(() => {
+                        const sl = slots[sel.slot];
+                        if (!sl || sl.kind !== 'video') return null;
+                        const max = Math.max(0, Number((sl.dur - sel.dur).toFixed(1)));
+                        return (
+                          <label style={{ display: 'block' }}>
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Начало клипа · {sl.start.toFixed(1)}с {sl.dur ? `(клип ${sl.dur.toFixed(1)}с)` : ''}</span>
+                            <input type="range" min={0} max={max} step={0.1} value={Math.min(sl.start, max)} disabled={max <= 0}
+                              onChange={(e) => setSlotStart(sel.slot, Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
+                          </label>
+                        );
+                      })()}
                     </>
                   )}
                   {sel.type === 'cta' && (

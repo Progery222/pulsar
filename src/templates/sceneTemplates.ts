@@ -2,7 +2,9 @@
 // UI показывает сцены на таймлайне, даёт менять переходы/тексты и превью вживую;
 // движок (runtime.html, id='scenes') строит ровно это же → WYSIWYG.
 
-export type Transition = 'fade' | 'mirror' | 'swipe' | 'swipeUp' | 'zoom' | 'wipe' | 'text';
+export type Transition =
+  | 'fade' | 'mirror' | 'swipe' | 'swipeUp' | 'zoom' | 'wipe' | 'text'
+  | 'flash' | 'punch' | 'glitchcut';
 
 export const TRANSITIONS: { key: Transition; label: string }[] = [
   { key: 'fade', label: 'Растворение' },
@@ -12,6 +14,9 @@ export const TRANSITIONS: { key: Transition; label: string }[] = [
   { key: 'swipe', label: 'Сдвиг вбок' },
   { key: 'swipeUp', label: 'Сдвиг вверх' },
   { key: 'zoom', label: 'Зум' },
+  { key: 'flash', label: 'Засветка' },
+  { key: 'punch', label: 'Зум-удар' },
+  { key: 'glitchcut', label: 'Глитч-рез' },
 ];
 
 export type SceneSpec =
@@ -50,6 +55,17 @@ export const SCENE_TEMPLATES: SceneTemplate[] = [
       { type: 'text', dur: 1.0, trans: 'swipeUp', kicker: '', text: 'LET’S GO', size: 17, align: 'center' },
       { type: 'photo', dur: 1.3, trans: 'zoom', slot: 1, caption: 'move 02', from: 'right', capBottom: true },
       { type: 'cta', dur: 1.5, trans: 'wipe', title: 'shop now', cta: 'Get it' },
+    ],
+  },
+  {
+    key: 'clip-reel', name: 'Clip Reel', tag: 'видео · драйв', accent: '#00e5ff',
+    preview: 'templates/previews/scenes-clip-reel.mp4', uses: '4.0M', slotCount: 3,
+    scenes: [
+      { type: 'text', dur: 1.0, trans: 'fade', kicker: 'now', text: 'CLIP REEL', size: 15, align: 'center' },
+      { type: 'photo', dur: 1.4, trans: 'flash', slot: 0, caption: 'clip 01', from: 'left' },
+      { type: 'photo', dur: 1.4, trans: 'glitchcut', slot: 1, caption: 'clip 02', from: 'right', capBottom: true },
+      { type: 'photo', dur: 1.4, trans: 'punch', slot: 2, caption: 'clip 03', from: 'left' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'follow', cta: 'Subscribe' },
     ],
   },
   {
