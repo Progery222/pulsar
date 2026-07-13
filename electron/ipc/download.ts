@@ -192,7 +192,39 @@ async function tiktokUses(url: string): Promise<{ uses: number | null; title: st
   }
 }
 
+// Тренды TikTok через Apify (надёжно, free-тир): запускаем актёр и берём датасет.
+async function apifyTrending(opts: { token: string; actor?: string; country?: string; limit?: number }): Promise<{ items: unknown[] } | { error: string }> {
+  try {
+    const token = (opts.token || '').trim();
+    if (!token) return { error: 'Нужен Apify-токен' };
+    const actor = (opts.actor || 'novi~tiktok-music-trend-api').replace('/', '~');
+    const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
+    const input = { countryCode: opts.country || 'US', country: opts.country || 'US', region: opts.country || 'US', limit: opts.limit || 25, maxItems: opts.limit || 25, period: 7 };
+    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const text = await res.text();
+    if (!res.ok) return { error: `Apify ${res.status}: ${text.slice(0, 200)}` };
+    let items: unknown;
+    try { items = JSON.parse(text); } catch { return { error: 'Apify: неожиданный ответ' }; }
+    if (!Array.isArray(items)) return { error: 'Apify: пустой результат' };
+    const g = (o: Record<string, unknown>, keys: string[]): string | number | null => {
+      for (const k of keys) { const v = o[k]; if (v != null && v !== '') return v as string | number; }
+      return null;
+    };
+    const list = (items as Record<string, unknown>[]).map((it) => ({
+      title: g(it, ['title', 'song_title', 'music_title', 'songName', 'name', 'clip_title']) || 'Без названия',
+      author: g(it, ['author', 'author_name', 'artist', 'singer', 'author_nickname']) || '',
+      uses: g(it, ['videoCount', 'video_count', 'uses', 'usage', 'postCount', 'post_count', 'user_count']),
+      link: g(it, ['url', 'link', 'music_url', 'tiktok_url', 'songUrl', 'share_url']) || '',
+      playUrl: g(it, ['playUrl', 'play_url', 'audio', 'audio_url', 'clipUrl', 'music_play_url']) || '',
+    }));
+    return { items: list };
+  } catch (e) {
+    return { error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
 export function registerDownloadHandlers() {
+  ipcMain.handle('apify:trending', async (_e, opts: { token: string; actor?: string; country?: string; limit?: number }) => apifyTrending(opts));
   ipcMain.handle('tiktok:uses', async (_e, url: string) => {
     if (!url || !/^https?:\/\//i.test(url.trim())) return { uses: null, title: null };
     return tiktokUses(url.trim());
