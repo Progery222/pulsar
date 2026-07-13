@@ -400,7 +400,7 @@ function scenePhoto(root, d, opts) {
   const accent = opts.accent || d.accent || '#ccff00';
   const slot = d.slots && d.slots[opts.slot];
   const isVideo = slot && typeof slot === 'object' && slot.v;
-  const src = isVideo ? slot.v : (typeof slot === 'string' ? slot : (d.subjectImage || ''));
+  const src = isVideo ? slot.v : (typeof slot === 'string' ? slot : (slot && slot.i) ? slot.i : (d.subjectImage || ''));
   const dir = opts.from === 'right' ? 1 : -1;
   let media, vid = null;
   if (isVideo) {
@@ -450,14 +450,138 @@ function sceneCTA(root, d, opts) {
   };
 }
 
+// Разбор слота: видео {v,start} | изображение {i:cutout,o:orig} | строка(cutout).
+function slotMedia(slot) {
+  if (!slot) return null;
+  if (typeof slot === 'string') return { type: 'image', cut: slot, orig: slot };
+  if (slot.v) return { type: 'video', src: slot.v, start: slot.start || 0 };
+  return { type: 'image', cut: slot.i || slot.o || '', orig: slot.o || slot.i || '' };
+}
+function mkMedia(root, m, cover) {
+  // cover=true → orig во весь кадр (object-fit cover); иначе cutout по центру.
+  let media, vid = null;
+  if (m && m.type === 'video') {
+    media = el('video', `position:absolute;inset:0;width:100%;height:100%;object-fit:cover;will-change:transform,opacity;`);
+    media.muted = true; media.playsInline = true; media.preload = 'auto'; media.setAttribute('muted', ''); media.src = m.src; vid = media;
+  } else if (cover) {
+    media = el('img', `position:absolute;inset:0;width:100%;height:100%;object-fit:cover;will-change:transform,opacity;`);
+    media.src = m ? m.orig : '';
+  } else {
+    media = el('img', `position:absolute;left:50%;top:52%;width:58vw;transform:translate(-50%,-50%);filter:drop-shadow(0 3vh 4vh rgba(0,0,0,0.6));will-change:transform,opacity;`);
+    media.src = m ? m.cut : '';
+  }
+  root.appendChild(media);
+  return { media, vid, start: m && m.type === 'video' ? m.start : 0 };
+}
+function seekVid(o, lt) {
+  if (!o.vid) return;
+  const dur = isFinite(o.vid.duration) && o.vid.duration > 0 ? o.vid.duration : (o.start + lt + 1);
+  const want = Math.max(0, Math.min(o.start + lt, dur - 0.05));
+  if (Math.abs(o.vid.currentTime - want) > 0.03) { try { o.vid.currentTime = want; } catch (e) {} }
+}
+
+// СЦЕНА COVER — медиа во весь кадр + нижний градиент + лоу-тёрд (журнальная подача).
+function sceneCover(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = '#000';
+  const mo = mkMedia(root, slotMedia(d.slots && d.slots[opts.slot]), true);
+  root.appendChild(el('div', `position:absolute;inset:0;background:linear-gradient(to top, rgba(0,0,0,0.9) 2%, transparent 42%);`));
+  const kick = el('div', `position:absolute;left:6%;bottom:calc(6% + 12vw);font-family:'Montserrat',sans-serif;font-weight:700;font-size:2.8vw;letter-spacing:0.6vw;text-transform:uppercase;color:${accent};will-change:transform,opacity;`, opts.kicker || ''); root.appendChild(kick);
+  const title = el('div', `position:absolute;left:6%;right:6%;bottom:6%;font-family:'Oswald',sans-serif;font-weight:700;font-size:9.5vw;line-height:0.96;text-transform:uppercase;color:#fff;will-change:transform,opacity,clip-path;`, opts.text || opts.title || ''); root.appendChild(title);
+  return (lt) => {
+    seekVid(mo, lt);
+    mo.media.style.transform = `scale(${1.08 - 0.08 * clamp01(eob(seg(lt, 0, 0.9)))})`;
+    mo.media.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
+    kick.style.opacity = String(clamp01(seg(lt, 0.25, 0.55))); kick.style.transform = `translateY(${(1 - eoc(seg(lt, 0.25, 0.7))) * 2}vh)`;
+    title.style.opacity = String(clamp01(seg(lt, 0.3, 0.6))); title.style.clipPath = `inset(${(1 - eio(seg(lt, 0.3, 0.95))) * 100}% 0 0 0)`;
+  };
+}
+
+// СЦЕНА SPLIT — два кадра рядом, разъезжаются, подпись поверх.
+function sceneSplit(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = '#000';
+  const mk = (idx, side) => {
+    const half = el('div', `position:absolute;top:0;${side}:0;width:50%;height:100%;overflow:hidden;will-change:transform;`);
+    root.appendChild(half);
+    const mo = mkMedia(half, slotMedia(d.slots && d.slots[idx]), true);
+    return { half, mo };
+  };
+  const L = mk(opts.slot != null ? opts.slot : 0, 'left');
+  const R = mk(opts.slot2 != null ? opts.slot2 : 1, 'right');
+  root.appendChild(el('div', `position:absolute;left:calc(50% - 0.3vw);top:0;width:0.6vw;height:100%;background:${accent};z-index:2;`));
+  const cap = el('div', `position:absolute;left:0;width:100%;top:44%;text-align:center;font-family:'RussoOne',sans-serif;font-size:10vw;text-transform:uppercase;color:#fff;text-shadow:0 0.5vh 2vh rgba(0,0,0,0.85);z-index:3;will-change:transform,opacity;`, opts.caption || ''); root.appendChild(cap);
+  return (lt) => {
+    seekVid(L.mo, lt); seekVid(R.mo, lt);
+    const p = eoc(seg(lt, 0, 0.55));
+    L.half.style.transform = `translateX(${(1 - p) * -100}%)`;
+    R.half.style.transform = `translateX(${(1 - p) * 100}%)`;
+    cap.style.opacity = String(clamp01(seg(lt, 0.4, 0.7)));
+    cap.style.transform = `scale(${0.8 + 0.2 * clamp01(eob(seg(lt, 0.4, 1)))})`;
+  };
+}
+
+// СЦЕНА STAT — крупная цифра/слоган (акцент, минимум текста).
+function sceneStat(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = opts.bg || `linear-gradient(135deg, ${accent}26, #0a0a0c 70%)`;
+  const kick = el('div', `position:absolute;left:0;width:100%;top:28%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:3.2vw;letter-spacing:0.8vw;text-transform:uppercase;color:#fff;will-change:opacity;`, opts.kicker || ''); root.appendChild(kick);
+  const stat = el('div', `position:absolute;left:0;width:100%;top:35%;text-align:center;font-family:'RussoOne',sans-serif;font-size:26vw;line-height:0.85;color:${accent};will-change:transform,opacity;`, opts.text || ''); root.appendChild(stat);
+  const sub = el('div', `position:absolute;left:0;width:100%;top:68%;text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:4.5vw;letter-spacing:0.3vw;text-transform:uppercase;color:#fff;will-change:transform,opacity;`, opts.caption || ''); root.appendChild(sub);
+  return (lt) => {
+    kick.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
+    stat.style.opacity = String(clamp01(seg(lt, 0.1, 0.4))); stat.style.transform = `scale(${0.55 + 0.45 * clamp01(eob(seg(lt, 0.1, 0.7)))})`;
+    sub.style.opacity = String(clamp01(seg(lt, 0.45, 0.75))); sub.style.transform = `translateY(${(1 - eoc(seg(lt, 0.45, 0.95))) * 2}vh)`;
+  };
+}
+
+// СЦЕНА LIST — заголовок + пункты, влетают по одному.
+function sceneList(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = opts.bg || '#0a0a0c';
+  const title = el('div', `position:absolute;left:7%;top:11%;font-family:'Oswald',sans-serif;font-weight:700;font-size:9vw;text-transform:uppercase;color:#fff;will-change:transform,opacity;`, opts.title || opts.text || ''); root.appendChild(title);
+  const items = (opts.items || []).slice(0, 4);
+  const rows = items.map((it, idx) => {
+    const r = el('div', `position:absolute;left:7%;right:7%;top:${34 + idx * 13}%;display:flex;align-items:center;gap:2.4vw;font-family:'Montserrat',sans-serif;font-weight:600;font-size:5vw;color:#fff;will-change:transform,opacity;`,
+      `<span style="flex-shrink:0;width:6vw;height:6vw;border-radius:50%;background:${accent};color:#0a0a0a;display:inline-flex;align-items:center;justify-content:center;font-size:3.2vw;font-weight:800;">${idx + 1}</span><span>${it}</span>`);
+    root.appendChild(r); return r;
+  });
+  return (lt) => {
+    title.style.opacity = String(clamp01(seg(lt, 0, 0.3))); title.style.transform = `translateX(${(1 - eoc(seg(lt, 0, 0.5))) * -6}vw)`;
+    rows.forEach((r, idx) => { const a = 0.3 + idx * 0.26; r.style.opacity = String(clamp01(seg(lt, a, a + 0.25))); r.style.transform = `translateX(${(1 - clamp01(eob(seg(lt, a, a + 0.45)))) * 12}vw)`; });
+  };
+}
+
+// СЦЕНА QUOTE — крупная цитата (типографика).
+function sceneQuote(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = opts.bg || '#0a0a0c';
+  const q = el('div', `position:absolute;left:7%;top:10%;font-family:'RussoOne',sans-serif;font-size:20vw;line-height:0.7;color:${accent};will-change:transform,opacity;`, '“'); root.appendChild(q);
+  const text = el('div', `position:absolute;left:8%;right:8%;top:32%;font-family:'Oswald',sans-serif;font-weight:700;font-size:8vw;line-height:1.04;text-transform:uppercase;color:#fff;will-change:opacity,clip-path;`, opts.text || ''); root.appendChild(text);
+  const auth = el('div', `position:absolute;left:8%;bottom:11%;font-family:'Montserrat',sans-serif;font-weight:600;font-size:3.4vw;letter-spacing:0.4vw;text-transform:uppercase;color:${accent};will-change:opacity;`, opts.caption || ''); root.appendChild(auth);
+  return (lt) => {
+    q.style.opacity = String(clamp01(seg(lt, 0, 0.3))); q.style.transform = `scale(${0.6 + 0.4 * clamp01(eob(seg(lt, 0, 0.6)))})`;
+    text.style.opacity = String(clamp01(seg(lt, 0.2, 0.55))); text.style.clipPath = `inset(0 ${(1 - eio(seg(lt, 0.2, 0.95))) * 100}% 0 0)`;
+    auth.style.opacity = String(clamp01(seg(lt, 0.6, 0.9)));
+  };
+}
+
 // Data-driven сцена из спецификации (тип + контент + переход). Используется
 // редактором: сцены приходят как d.scenes и редактируются вживую.
 function sceneFromSpec(spec, d) {
   const dur = spec.dur || 1.5;
   const trans = spec.trans || 'fade';
-  if (spec.type === 'text') return { dur, trans, build: (r) => sceneTextCard(r, d, { kicker: spec.kicker || '', text: spec.text || '', size: spec.size || 15, align: spec.align || 'left', bg: spec.bg, color: spec.color, accent: d.accent }) };
-  if (spec.type === 'cta') return { dur, trans, build: (r) => sceneCTA(r, d, { title: spec.title || '', cta: spec.cta || '', bg: spec.bg, accent: d.accent }) };
-  return { dur, trans, build: (r) => scenePhoto(r, d, { slot: spec.slot || 0, caption: spec.caption || '', from: spec.from || 'left', capBottom: spec.capBottom, kenScale: spec.kenScale, bg: spec.bg, w: spec.w, accent: d.accent }) };
+  const o = { ...spec, accent: d.accent };
+  switch (spec.type) {
+    case 'text': return { dur, trans, build: (r) => sceneTextCard(r, d, { kicker: spec.kicker || '', text: spec.text || '', size: spec.size || 15, align: spec.align || 'left', bg: spec.bg, color: spec.color, accent: d.accent }) };
+    case 'cta': return { dur, trans, build: (r) => sceneCTA(r, d, { title: spec.title || '', cta: spec.cta || '', bg: spec.bg, accent: d.accent }) };
+    case 'cover': return { dur, trans, build: (r) => sceneCover(r, d, o) };
+    case 'split': return { dur, trans, build: (r) => sceneSplit(r, d, o) };
+    case 'stat': return { dur, trans, build: (r) => sceneStat(r, d, o) };
+    case 'list': return { dur, trans, build: (r) => sceneList(r, d, o) };
+    case 'quote': return { dur, trans, build: (r) => sceneQuote(r, d, o) };
+    default: return { dur, trans, build: (r) => scenePhoto(r, d, { slot: spec.slot || 0, caption: spec.caption || '', from: spec.from || 'left', capBottom: spec.capBottom, kenScale: spec.kenScale, bg: spec.bg, w: spec.w, accent: d.accent }) };
+  }
 }
 // Универсальный многосценовый шаблон: сцены задаются данными (d.scenes).
 reg('scenes', (stage, d) => sceneRunner(stage, d, (d.scenes || []).map((s) => sceneFromSpec(s, d))));

@@ -26,7 +26,7 @@ const LOG = path.join(ROOT, 'scripts', '_genlog.txt');
 const log = (...a) => fs.appendFileSync(LOG, a.map(String).join(' ') + '\n');
 try { fs.writeFileSync(LOG, ''); } catch {}
 
-const S2 = [SUBJECT, SUBJECT], S3 = [SUBJECT, SUBJECT, SUBJECT];
+const S1 = [SUBJECT], S2 = [SUBJECT, SUBJECT], S3 = [SUBJECT, SUBJECT, SUBJECT];
 // Проверка видео-слота: VTEST=/путь/к/clip.mp4 добавляет джоб с видео в сцене.
 const fileUrl = (p) => encodeURI('file:///' + p.replace(/\\/g, '/'));
 const VTEST = process.env.VTEST;
@@ -40,6 +40,43 @@ const JOBS = VTEST ? [
 ] : [
   { id: 'kinetic', out: 'kinetic', dur: 3, data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
   { id: 'glitch', out: 'glitch', dur: 3, data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
+  {
+    id: 'scenes', out: 'scenes-promo-drop', dur: 5.4,
+    data: { accent: '#ff2d6b', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'cover', dur: 1.4, trans: 'fade', slot: 0, kicker: 'new arrival', text: 'SUMMER SALE' },
+      { type: 'stat', dur: 1.2, trans: 'punch', kicker: 'up to', text: '-50%', caption: 'today only' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 1, kicker: 'limited', text: 'GRAB YOURS' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'don’t miss it', cta: 'Shop now' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-top-reasons', dur: 6.4,
+    data: { accent: '#ccff00', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'text', dur: 1.2, trans: 'fade', kicker: 'why', text: '3 REASONS', size: 15, align: 'center', bg: 'linear-gradient(180deg,#f4f1ea,#e7e0d3)', color: '#141414' },
+      { type: 'list', dur: 2.4, trans: 'swipeUp', title: 'why us', items: ['fast & easy', 'best price', 'loved by 10k+'] },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'proof', text: 'SEE FOR YOURSELF' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'try it', cta: 'Get started' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-split-story', dur: 7.1,
+    data: { accent: '#00e5ff', subjectImage: SUBJECT, slots: S3, scenes: [
+      { type: 'text', dur: 1.1, trans: 'fade', kicker: 'this vs that', text: 'YOU DECIDE', size: 15, align: 'left' },
+      { type: 'split', dur: 1.6, trans: 'swipe', slot: 0, slot2: 1, caption: 'vs' },
+      { type: 'cover', dur: 1.4, trans: 'mirror', slot: 2, kicker: 'the winner', text: 'THIS ONE' },
+      { type: 'quote', dur: 1.6, trans: 'flash', text: 'trust me on this', caption: '— everyone' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'your turn', cta: 'Tap in' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-bold-quote', dur: 6.0,
+    data: { accent: '#ffcc4d', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'quote', dur: 1.6, trans: 'fade', text: 'dream big', caption: 'day one' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'the journey', text: 'KEEP GOING' },
+      { type: 'quote', dur: 1.6, trans: 'glitchcut', text: 'never stop', caption: 'no excuses', bg: '#101014' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'let’s move', cta: 'Follow' },
+    ] },
+  },
   {
     id: 'scenes', out: 'scenes-story-reel', dur: 6.0,
     data: { accent: '#ff5c8a', subjectImage: SUBJECT, slots: S2, scenes: [

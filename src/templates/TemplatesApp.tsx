@@ -34,13 +34,26 @@ const FONTS_URL = new URL('fonts/', document.baseURI).href;
 
 // Слот шаблона: фото (cutout-PNG) или видео-клип (путь + blob + длительность + трим-старт).
 type Slot =
-  | { kind: 'image'; src: string }
+  | { kind: 'image'; src: string; orig: string }
   | { kind: 'video'; path: string; blob: string; dur: number; start: number }
   | null;
 const fileUrl = (p: string) => encodeURI('file:///' + p.replace(/\\/g, '/'));
 
-const sceneLabel = (s: SceneSpec): string =>
-  s.type === 'text' ? (s.text || 'текст') : s.type === 'cta' ? (s.cta || 'CTA') : `фото ${s.slot + 1}`;
+function sceneLabel(s: SceneSpec): string {
+  switch (s.type) {
+    case 'text': return s.text || 'текст';
+    case 'cta': return s.cta || 'CTA';
+    case 'photo': return `фото ${s.slot + 1}`;
+    case 'cover': return s.text || `кадр ${s.slot + 1}`;
+    case 'split': return s.caption || 'сплит';
+    case 'stat': return s.text || 'цифра';
+    case 'list': return s.title || 'список';
+    case 'quote': return s.text || 'цитата';
+  }
+}
+const SCENE_KIND: Record<SceneSpec['type'], string> = {
+  text: 'текст', photo: 'фото', cover: 'кадр', split: 'сплит', stat: 'цифра', list: 'список', quote: 'цитата', cta: 'CTA',
+};
 
 export default function TemplatesApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
@@ -86,9 +99,9 @@ export default function TemplatesApp() {
   // file:// (окно рендера грузит с диска), иначе blob: (живое превью в iframe).
   const engineData = useCallback(
     (forRender = false) => {
-      const firstImg = slots.find((s): s is { kind: 'image'; src: string } => !!s && s.kind === 'image');
+      const firstImg = slots.find((s): s is { kind: 'image'; src: string; orig: string } => !!s && s.kind === 'image');
       const mapSlot = (s: Slot) =>
-        !s ? PLACEHOLDER : s.kind === 'image' ? s.src : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start };
+        !s ? { i: PLACEHOLDER, o: PLACEHOLDER } : s.kind === 'image' ? { i: s.src, o: s.orig } : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start };
       return { accent, subjectImage: firstImg?.src || PLACEHOLDER, slots: slots.map(mapSlot), scenes };
     },
     [accent, slots, scenes]
@@ -172,16 +185,18 @@ export default function TemplatesApp() {
     setSlotBusy(slot);
     setSlotProg(0);
     try {
+      // Оригинал (с фоном) — для полноэкранных/сплит сцен; cutout — для сцен на дизайн-фоне.
+      const orig = await new Promise<string>((res) => {
+        const rd = new FileReader(); rd.onload = () => res(rd.result as string); rd.readAsDataURL(file);
+      });
       const blob = await removeBackground(file, {
         progress: (_k, cur, total) => setSlotProg(total > 0 ? Math.round((cur / total) * 100) : 0),
         output: { format: 'image/png' },
       });
-      const reader = new FileReader();
-      reader.onload = () => {
-        const url = reader.result as string;
-        setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'image', src: url } : s)));
-      };
-      reader.readAsDataURL(blob);
+      const cut = await new Promise<string>((res) => {
+        const rd = new FileReader(); rd.onload = () => res(rd.result as string); rd.readAsDataURL(blob);
+      });
+      setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'image', src: cut, orig } : s)));
     } catch (e) {
       setRenderErr(e instanceof Error ? e.message : 'Ошибка удаления фона');
     } finally {
@@ -415,7 +430,7 @@ export default function TemplatesApp() {
                         background: s.type === 'photo' ? 'var(--bg-tertiary)' : s.type === 'cta' ? '#2a2030' : '#1c2436',
                         color: 'var(--text-primary)',
                       }}>
-                      <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>{s.type === 'photo' ? `фото ${s.slot + 1}` : s.type}</div>
+                      <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>{SCENE_KIND[s.type]}{(s.type === 'photo' || s.type === 'cover') ? ` ${s.slot + 1}` : ''}</div>
                       <div style={{ fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sceneLabel(s)}</div>
                       <div style={{ position: 'absolute', bottom: 3, left: 8, fontSize: 9, color: 'var(--text-secondary)' }}>{s.dur.toFixed(1)}с</div>
                       {i > 0 && <div style={{ position: 'absolute', top: 2, right: 4, fontSize: 8.5, color: 'var(--accent-green)' }}>⇥ {transLabel(s.trans)}</div>}
@@ -470,7 +485,7 @@ export default function TemplatesApp() {
 
               {/* Редактор выбранной сцены */}
               {sel && (
-                <Group label={`Сцена ${selIdx + 1} · ${sel.type}`}>
+                <Group label={`Сцена ${selIdx + 1} · ${SCENE_KIND[sel.type]}`}>
                   {selIdx > 0 && (
                     <label style={{ display: 'block' }}>
                       <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Переход входа</span>
@@ -513,6 +528,73 @@ export default function TemplatesApp() {
                     <>
                       <Field label="Заголовок" value={sel.title || ''} onChange={(v) => patchScene(selIdx, { title: v })} />
                       <Field label="Кнопка (CTA)" value={sel.cta || ''} onChange={(v) => patchScene(selIdx, { cta: v })} />
+                    </>
+                  )}
+                  {sel.type === 'cover' && (
+                    <>
+                      <Field label="Надзаголовок" value={sel.kicker || ''} onChange={(v) => patchScene(selIdx, { kicker: v })} />
+                      <Field label="Заголовок" value={sel.text || ''} onChange={(v) => patchScene(selIdx, { text: v })} />
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Слот медиа</span>
+                        <select value={sel.slot} onChange={(e) => patchScene(selIdx, { slot: Number(e.target.value) })} style={selectStyle}>
+                          {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
+                        </select>
+                      </label>
+                      {(() => {
+                        const sl = slots[sel.slot];
+                        if (!sl || sl.kind !== 'video') return null;
+                        const max = Math.max(0, Number((sl.dur - sel.dur).toFixed(1)));
+                        return (
+                          <label style={{ display: 'block' }}>
+                            <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Начало клипа · {sl.start.toFixed(1)}с</span>
+                            <input type="range" min={0} max={max} step={0.1} value={Math.min(sl.start, max)} disabled={max <= 0}
+                              onChange={(e) => setSlotStart(sel.slot, Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
+                          </label>
+                        );
+                      })()}
+                    </>
+                  )}
+                  {sel.type === 'split' && (
+                    <>
+                      <Field label="Подпись (центр)" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <label style={{ flex: 1 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Слева</span>
+                          <select value={sel.slot} onChange={(e) => patchScene(selIdx, { slot: Number(e.target.value) })} style={selectStyle}>
+                            {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
+                          </select>
+                        </label>
+                        <label style={{ flex: 1 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Справа</span>
+                          <select value={sel.slot2} onChange={(e) => patchScene(selIdx, { slot2: Number(e.target.value) })} style={selectStyle}>
+                            {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    </>
+                  )}
+                  {sel.type === 'stat' && (
+                    <>
+                      <Field label="Сверху" value={sel.kicker || ''} onChange={(v) => patchScene(selIdx, { kicker: v })} />
+                      <Field label="Цифра/слоган" value={sel.text} onChange={(v) => patchScene(selIdx, { text: v })} />
+                      <Field label="Снизу" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
+                    </>
+                  )}
+                  {sel.type === 'list' && (
+                    <>
+                      <Field label="Заголовок" value={sel.title || ''} onChange={(v) => patchScene(selIdx, { title: v })} />
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Пункты (по строке, до 4)</span>
+                        <textarea value={sel.items.join('\n')} rows={4}
+                          onChange={(e) => patchScene(selIdx, { items: e.target.value.split('\n').slice(0, 4) })}
+                          style={{ width: '100%', marginTop: 3, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13, resize: 'vertical' }} />
+                      </label>
+                    </>
+                  )}
+                  {sel.type === 'quote' && (
+                    <>
+                      <Field label="Цитата" value={sel.text} onChange={(v) => patchScene(selIdx, { text: v })} />
+                      <Field label="Автор/подпись" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
                     </>
                   )}
                   <label style={{ display: 'block' }}>
