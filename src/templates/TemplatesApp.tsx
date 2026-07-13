@@ -103,6 +103,7 @@ export default function TemplatesApp() {
   const [linkUrl, setLinkUrl] = useState('');
   const [dlBusy, setDlBusy] = useState(false);
   const [musicQuery, setMusicQuery] = useState('');
+  const [trackUses, setTrackUses] = useState<number | null>(null);
   const [musicStart, setMusicStart] = useState(0);
   const [musicDur, setMusicDur] = useState(0);
   const musicStartRef = useRef(0);
@@ -340,18 +341,24 @@ export default function TemplatesApp() {
     if (p) { setMusicPath(p); setMusicName(p.split(/[\\/]/).pop() || null); setMusicStart(0); setMusicDur(0); }
   }
   function selectTrack(tr: Track) {
-    setMusicPath(tr.file); setMusicName(tr.title); setMusicStart(0); setMusicDur(tr.duration || 0);
+    setMusicPath(tr.file); setMusicName(tr.title); setMusicStart(0); setMusicDur(tr.duration || 0); setTrackUses(null);
   }
   async function fetchTrack() {
     const u = linkUrl.trim();
     if (!u) return;
-    setDlBusy(true); setRenderErr(null);
+    setDlBusy(true); setRenderErr(null); setTrackUses(null);
     try {
       const r = await window.electronAPI.downloadAudio(u);
-      if ('error' in r) setRenderErr(r.error);
-      else { setMusicPath(r.path); setMusicName(r.path.split(/[\\/]/).pop() || null); setMusicStart(0); setMusicDur(0); setLinkUrl(''); }
+      if ('error' in r) { setRenderErr(r.error); return; }
+      setMusicPath(r.path); setMusicName(r.path.split(/[\\/]/).pop() || null); setMusicStart(0); setMusicDur(0); setLinkUrl('');
+      // Best-effort: подтянуть «использовано в N видео» и красивое название.
+      window.electronAPI.tiktokUses(u).then((info) => {
+        if (info.uses != null) setTrackUses(info.uses);
+        if (info.title) setMusicName(info.title);
+      }).catch(() => {});
     } finally { setDlBusy(false); }
   }
+  const fmtUses = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
   // Прослушивание трека в списке (отдельный аудио-элемент).
   const previewRef = useRef<HTMLAudioElement | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
@@ -922,8 +929,10 @@ export default function TemplatesApp() {
               <Group label="Музыка">
                 {musicPath && (
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 8, background: 'var(--bg-tertiary)' }}>
-                    <span style={{ fontSize: 12, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()}</span>
-                    <button onClick={() => { setMusicPath(null); setMusicName(null); }} title="Убрать музыку" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+                    <span style={{ fontSize: 12, color: 'var(--text-primary)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      ♪ {musicName || musicPath.split(/[\\/]/).pop()}{trackUses != null && <span style={{ color: 'var(--accent-green)' }}> · 🎬 {fmtUses(trackUses)} видео</span>}
+                    </span>
+                    <button onClick={() => { setMusicPath(null); setMusicName(null); setTrackUses(null); }} title="Убрать музыку" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>✕</button>
                   </div>
                 )}
                 {!musicPath && (

@@ -18,8 +18,9 @@ function broadcast(payload: UpdateState) {
 }
 
 export function registerUpdaterHandlers() {
-  // Скачиваем только по нажатию пользователя; ставим при выходе.
-  autoUpdater.autoDownload = false;
+  // Автообновление: качаем сразу при наличии апдейта, ставим при выходе
+  // (баннер предложит «перезапустить и обновить сейчас», когда готово).
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
 
   autoUpdater.on('update-available', (info) => broadcast({ state: 'available', version: info.version }));

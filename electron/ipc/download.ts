@@ -172,7 +172,31 @@ function runAudioDownload(url: string, outDir: string, cookiesBrowser?: string):
   });
 }
 
+// Best-effort: «использовано в N видео» — парсим встроенный JSON страницы TikTok.
+async function tiktokUses(url: string): Promise<{ uses: number | null; title: string | null }> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+        'Accept-Language': 'en-US,en;q=0.9',
+      },
+    });
+    const html = await res.text();
+    // Счётчик видео со звуком (в разных ключах у TikTok).
+    const counts = [...html.matchAll(/"(?:videoCount|video_count)"\s*:\s*(\d+)/g)].map((m) => parseInt(m[1], 10));
+    const uses = counts.length ? Math.max(...counts) : null;
+    const t = html.match(/"musicName"\s*:\s*"([^"]+)"/) || html.match(/"title"\s*:\s*"([^"]+)"/) || html.match(/<title>([^<]+)<\/title>/);
+    return { uses, title: t ? t[1] : null };
+  } catch {
+    return { uses: null, title: null };
+  }
+}
+
 export function registerDownloadHandlers() {
+  ipcMain.handle('tiktok:uses', async (_e, url: string) => {
+    if (!url || !/^https?:\/\//i.test(url.trim())) return { uses: null, title: null };
+    return tiktokUses(url.trim());
+  });
   // Аудио по ссылке (для монтажа под трендовый звук) → mp3 в Downloads/Pulsar/audio.
   ipcMain.handle('download:audio', async (_e, url: string) => {
     if (!url || !/^https?:\/\//i.test(url.trim())) return { error: 'Введите корректную ссылку (http/https)' };
