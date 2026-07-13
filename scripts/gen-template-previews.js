@@ -26,7 +26,7 @@ const LOG = path.join(ROOT, 'scripts', '_genlog.txt');
 const log = (...a) => fs.appendFileSync(LOG, a.map(String).join(' ') + '\n');
 try { fs.writeFileSync(LOG, ''); } catch {}
 
-const S1 = [SUBJECT], S2 = [SUBJECT, SUBJECT], S3 = [SUBJECT, SUBJECT, SUBJECT];
+const S1 = [SUBJECT], S2 = [SUBJECT, SUBJECT], S3 = [SUBJECT, SUBJECT, SUBJECT], S4 = [SUBJECT, SUBJECT, SUBJECT, SUBJECT];
 // Проверка видео-слота: VTEST=/путь/к/clip.mp4 добавляет джоб с видео в сцене.
 const fileUrl = (p) => encodeURI('file:///' + p.replace(/\\/g, '/'));
 const VTEST = process.env.VTEST;
@@ -40,6 +40,61 @@ const JOBS = VTEST ? [
 ] : [
   { id: 'kinetic', out: 'kinetic', dur: 3, data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
   { id: 'glitch', out: 'glitch', dur: 3, data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
+  {
+    id: 'scenes', out: 'scenes-pov-story', dur: 6.6,
+    data: { accent: '#ff5c8a', filter: 'warm', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'hook', dur: 1.6, trans: 'fade', slot: 0, pos: 'top', text: 'POV: ты нашёл приём, о котором молчат', hint: 'смотри до конца 👀' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 1, kicker: 'вот он', text: 'СМОТРИ' },
+      { type: 'list', dur: 2.2, trans: 'swipeUp', title: 'в 3 шага', items: ['выбери шаблон', 'добавь клипы', 'выложи в тренд'] },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'твой ход', cta: 'Подпишись 🔥' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-this-or-that', dur: 5.9,
+    data: { accent: '#00e5ff', filter: 'vivid', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'hook', dur: 1.5, trans: 'fade', pos: 'center', text: 'ты за кого?', hint: 'пиши в комменты 👇' },
+      { type: 'split', dur: 1.7, trans: 'swipe', slot: 0, slot2: 1, caption: 'или' },
+      { type: 'cover', dur: 1.3, trans: 'mirror', slot: 0, kicker: 'выбор за тобой', text: 'РЕШАЙ' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'команда A или B?', cta: 'Коммент 🔥' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-three-tips', dur: 6.8,
+    data: { accent: '#ccff00', filter: 'none', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'hook', dur: 1.6, trans: 'fade', pos: 'top', text: '3 вещи, которые я узнал слишком поздно', hint: 'сохрани 🔖' },
+      { type: 'list', dur: 2.4, trans: 'swipeUp', title: 'сохрани', items: ['делай проще', 'не бойся начать', 'выкладывай каждый день'] },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'бонус', text: 'ЕЩЁ ОДНО' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'нужна 2 часть?', cta: 'Подпишись 🔥' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-wait-for-it', dur: 5.8,
+    data: { accent: '#7c5cff', filter: 'vhs', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'hook', dur: 1.4, trans: 'fade', pos: 'center', text: 'подожди...', hint: '👀' },
+      { type: 'countdown', dur: 1.5, trans: 'punch', count: 3, caption: 'готов?' },
+      { type: 'cover', dur: 1.5, trans: 'glitchcut', slot: 0, kicker: 'бум', text: 'ВОТ ОНО' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'ещё такое?', cta: 'Подпишись' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-tag-friend', dur: 5.8,
+    data: { accent: '#ffcc4d', filter: 'warm', subjectImage: SUBJECT, slots: S1, scenes: [
+      { type: 'hook', dur: 1.6, trans: 'fade', pos: 'top', text: 'отметь того, кому это нужно', hint: '👇 отметь друга' },
+      { type: 'cover', dur: 1.4, trans: 'wipe', slot: 0, kicker: 'зацени', text: 'ЕМУ ЗАЙДЁТ' },
+      { type: 'quote', dur: 1.4, trans: 'flash', text: 'делись хорошим', caption: '— ты, наверное' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'разнеси это', cta: 'Отметь друга 🔥' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-photo-dump', dur: 6.6,
+    data: { accent: '#c8a26a', filter: 'vintage', subjectImage: SUBJECT, slots: S4, scenes: [
+      { type: 'cover', dur: 1.3, trans: 'fade', slot: 0, kicker: 'дамп', text: '01' },
+      { type: 'cover', dur: 1.3, trans: 'fade', slot: 1, kicker: '', text: '02' },
+      { type: 'cover', dur: 1.3, trans: 'fade', slot: 2, kicker: '', text: '03' },
+      { type: 'cover', dur: 1.3, trans: 'fade', slot: 3, kicker: '', text: '04' },
+      { type: 'cta', dur: 1.4, trans: 'zoom', title: 'какое зашло?', cta: 'Коммент 💛' },
+    ] },
+  },
   {
     id: 'scenes', out: 'scenes-flash-sale', dur: 6.2,
     data: { accent: '#ff2d6b', subjectImage: SUBJECT, slots: S2, scenes: [

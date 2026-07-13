@@ -300,6 +300,18 @@ reg('glitch', (stage, d) => {
 // МУЛЬТИСЦЕНОВЫЙ ДВИЖОК: шаблон = последовательность сцен, каждая
 // переходит в следующую (fade / mirror / swipe / swipeUp / zoom / wipe).
 // scenes: [{ dur, trans, build(root, d) -> render(localT) }].
+// Пресеты фильтров-грейдов + оверлеи (зерно/виньетка/засветка/тон).
+const FILTERS = {
+  none: { css: 'none', grain: 0, vignette: 0, leak: false, tint: null },
+  vivid: { css: 'saturate(1.4) contrast(1.08)', grain: 0, vignette: 0.18, leak: false, tint: null },
+  warm: { css: 'saturate(1.18) sepia(0.16) brightness(1.03)', grain: 0.05, vignette: 0.24, leak: true, tint: null },
+  cool: { css: 'saturate(1.12) hue-rotate(-12deg) brightness(1.02)', grain: 0.05, vignette: 0.2, leak: false, tint: 'rgba(0,120,255,0.05)' },
+  vintage: { css: 'saturate(0.85) sepia(0.35) contrast(0.95)', grain: 0.14, vignette: 0.36, leak: true, tint: null },
+  bw: { css: 'grayscale(1) contrast(1.15)', grain: 0.12, vignette: 0.32, leak: false, tint: null },
+  vhs: { css: 'saturate(1.35) contrast(1.1)', grain: 0.2, vignette: 0.3, leak: false, tint: 'rgba(255,0,120,0.06)' },
+  cinema: { css: 'saturate(0.95) contrast(1.1) brightness(0.97)', grain: 0.06, vignette: 0.42, leak: false, tint: null },
+};
+
 function sceneRunner(stage, d, scenes) {
   const TRANS = 0.55;
   const wrap = el('div', `position:absolute;inset:0;perspective:1400px;`); stage.appendChild(wrap);
@@ -314,6 +326,16 @@ function sceneRunner(stage, d, scenes) {
   // Оверлей для wipe/text-переходов (цветная плашка проезжает через кадр).
   const wipe = el('div', `position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'RussoOne',sans-serif;font-size:11vw;text-transform:uppercase;color:#0a0a0a;opacity:0;pointer-events:none;will-change:transform,opacity;`);
   wrap.appendChild(wipe);
+
+  // Глобальный фильтр-грейд + оверлеи (зерно/виньетка/засветка/тон) — «цепляет глаз».
+  const F = FILTERS[d.filter] || FILTERS.none;
+  if (F.css && F.css !== 'none') wrap.style.filter = F.css;
+  const fx = el('div', `position:absolute;inset:0;pointer-events:none;overflow:hidden;`); stage.appendChild(fx);
+  if (F.vignette > 0) fx.appendChild(el('div', `position:absolute;inset:0;background:radial-gradient(120% 85% at 50% 45%, transparent 52%, rgba(0,0,0,${F.vignette}) 100%);`));
+  if (F.tint) fx.appendChild(el('div', `position:absolute;inset:0;background:${F.tint};mix-blend-mode:overlay;`));
+  if (F.leak) fx.appendChild(el('div', `position:absolute;left:-10%;top:-10%;width:60%;height:60%;background:radial-gradient(circle, rgba(255,170,80,0.28), transparent 60%);mix-blend-mode:screen;filter:blur(2vw);`));
+  let grainEl = null;
+  if (F.grain > 0) { grainEl = el('div', `position:absolute;inset:-20%;opacity:${F.grain};mix-blend-mode:overlay;background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='160' height='160' filter='url(%23n)'/></svg>");will-change:transform;`); fx.appendChild(grainEl); }
 
   const reset = (r) => { r.style.opacity = '1'; r.style.transform = 'none'; r.style.clipPath = 'none'; };
   const applyTrans = (type, A, B, p, accent) => {
@@ -378,6 +400,7 @@ function sceneRunner(stage, d, scenes) {
       wipe.style.opacity = '0';
       renders[ci](localAuthored);
     }
+    if (grainEl) grainEl.style.transform = `translate(${(Math.sin(t * 30) * 8).toFixed(0)}px, ${(Math.cos(t * 27) * 8).toFixed(0)}px)`;
   };
 }
 
@@ -626,6 +649,30 @@ function sceneCountdown(root, d, opts) {
   };
 }
 
+// СЦЕНА HOOK — TikTok-подпись (стоп-скролл): белый текст на полупрозрачной
+// подложке поверх кадра/фона + пульсирующая подсказка (wait for it / comment).
+function sceneHook(root, d, opts) {
+  let mo = null;
+  const m = slotMedia(d.slots && d.slots[opts.slot != null ? opts.slot : -1]);
+  if (m) {
+    mo = mkMedia(root, m, true);
+    root.appendChild(el('div', `position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,0.5), rgba(0,0,0,0.15) 42%, rgba(0,0,0,0.4));`));
+  } else {
+    root.style.background = opts.bg || '#0a0a0c';
+  }
+  const cap = el('div', `position:absolute;left:7%;right:7%;top:${opts.pos === 'center' ? '40%' : '15%'};text-align:center;will-change:transform,opacity;`,
+    `<span style="display:inline;box-decoration-break:clone;-webkit-box-decoration-break:clone;background:rgba(0,0,0,0.58);color:#fff;font-family:'Montserrat',sans-serif;font-weight:700;font-size:6.4vw;line-height:1.55;padding:0.5vh 1.6vw;">${opts.text || ''}</span>`);
+  root.appendChild(cap);
+  const hint = opts.hint ? el('div', `position:absolute;left:0;width:100%;bottom:9%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:700;font-size:3.6vw;color:#fff;text-shadow:0 2px 8px rgba(0,0,0,0.7);will-change:opacity,transform;`, opts.hint) : null;
+  if (hint) root.appendChild(hint);
+  return (lt) => {
+    if (mo) { seekVid(mo, lt); mo.media.style.transform = `scale(${1.08 - 0.08 * clamp01(eob(seg(lt, 0, 0.9)))})`; }
+    cap.style.opacity = String(clamp01(seg(lt, 0, 0.28)));
+    cap.style.transform = `translateY(${(1 - eoc(seg(lt, 0, 0.5))) * -1.5}vh)`;
+    if (hint) { const pulse = 0.65 + 0.35 * Math.abs(Math.sin(lt * 3.2)); hint.style.opacity = String(clamp01(seg(lt, 0.4, 0.7)) * pulse); hint.style.transform = `scale(${0.96 + 0.04 * Math.abs(Math.sin(lt * 3.2))})`; }
+  };
+}
+
 // Data-driven сцена из спецификации (тип + контент + переход). Используется
 // редактором: сцены приходят как d.scenes и редактируются вживую.
 function sceneFromSpec(spec, d) {
@@ -643,6 +690,7 @@ function sceneFromSpec(spec, d) {
     case 'beforeafter': return { dur, trans, build: (r) => sceneBeforeAfter(r, d, o) };
     case 'price': return { dur, trans, build: (r) => scenePrice(r, d, o) };
     case 'countdown': return { dur, trans, build: (r) => sceneCountdown(r, d, o) };
+    case 'hook': return { dur, trans, build: (r) => sceneHook(r, d, o) };
     default: return { dur, trans, build: (r) => scenePhoto(r, d, { slot: spec.slot || 0, caption: spec.caption || '', from: spec.from || 'left', capBottom: spec.capBottom, kenScale: spec.kenScale, bg: spec.bg, w: spec.w, accent: d.accent }) };
   }
 }

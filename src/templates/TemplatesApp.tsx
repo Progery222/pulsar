@@ -4,7 +4,7 @@ import { useUIStore } from '../store/uiStore';
 import { mediaUrl } from '../utils/media';
 import { MONTAGE_TEMPLATES, applyMontageTemplate } from './montageTemplates';
 import {
-  SCENE_TEMPLATES, TRANSITIONS,
+  SCENE_TEMPLATES, TRANSITIONS, FILTERS,
   type SceneTemplate, type SceneSpec, type Transition,
 } from './sceneTemplates';
 import tracksData from '../data/tracks.json';
@@ -63,11 +63,12 @@ function sceneLabel(s: SceneSpec): string {
     case 'beforeafter': return 'до/после';
     case 'price': return s.price || 'ценник';
     case 'countdown': return 'отсчёт';
+    case 'hook': return s.text || 'хук';
   }
 }
 const SCENE_KIND: Record<SceneSpec['type'], string> = {
   text: 'текст', photo: 'фото', cover: 'кадр', split: 'сплит', stat: 'цифра', list: 'список', quote: 'цитата',
-  beforeafter: 'до/после', price: 'ценник', countdown: 'отсчёт', cta: 'CTA',
+  beforeafter: 'до/после', price: 'ценник', countdown: 'отсчёт', hook: 'хук', cta: 'CTA',
 };
 
 export default function TemplatesApp() {
@@ -85,6 +86,7 @@ export default function TemplatesApp() {
   const [selIdx, setSelIdx] = useState(0);
 
   const [accent, setAccent] = useState('#ff5c8a');
+  const [filter, setFilter] = useState('none');
   const [format, setFormat] = useState<Format>('9:16');
   const [musicPath, setMusicPath] = useState<string | null>(null);
   const [musicName, setMusicName] = useState<string | null>(null);
@@ -139,9 +141,9 @@ export default function TemplatesApp() {
       const firstImg = slots.find((s): s is { kind: 'image'; src: string; orig: string } => !!s && s.kind === 'image');
       const mapSlot = (s: Slot) =>
         !s ? { i: PLACEHOLDER, o: PLACEHOLDER } : s.kind === 'image' ? { i: s.src, o: s.orig } : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start, path: s.path };
-      return { accent, subjectImage: firstImg?.src || PLACEHOLDER, slots: slots.map(mapSlot), scenes };
+      return { accent, filter, subjectImage: firstImg?.src || PLACEHOLDER, slots: slots.map(mapSlot), scenes };
     },
-    [accent, slots, scenes]
+    [accent, filter, slots, scenes]
   );
 
   const seekEngine = useCallback((tt: number) => {
@@ -225,6 +227,7 @@ export default function TemplatesApp() {
     setScenes(tt.scenes.map((s) => ({ ...s })));
     setSlots(new Array(tt.slotCount).fill(null));
     setAccent(tt.accent);
+    setFilter(tt.filter || 'none');
     // Музыка-пресет шаблона (можно сменить в панели).
     const track = trackById(tt.music);
     setMusicPath(track?.file || null);
@@ -705,6 +708,28 @@ export default function TemplatesApp() {
                       <Field label="Подпись" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
                     </>
                   )}
+                  {sel.type === 'hook' && (
+                    <>
+                      <Field label="Текст-хук" value={sel.text} onChange={(v) => patchScene(selIdx, { text: v })} />
+                      <Field label="Подсказка (👀 / комментарий)" value={sel.hint || ''} onChange={(v) => patchScene(selIdx, { hint: v })} />
+                      <div style={{ display: 'flex', gap: 8 }}>
+                        <label style={{ flex: 1 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Позиция</span>
+                          <select value={sel.pos || 'top'} onChange={(e) => patchScene(selIdx, { pos: e.target.value as 'top' | 'center' })} style={selectStyle}>
+                            <option value="top">Сверху</option>
+                            <option value="center">По центру</option>
+                          </select>
+                        </label>
+                        <label style={{ flex: 1 }}>
+                          <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Фон (слот)</span>
+                          <select value={sel.slot ?? -1} onChange={(e) => patchScene(selIdx, { slot: Number(e.target.value) < 0 ? undefined : Number(e.target.value) })} style={selectStyle}>
+                            <option value={-1}>без фото</option>
+                            {slots.map((_, i) => <option key={i} value={i}>Слот {i + 1}</option>)}
+                          </select>
+                        </label>
+                      </div>
+                    </>
+                  )}
                   <label style={{ display: 'block' }}>
                     <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Длительность сцены · {sel.dur.toFixed(1)}с</span>
                     <input type="range" min={0.4} max={6} step={0.1} value={sel.dur} onChange={(e) => patchScene(selIdx, { dur: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
@@ -716,6 +741,16 @@ export default function TemplatesApp() {
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {ACCENTS.map((c) => (
                     <button key={c} onClick={() => setAccent(c)} style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: accent === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
+                  ))}
+                </div>
+              </Group>
+              <Group label="Фильтр">
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                  {FILTERS.map((f) => (
+                    <button key={f.key} onClick={() => setFilter(f.key)}
+                      style={{ padding: '6px 10px', borderRadius: 8, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: filter === f.key ? '1px solid var(--accent-green)' : '1px solid var(--border)', background: filter === f.key ? 'var(--accent-green)' : 'var(--bg-tertiary)', color: filter === f.key ? '#000' : 'var(--text-primary)' }}>
+                      {f.label}
+                    </button>
                   ))}
                 </div>
               </Group>
