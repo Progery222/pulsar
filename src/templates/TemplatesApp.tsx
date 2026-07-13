@@ -32,6 +32,10 @@ const PLACEHOLDER =
 const RUNTIME_URL = new URL('templates/runtime.html', document.baseURI).href;
 const FONTS_URL = new URL('fonts/', document.baseURI).href;
 
+// Слот шаблона: фото (cutout-PNG) или видео-клип (путь + blob для живого превью).
+type Slot = { kind: 'image'; src: string } | { kind: 'video'; path: string; blob: string } | null;
+const fileUrl = (p: string) => encodeURI('file:///' + p.replace(/\\/g, '/'));
+
 const sceneLabel = (s: SceneSpec): string =>
   s.type === 'text' ? (s.text || 'текст') : s.type === 'cta' ? (s.cta || 'CTA') : `фото ${s.slot + 1}`;
 
@@ -44,7 +48,7 @@ export default function TemplatesApp() {
   // Выбранный сцена-шаблон + редактируемая копия сцен.
   const [tpl, setTpl] = useState<SceneTemplate | null>(null);
   const [scenes, setScenes] = useState<SceneSpec[]>([]);
-  const [slots, setSlots] = useState<(string | null)[]>([]);
+  const [slots, setSlots] = useState<Slot[]>([]);
   const [slotBusy, setSlotBusy] = useState<number | null>(null);
   const [slotProg, setSlotProg] = useState(0);
   const [selIdx, setSelIdx] = useState(0);
@@ -75,14 +79,15 @@ export default function TemplatesApp() {
     return off;
   }, []);
 
-  // Данные для движка (то же, что уйдёт в рендер) — WYSIWYG.
+  // Данные для движка (то же, что уйдёт в рендер) — WYSIWYG. forRender: видео как
+  // file:// (окно рендера грузит с диска), иначе blob: (живое превью в iframe).
   const engineData = useCallback(
-    () => ({
-      accent,
-      subjectImage: slots[0] || PLACEHOLDER,
-      slots: slots.map((s) => s || PLACEHOLDER),
-      scenes,
-    }),
+    (forRender = false) => {
+      const firstImg = slots.find((s): s is { kind: 'image'; src: string } => !!s && s.kind === 'image');
+      const mapSlot = (s: Slot) =>
+        !s ? PLACEHOLDER : s.kind === 'image' ? s.src : { v: forRender ? fileUrl(s.path) : s.blob };
+      return { accent, subjectImage: firstImg?.src || PLACEHOLDER, slots: slots.map(mapSlot), scenes };
+    },
     [accent, slots, scenes]
   );
 
@@ -171,7 +176,7 @@ export default function TemplatesApp() {
       const reader = new FileReader();
       reader.onload = () => {
         const url = reader.result as string;
-        setSlots((prev) => prev.map((s, i) => (i === slot ? url : s)));
+        setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'image', src: url } : s)));
       };
       reader.readAsDataURL(blob);
     } catch (e) {
@@ -181,10 +186,28 @@ export default function TemplatesApp() {
     }
   }, []);
 
+  const addVideo = useCallback(async (file: File, slot: number) => {
+    const p = (file as File & { path?: string }).path;
+    if (!p) { setRenderErr('Не удалось получить путь к видео'); return; }
+    setSlotBusy(slot);
+    setSlotProg(0);
+    try {
+      // blob для живого превью (media:// напрямую в <video> в Electron ненадёжен).
+      const blob = await fetch(mediaUrl(p)).then((r) => r.blob());
+      const url = URL.createObjectURL(blob);
+      setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'video', path: p, blob: url } : s)));
+    } catch {
+      setRenderErr('Не удалось загрузить видео');
+    } finally {
+      setSlotBusy(null);
+    }
+  }, []);
+
   function pickSlot(slot: number, files: FileList | null) {
     const f = files?.[0];
-    if (!f || !f.type.startsWith('image/')) return;
-    doCutout(f, slot);
+    if (!f) return;
+    if (f.type.startsWith('image/')) doCutout(f, slot);
+    else if (f.type.startsWith('video/')) addVideo(f, slot);
   }
 
   async function pickMusic() {
@@ -237,7 +260,7 @@ export default function TemplatesApp() {
     const { w, h } = FORMATS[format];
     const res = await window.electronAPI.renderTemplate({
       templateId: 'scenes',
-      data: engineData(),
+      data: engineData(true),
       width: w,
       height: h,
       fps: 30,
@@ -407,21 +430,28 @@ export default function TemplatesApp() {
             </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Слоты фото */}
-              <Group label={`Фото (${slots.filter(Boolean).length}/${slots.length})`}>
+              {/* Слоты медиа: фото (cutout) или видео-клип */}
+              <Group label={`Медиа (${slots.filter(Boolean).length}/${slots.length})`}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {slots.map((s, i) => (
-                    <label key={i} style={{ width: 72, height: 72, borderRadius: 10, border: `1px dashed ${s ? 'var(--accent-green)' : 'var(--border)'}`, background: s ? `#111 url(${s}) center/contain no-repeat` : 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
+                    <label key={i} style={{ width: 72, height: 72, borderRadius: 10, border: `1px dashed ${s ? 'var(--accent-green)' : 'var(--border)'}`, background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
                       {slotBusy === i ? (
                         <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>✂️ {slotProg}%</span>
                       ) : !s ? (
-                        <span style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center' }}>＋ фото {i + 1}</span>
-                      ) : null}
-                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { pickSlot(i, e.target.files); e.target.value = ''; }} />
+                        <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.3 }}>＋<br />фото/видео</span>
+                      ) : s.kind === 'image' ? (
+                        <img src={s.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+                      ) : (
+                        <>
+                          <video src={s.blob} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <span style={{ position: 'absolute', top: 2, right: 3, fontSize: 12 }}>🎬</span>
+                        </>
+                      )}
+                      <input type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={(e) => { pickSlot(i, e.target.files); e.target.value = ''; }} />
                     </label>
                   ))}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Фон убирается автоматически (ИИ).</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Фото — фон убирается ИИ. Видео — играет во весь кадр сцены.</div>
               </Group>
 
               {/* Редактор выбранной сцены */}

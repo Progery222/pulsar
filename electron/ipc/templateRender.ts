@@ -66,11 +66,21 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
       /* шрифты не критичны */
     }
     await new Promise((r) => setTimeout(r, 400));
+    // Дождаться загрузки видео-слотов (если есть) перед покадровым захватом.
+    try {
+      await win.webContents.executeJavaScript('window.mediaReady ? window.mediaReady().then(()=>true) : true');
+    } catch {
+      /* видео не критичны */
+    }
 
     for (let i = 0; i < total; i++) {
       if (hooks.getCancelled?.()) throw new Error('Отменено');
-      await win.webContents.executeJavaScript(`window.seek(${(i / fps).toFixed(4)}); true`);
-      await new Promise((r) => setTimeout(r, 24));
+      const tv = (i / fps).toFixed(4);
+      // seekAndWait докручивает видео до нужного кадра; для шаблонов без видео — мгновенно.
+      await win.webContents.executeJavaScript(
+        `window.seekAndWait ? window.seekAndWait(${tv}).then(()=>true) : (window.seek(${tv}),true)`
+      );
+      await new Promise((r) => setTimeout(r, 16));
       let img = await win.webContents.capturePage();
       const sz = img.getSize();
       // При Windows-масштабе (DPR≠1) захват крупнее — приводим к точному размеру.

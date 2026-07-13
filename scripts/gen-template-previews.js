@@ -27,7 +27,17 @@ const log = (...a) => fs.appendFileSync(LOG, a.map(String).join(' ') + '\n');
 try { fs.writeFileSync(LOG, ''); } catch {}
 
 const S2 = [SUBJECT, SUBJECT], S3 = [SUBJECT, SUBJECT, SUBJECT];
-const JOBS = [
+// Проверка видео-слота: VTEST=/путь/к/clip.mp4 добавляет джоб с видео в сцене.
+const fileUrl = (p) => encodeURI('file:///' + p.replace(/\\/g, '/'));
+const VTEST = process.env.VTEST;
+const JOBS = VTEST ? [
+  { id: 'scenes', out: 'vtest', dur: 4.0, data: { accent: '#00e5ff', subjectImage: SUBJECT, slots: [{ v: fileUrl(VTEST) }],
+    scenes: [
+      { type: 'text', dur: 1.0, trans: 'fade', text: 'VIDEO' },
+      { type: 'photo', dur: 2.0, trans: 'wipe', slot: 0, caption: 'clip 01', from: 'left' },
+      { type: 'cta', dur: 1.0, trans: 'zoom', title: 'end', cta: 'Go' },
+    ] } },
+] : [
   { id: 'kinetic', out: 'kinetic', dur: 3, data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
   { id: 'glitch', out: 'glitch', dur: 3, data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
   {
@@ -75,10 +85,12 @@ async function renderOne(job) {
   try { await win.webContents.executeJavaScript('document.fonts.ready.then(()=>true)'); } catch {}
   await new Promise((r) => setTimeout(r, 400));
 
+  try { await win.webContents.executeJavaScript('window.mediaReady ? window.mediaReady().then(()=>true) : true'); } catch {}
   const total = FPS * DUR;
   for (let i = 0; i < total; i++) {
-    await win.webContents.executeJavaScript(`window.seek(${(i / FPS).toFixed(4)}); true`);
-    await new Promise((r) => setTimeout(r, 22));
+    const tv = (i / FPS).toFixed(4);
+    await win.webContents.executeJavaScript(`window.seekAndWait ? window.seekAndWait(${tv}).then(()=>true) : (window.seek(${tv}),true)`);
+    await new Promise((r) => setTimeout(r, 16));
     let img = await win.webContents.capturePage();
     const sz = img.getSize();
     if (sz.width !== W || sz.height !== H) img = img.resize({ width: W, height: H, quality: 'best' });

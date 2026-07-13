@@ -377,19 +377,39 @@ function sceneTextCard(root, d, opts) {
 }
 function scenePhoto(root, d, opts) {
   const accent = opts.accent || d.accent || '#ccff00';
-  const img = (d.slots && d.slots[opts.slot]) || d.subjectImage || '';
-  root.style.background = opts.bg || 'radial-gradient(120% 90% at 50% 40%, #1c1c22 0%, #08080b 70%)';
-  const subj = el('img', `position:absolute;left:50%;top:52%;width:${opts.w||58}vw;transform:translate(-50%,-50%);filter:drop-shadow(0 3vh 4vh rgba(0,0,0,0.6));will-change:transform,opacity;`);
-  subj.src = img; root.appendChild(subj);
+  const slot = d.slots && d.slots[opts.slot];
+  const isVideo = slot && typeof slot === 'object' && slot.v;
+  const src = isVideo ? slot.v : (typeof slot === 'string' ? slot : (d.subjectImage || ''));
+  const dir = opts.from === 'right' ? 1 : -1;
+  let media, vid = null;
+  if (isVideo) {
+    // Видео-клип во весь кадр (как в трендах) + подпись-плашка поверх.
+    root.style.background = '#000';
+    media = el('video', `position:absolute;inset:0;width:100%;height:100%;object-fit:cover;will-change:transform,opacity;`);
+    media.muted = true; media.playsInline = true; media.preload = 'auto'; media.setAttribute('muted', '');
+    media.src = src; vid = media; root.appendChild(media);
+  } else {
+    // Фото-вырезка на дизайн-фоне.
+    root.style.background = opts.bg || 'radial-gradient(120% 90% at 50% 40%, #1c1c22 0%, #08080b 70%)';
+    media = el('img', `position:absolute;left:50%;top:52%;width:${opts.w||58}vw;transform:translate(-50%,-50%);filter:drop-shadow(0 3vh 4vh rgba(0,0,0,0.6));will-change:transform,opacity;`);
+    media.src = src; root.appendChild(media);
+  }
   const plate = el('div', `position:absolute;left:6%;${opts.capBottom?'bottom:10%':'top:12%'};font-family:'Oswald',sans-serif;font-weight:700;font-size:6vw;letter-spacing:0.2vw;text-transform:uppercase;color:#0a0a0a;background:${accent};padding:0.6vh 2.4vw;transform:skewX(-6deg);will-change:transform,opacity;`, opts.caption || '');
   root.appendChild(plate);
-  const dir = opts.from === 'right' ? 1 : -1;
   return (lt) => {
-    const sp = eob(seg(lt,0.0,0.7));
-    subj.style.opacity = String(clamp01(seg(lt,0.0,0.4)));
-    subj.style.transform = `translate(-50%,-50%) scale(${(opts.kenScale? (1+0.12*clamp01(seg(lt,0,1))): (0.9+0.1*clamp01(sp)))}) translateX(${(1-clamp01(sp))*8*dir}vw)`;
-    plate.style.opacity = String(lt>=0.15?1:0);
-    plate.style.transform = `skewX(-6deg) translateX(${(1-clamp01(eob(seg(lt,0.15,0.6))))*140*dir}%)`;
+    if (vid) {
+      const dur = isFinite(vid.duration) && vid.duration > 0 ? vid.duration : (lt + 1);
+      const want = Math.max(0, Math.min(lt, dur - 0.05));
+      if (Math.abs(vid.currentTime - want) > 0.03) { try { vid.currentTime = want; } catch (e) {} }
+      vid.style.opacity = String(clamp01(seg(lt, 0, 0.3)));
+      vid.style.transform = `scale(${(1.06 - 0.06 * clamp01(eob(seg(lt, 0, 0.6))))})`;
+    } else {
+      const sp = eob(seg(lt, 0.0, 0.7));
+      media.style.opacity = String(clamp01(seg(lt, 0.0, 0.4)));
+      media.style.transform = `translate(-50%,-50%) scale(${(opts.kenScale ? (1 + 0.12 * clamp01(seg(lt, 0, 1))) : (0.9 + 0.1 * clamp01(sp)))}) translateX(${(1 - clamp01(sp)) * 8 * dir}vw)`;
+    }
+    plate.style.opacity = String(lt >= 0.15 ? 1 : 0);
+    plate.style.transform = `skewX(-6deg) translateX(${(1 - clamp01(eob(seg(lt, 0.15, 0.6)))) * 140 * dir}%)`;
   };
 }
 function sceneCTA(root, d, opts) {
@@ -460,6 +480,22 @@ window.initTemplate = function (cfg) {
 };
 window.seek = function (t) { if (SEEK) SEEK(t, DUR); };
 window.templateIds = () => Object.keys(TEMPLATES);
+
+// Дождаться готовности всех видео (перед покадровым рендером).
+window.mediaReady = function () {
+  const vs = Array.prototype.slice.call(document.querySelectorAll('video'));
+  return Promise.all(vs.map((v) => v.readyState >= 2 ? Promise.resolve() : new Promise((r) => {
+    v.addEventListener('loadeddata', () => r(), { once: true }); setTimeout(r, 4000);
+  })));
+};
+// Сик + дождаться, пока все видео докрутятся до нужного кадра (для точного capturePage).
+window.seekAndWait = function (t) {
+  window.seek(t);
+  const vs = Array.prototype.slice.call(document.querySelectorAll('video')).filter((v) => v.seeking);
+  return Promise.all(vs.map((v) => new Promise((r) => {
+    v.addEventListener('seeked', () => r(), { once: true }); setTimeout(r, 500);
+  })));
+};
 </script>
 </body>
 </html>
