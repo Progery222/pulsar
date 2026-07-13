@@ -9,7 +9,7 @@ import {
 } from './sceneTemplates';
 import tracksData from '../data/tracks.json';
 
-type Track = { id: string; title: string; file: string };
+type Track = { id: string; title: string; file: string; duration?: number };
 const trackById = (id?: string): Track | undefined =>
   id ? (tracksData as Track[]).find((x) => x.id === id) : undefined;
 
@@ -43,9 +43,9 @@ const TRANS_SFX_UI: Record<string, string | undefined> = {
   zoom: 'impact', punch: 'impact', glitchcut: 'impact', flash: 'pop',
 };
 
-// Слот шаблона: фото (cutout-PNG) или видео-клип (путь + blob + длительность + трим-старт).
+// Слот шаблона: фото (оригинал + опц. вырезка фона) или видео-клип.
 type Slot =
-  | { kind: 'image'; src: string; orig: string }
+  | { kind: 'image'; orig: string; cut: string | null; useCut: boolean }
   | { kind: 'video'; path: string; blob: string; dur: number; start: number }
   | null;
 const fileUrl = (p: string) => encodeURI('file:///' + p.replace(/\\/g, '/'));
@@ -90,6 +90,10 @@ export default function TemplatesApp() {
   const [format, setFormat] = useState<Format>('9:16');
   const [musicPath, setMusicPath] = useState<string | null>(null);
   const [musicName, setMusicName] = useState<string | null>(null);
+  const [musicStart, setMusicStart] = useState(0);
+  const [musicDur, setMusicDur] = useState(0);
+  const musicStartRef = useRef(0);
+  useEffect(() => { musicStartRef.current = musicStart; }, [musicStart]);
   const [clipAudio, setClipAudio] = useState(true);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -138,10 +142,11 @@ export default function TemplatesApp() {
   // file:// (окно рендера грузит с диска), иначе blob: (живое превью в iframe).
   const engineData = useCallback(
     (forRender = false) => {
-      const firstImg = slots.find((s): s is { kind: 'image'; src: string; orig: string } => !!s && s.kind === 'image');
+      const imgSrc = (s: { orig: string; cut: string | null; useCut: boolean }) => (s.useCut && s.cut ? s.cut : s.orig);
+      const firstImg = slots.find((s): s is { kind: 'image'; orig: string; cut: string | null; useCut: boolean } => !!s && s.kind === 'image');
       const mapSlot = (s: Slot) =>
-        !s ? { i: PLACEHOLDER, o: PLACEHOLDER } : s.kind === 'image' ? { i: s.src, o: s.orig } : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start, path: s.path };
-      return { accent, filter, subjectImage: firstImg?.src || PLACEHOLDER, slots: slots.map(mapSlot), scenes };
+        !s ? { i: PLACEHOLDER, o: PLACEHOLDER } : s.kind === 'image' ? { i: imgSrc(s), o: s.orig } : { v: forRender ? fileUrl(s.path) : s.blob, start: s.start, path: s.path };
+      return { accent, filter, subjectImage: firstImg ? imgSrc(firstImg) : PLACEHOLDER, slots: slots.map(mapSlot), scenes };
     },
     [accent, filter, slots, scenes]
   );
@@ -176,7 +181,7 @@ export default function TemplatesApp() {
         const dt = (ts - lastTsRef.current) / 1000;
         lastTsRef.current = ts;
         let nt = tRef.current + dt;
-        if (nt >= totalDur) { nt = 0; if (audioRef.current) audioRef.current.currentTime = 0; }
+        if (nt >= totalDur) { nt = 0; if (audioRef.current) audioRef.current.currentTime = musicStartRef.current; }
         tRef.current = nt;
         setT(nt);
         seekEngine(nt);
@@ -210,7 +215,7 @@ export default function TemplatesApp() {
     setPlaying(playRef.current);
     const a = audioRef.current;
     if (a) {
-      if (playRef.current) { try { a.currentTime = tRef.current; void a.play(); } catch { /* noop */ } }
+      if (playRef.current) { try { a.currentTime = musicStart + tRef.current; void a.play(); } catch { /* noop */ } }
       else a.pause();
     }
   }
@@ -219,7 +224,7 @@ export default function TemplatesApp() {
     tRef.current = nt;
     setT(nt);
     seekEngine(nt);
-    if (audioRef.current) { try { audioRef.current.currentTime = nt; } catch { /* noop */ } }
+    if (audioRef.current) { try { audioRef.current.currentTime = musicStart + nt; } catch { /* noop */ } }
   }
 
   function chooseTemplate(tt: SceneTemplate) {
@@ -232,6 +237,8 @@ export default function TemplatesApp() {
     const track = trackById(tt.music);
     setMusicPath(track?.file || null);
     setMusicName(track?.title || null);
+    setMusicStart(0);
+    setMusicDur(track?.duration || 0);
     setSelIdx(0);
     tRef.current = 0;
     setT(0);
@@ -244,28 +251,39 @@ export default function TemplatesApp() {
     setTimeout(() => pushToEngine(), 60);
   }
 
-  const doCutout = useCallback(async (file: File, slot: number) => {
+  const readDataURL = (b: Blob) => new Promise<string>((res) => {
+    const rd = new FileReader(); rd.onload = () => res(rd.result as string); rd.readAsDataURL(b);
+  });
+
+  // Фото добавляется сразу как есть (быстро), без принудительной вырезки фона.
+  const addImage = useCallback(async (file: File, slot: number) => {
+    const orig = await readDataURL(file);
+    setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'image', orig, cut: null, useCut: false } : s)));
+  }, []);
+
+  // Вырезать фон по кнопке (или переключить, если уже вырезано).
+  async function cutSlot(slot: number) {
+    const s = slots[slot];
+    if (!s || s.kind !== 'image') return;
+    if (s.cut) {
+      setSlots((prev) => prev.map((x, i) => (i === slot && x && x.kind === 'image' ? { ...x, useCut: !x.useCut } : x)));
+      return;
+    }
     setSlotBusy(slot);
     setSlotProg(0);
     try {
-      // Оригинал (с фоном) — для полноэкранных/сплит сцен; cutout — для сцен на дизайн-фоне.
-      const orig = await new Promise<string>((res) => {
-        const rd = new FileReader(); rd.onload = () => res(rd.result as string); rd.readAsDataURL(file);
-      });
-      const blob = await removeBackground(file, {
+      const blob = await removeBackground(s.orig, {
         progress: (_k, cur, total) => setSlotProg(total > 0 ? Math.round((cur / total) * 100) : 0),
         output: { format: 'image/png' },
       });
-      const cut = await new Promise<string>((res) => {
-        const rd = new FileReader(); rd.onload = () => res(rd.result as string); rd.readAsDataURL(blob);
-      });
-      setSlots((prev) => prev.map((s, i) => (i === slot ? { kind: 'image', src: cut, orig } : s)));
+      const cut = await readDataURL(blob);
+      setSlots((prev) => prev.map((x, i) => (i === slot && x && x.kind === 'image' ? { ...x, cut, useCut: true } : x)));
     } catch (e) {
       setRenderErr(e instanceof Error ? e.message : 'Ошибка удаления фона');
     } finally {
       setSlotBusy(null);
     }
-  }, []);
+  }
 
   const addVideo = useCallback(async (file: File, slot: number) => {
     let p = '';
@@ -296,13 +314,13 @@ export default function TemplatesApp() {
   function pickSlot(slot: number, files: FileList | null) {
     const f = files?.[0];
     if (!f) return;
-    if (f.type.startsWith('image/')) doCutout(f, slot);
+    if (f.type.startsWith('image/')) addImage(f, slot);
     else if (f.type.startsWith('video/')) addVideo(f, slot);
   }
 
   async function pickMusic() {
     const p = await window.electronAPI.selectAudio();
-    if (p) { setMusicPath(p); setMusicName(p.split(/[\\/]/).pop() || null); }
+    if (p) { setMusicPath(p); setMusicName(p.split(/[\\/]/).pop() || null); setMusicStart(0); setMusicDur(0); }
   }
 
   function patchScene(i: number, patch: Partial<SceneSpec>) {
@@ -360,6 +378,7 @@ export default function TemplatesApp() {
       durationSec: totalDur,
       outputPath: out,
       musicPath: musicPath || undefined,
+      musicStart: musicStart > 0 ? musicStart : undefined,
       clipAudio,
     });
     if ('error' in res) {
@@ -440,7 +459,8 @@ export default function TemplatesApp() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       <Header onHome={() => setAppMode('select')} title={tpl?.name || 'Шаблон'} onBack={done ? undefined : () => setPhase('gallery')} />
-      <audio ref={audioRef} src={audioBlob || undefined} preload="auto" />
+      <audio ref={audioRef} src={audioBlob || undefined} preload="auto"
+        onLoadedMetadata={(e) => { if (Number.isFinite(e.currentTarget.duration)) setMusicDur(e.currentTarget.duration); }} />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
         {/* Живое превью + таймлайн */}
@@ -528,24 +548,33 @@ export default function TemplatesApp() {
               <Group label={`Медиа (${slots.filter(Boolean).length}/${slots.length})`}>
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {slots.map((s, i) => (
-                    <label key={i} style={{ width: 72, height: 72, borderRadius: 10, border: `1px dashed ${s ? 'var(--accent-green)' : 'var(--border)'}`, background: '#111', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
-                      {slotBusy === i ? (
-                        <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>✂️ {slotProg}%</span>
-                      ) : !s ? (
-                        <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.3 }}>＋<br />фото/видео</span>
-                      ) : s.kind === 'image' ? (
-                        <img src={s.src} alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-                      ) : (
-                        <>
-                          <video src={s.blob} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                          <span style={{ position: 'absolute', top: 2, right: 3, fontSize: 12 }}>🎬</span>
-                        </>
+                    <div key={i} style={{ position: 'relative', width: 72 }}>
+                      <label style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 72, height: 72, borderRadius: 10, border: `1px dashed ${s ? 'var(--accent-green)' : 'var(--border)'}`, background: '#111', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
+                        {slotBusy === i ? (
+                          <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>✂️ {slotProg}%</span>
+                        ) : !s ? (
+                          <span style={{ fontSize: 10.5, color: 'var(--text-secondary)', textAlign: 'center', lineHeight: 1.3 }}>＋<br />фото/видео</span>
+                        ) : s.kind === 'image' ? (
+                          <img src={s.useCut && s.cut ? s.cut : s.orig} alt="" style={{ width: '100%', height: '100%', objectFit: s.useCut && s.cut ? 'contain' : 'cover' }} />
+                        ) : (
+                          <>
+                            <video src={s.blob} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <span style={{ position: 'absolute', top: 2, right: 3, fontSize: 12 }}>🎬</span>
+                          </>
+                        )}
+                        <input type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={(e) => { pickSlot(i, e.target.files); e.target.value = ''; }} />
+                      </label>
+                      {s && s.kind === 'image' && slotBusy !== i && (
+                        <button onClick={(e) => { e.preventDefault(); cutSlot(i); }}
+                          title={s.cut ? (s.useCut ? 'Вернуть фон' : 'Убрать фон') : 'Вырезать фон (ИИ)'}
+                          style={{ position: 'absolute', bottom: 3, right: 3, height: 20, padding: '0 6px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, background: s.useCut && s.cut ? 'var(--accent-green)' : 'rgba(0,0,0,0.7)', color: s.useCut && s.cut ? '#000' : '#fff' }}>
+                          {s.useCut && s.cut ? '✓ фон' : '✂'}
+                        </button>
                       )}
-                      <input type="file" accept="image/*,video/*" style={{ display: 'none' }} onChange={(e) => { pickSlot(i, e.target.files); e.target.value = ''; }} />
-                    </label>
+                    </div>
                   ))}
                 </div>
-                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Фото — фон убирается ИИ. Видео — играет во весь кадр сцены.</div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Фото грузится как есть. «✂» — убрать фон (по желанию). Видео играет во весь кадр сцены.</div>
               </Group>
 
               {/* Редактор выбранной сцены */}
@@ -767,6 +796,15 @@ export default function TemplatesApp() {
                   {musicPath && <button onClick={() => { setMusicPath(null); setMusicName(null); }} style={{ ...btn(false), width: 'auto', padding: '9px 12px' }}>✕</button>}
                 </div>
                 {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>♪ {musicName || musicPath.split(/[\\/]/).pop()}</div>}
+                {musicPath && musicDur > 0 && (
+                  <label style={{ display: 'block', marginTop: 8 }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Начало трека · {musicStart.toFixed(1)}с {musicDur ? `(трек ${Math.floor(musicDur)}с)` : ''}</span>
+                    <input type="range" min={0} max={Math.max(0, Number((musicDur - totalDur).toFixed(1)))} step={0.5}
+                      value={Math.min(musicStart, Math.max(0, musicDur - totalDur))} disabled={musicDur <= totalDur}
+                      onChange={(e) => { const v = Number(e.target.value); setMusicStart(v); if (audioRef.current) { try { audioRef.current.currentTime = v + tRef.current; } catch { /* noop */ } } }}
+                      style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
+                  </label>
+                )}
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' }}>
                   <input type="checkbox" checked={clipAudio} onChange={(e) => setClipAudio(e.target.checked)} style={{ accentColor: 'var(--accent-green)' }} />
                   Звук из видео-клипов
