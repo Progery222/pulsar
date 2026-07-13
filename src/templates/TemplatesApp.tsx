@@ -196,6 +196,30 @@ export default function TemplatesApp() {
     setScenes((prev) => prev.map((s, idx) => (idx === i ? ({ ...s, ...patch } as SceneSpec) : s)));
   }
 
+  // Изменение длительности сцены перетаскиванием края на таймлайне.
+  const tlRef = useRef<HTMLDivElement>(null);
+  const dragRef = useRef<{ i: number; startX: number; startDur: number; pps: number } | null>(null);
+  const onHandleMove = useCallback((e: PointerEvent) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dsec = (e.clientX - d.startX) / d.pps;
+    const nd = Math.max(0.4, Math.min(6, Number((d.startDur + dsec).toFixed(1))));
+    setScenes((prev) => prev.map((s, idx) => (idx === d.i ? { ...s, dur: nd } : s)));
+  }, []);
+  const onHandleUp = useCallback(() => {
+    dragRef.current = null;
+    window.removeEventListener('pointermove', onHandleMove);
+    window.removeEventListener('pointerup', onHandleUp);
+  }, [onHandleMove]);
+  function onHandleDown(e: React.PointerEvent, i: number) {
+    e.stopPropagation();
+    e.preventDefault();
+    const W = tlRef.current?.clientWidth || 1;
+    dragRef.current = { i, startX: e.clientX, startDur: scenes[i].dur, pps: W / totalDur };
+    window.addEventListener('pointermove', onHandleMove);
+    window.addEventListener('pointerup', onHandleUp);
+  }
+
   async function render() {
     if (!tpl) return;
     const filled = slots.filter(Boolean).length;
@@ -338,15 +362,16 @@ export default function TemplatesApp() {
                 <span style={{ fontSize: 12, color: 'var(--text-secondary)', width: 74, textAlign: 'right' }}>{t.toFixed(1)} / {totalDur.toFixed(1)}с</span>
               </div>
 
-              {/* Таймлайн сцен: блоки пропорционально длительности, метки переходов, клик = выбрать/сик */}
-              <div style={{ display: 'flex', gap: 3, height: 58, position: 'relative' }}>
+              {/* Таймлайн сцен: блоки пропорционально длительности, метки переходов,
+                  клик = выбрать/сик, перетаскивание правого края = длительность сцены */}
+              <div ref={tlRef} style={{ display: 'flex', gap: 3, height: 58, position: 'relative' }}>
                 {scenes.map((s, i) => {
                   const startAcc = scenes.slice(0, i).reduce((a, x) => a + x.dur, 0);
                   const active = i === selIdx;
                   return (
                     <button key={i}
                       onClick={() => { setSelIdx(i); scrub(startAcc / totalDur + 0.001); }}
-                      title={sceneLabel(s)}
+                      title={`${sceneLabel(s)} · ${s.dur.toFixed(1)}с`}
                       style={{
                         flex: s.dur, minWidth: 0, position: 'relative', borderRadius: 8, cursor: 'pointer', textAlign: 'left', padding: '6px 8px', overflow: 'hidden',
                         border: active ? '2px solid var(--accent-green)' : '1px solid var(--border)',
@@ -355,7 +380,11 @@ export default function TemplatesApp() {
                       }}>
                       <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>{s.type === 'photo' ? `фото ${s.slot + 1}` : s.type}</div>
                       <div style={{ fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sceneLabel(s)}</div>
+                      <div style={{ position: 'absolute', bottom: 3, left: 8, fontSize: 9, color: 'var(--text-secondary)' }}>{s.dur.toFixed(1)}с</div>
                       {i > 0 && <div style={{ position: 'absolute', top: 2, right: 4, fontSize: 8.5, color: 'var(--accent-green)' }}>⇥ {transLabel(s.trans)}</div>}
+                      {/* Ручка изменения длительности */}
+                      <div onPointerDown={(e) => onHandleDown(e, i)} title="Тянуть — длительность"
+                        style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 9, cursor: 'col-resize', background: 'linear-gradient(90deg,transparent,rgba(204,255,0,0.5))' }} />
                     </button>
                   );
                 })}
@@ -432,7 +461,7 @@ export default function TemplatesApp() {
                   )}
                   <label style={{ display: 'block' }}>
                     <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Длительность сцены · {sel.dur.toFixed(1)}с</span>
-                    <input type="range" min={0.6} max={3} step={0.1} value={sel.dur} onChange={(e) => patchScene(selIdx, { dur: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
+                    <input type="range" min={0.4} max={6} step={0.1} value={sel.dur} onChange={(e) => patchScene(selIdx, { dur: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
                   </label>
                 </Group>
               )}
