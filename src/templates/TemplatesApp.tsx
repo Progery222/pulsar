@@ -1,86 +1,190 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { removeBackground } from '@imgly/background-removal';
 import { useUIStore } from '../store/uiStore';
 import { mediaUrl } from '../utils/media';
-import { TEMPLATES, type TemplateDef } from './templates';
 import { MONTAGE_TEMPLATES, applyMontageTemplate } from './montageTemplates';
+import {
+  SCENE_TEMPLATES, TRANSITIONS, sceneTemplateDuration,
+  type SceneTemplate, type SceneSpec, type Transition,
+} from './sceneTemplates';
 
 type Phase = 'gallery' | 'edit' | 'rendering' | 'done';
 type Format = '9:16' | '1:1' | '16:9';
 
-const FORMATS: Record<Format, { w: number; h: number; label: string }> = {
-  '9:16': { w: 1080, h: 1920, label: '9:16 · Reels/TikTok' },
-  '1:1': { w: 1080, h: 1080, label: '1:1 · Пост' },
-  '16:9': { w: 1920, h: 1080, label: '16:9 · YouTube' },
+const FORMATS: Record<Format, { w: number; h: number; label: string; ratio: number }> = {
+  '9:16': { w: 1080, h: 1920, label: '9:16 · Reels/TikTok', ratio: 9 / 16 },
+  '1:1': { w: 1080, h: 1080, label: '1:1 · Пост', ratio: 1 },
+  '16:9': { w: 1920, h: 1080, label: '16:9 · YouTube', ratio: 16 / 9 },
 };
 
-const ACCENTS = ['#a9d2ff', '#ccff00', '#ff5c8a', '#ffcc4d', '#7c5cff', '#3ad1c0', '#00e5ff', '#c8a26a', '#ffffff'];
+const ACCENTS = ['#ff5c8a', '#ccff00', '#00e5ff', '#a9d2ff', '#ffcc4d', '#7c5cff', '#3ad1c0', '#c8a26a', '#ffffff'];
+
+// Прозрачный плейсхолдер-силуэт, пока в слот не загружено фото.
+const PLACEHOLDER =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    "<svg xmlns='http://www.w3.org/2000/svg' width='400' height='560'>" +
+      "<g fill='#3a3f48'><circle cx='200' cy='150' r='92'/>" +
+      "<path d='M52 560 C52 372 118 292 200 292 C282 292 348 372 348 560 Z'/></g></svg>"
+  );
+
+// URL движка и шрифтов относительно корня приложения (dev http / prod file).
+const RUNTIME_URL = new URL('templates/runtime.html', document.baseURI).href;
+const FONTS_URL = new URL('fonts/', document.baseURI).href;
+
+const sceneLabel = (s: SceneSpec): string =>
+  s.type === 'text' ? (s.text || 'текст') : s.type === 'cta' ? (s.cta || 'CTA') : `фото ${s.slot + 1}`;
 
 export default function TemplatesApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
 
   const [phase, setPhase] = useState<Phase>('gallery');
-  const [tab, setTab] = useState<'photo' | 'montage'>('montage');
-  const [tpl, setTpl] = useState<TemplateDef | null>(null);
+  const [tab, setTab] = useState<'scenes' | 'montage'>('scenes');
 
-  const [srcUrl, setSrcUrl] = useState<string | null>(null);
-  const [subject, setSubject] = useState<string | null>(null);
-  const [cutBusy, setCutBusy] = useState(false);
-  const [cutProg, setCutProg] = useState(0);
-  const [cutErr, setCutErr] = useState<string | null>(null);
+  // Выбранный сцена-шаблон + редактируемая копия сцен.
+  const [tpl, setTpl] = useState<SceneTemplate | null>(null);
+  const [scenes, setScenes] = useState<SceneSpec[]>([]);
+  const [slots, setSlots] = useState<(string | null)[]>([]);
+  const [slotBusy, setSlotBusy] = useState<number | null>(null);
+  const [slotProg, setSlotProg] = useState(0);
+  const [selIdx, setSelIdx] = useState(0);
 
-  const [eyebrow, setEyebrow] = useState('');
-  const [title, setTitle] = useState('');
-  const [subtitle, setSubtitle] = useState('');
-  const [cta, setCta] = useState('');
-  const [accent, setAccent] = useState('#a9d2ff');
+  const [accent, setAccent] = useState('#ff5c8a');
   const [format, setFormat] = useState<Format>('9:16');
-  const [duration, setDuration] = useState(6);
   const [musicPath, setMusicPath] = useState<string | null>(null);
+
+  // Живое превью.
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const [ready, setReady] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [t, setT] = useState(0);
+  const tRef = useRef(0);
+  const playRef = useRef(false);
+  const rafRef = useRef(0);
+  const lastTsRef = useRef(0);
+  const pushTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [progress, setProgress] = useState(0);
   const [output, setOutput] = useState<string | null>(null);
   const [renderErr, setRenderErr] = useState<string | null>(null);
+
+  const totalDur = useMemo(() => scenes.reduce((s, sc) => s + sc.dur, 0) || 1, [scenes]);
 
   useEffect(() => {
     const off = window.electronAPI.onTemplateProgress((p) => setProgress(p));
     return off;
   }, []);
 
-  function chooseTemplate(t: TemplateDef) {
-    setTpl(t);
-    setEyebrow(t.defaults.eyebrow || '');
-    setTitle(t.defaults.title);
-    setSubtitle(t.defaults.subtitle);
-    setCta(t.defaults.cta);
-    setAccent(t.accent);
-    setPhase('edit');
+  // Данные для движка (то же, что уйдёт в рендер) — WYSIWYG.
+  const engineData = useCallback(
+    () => ({
+      accent,
+      subjectImage: slots[0] || PLACEHOLDER,
+      slots: slots.map((s) => s || PLACEHOLDER),
+      scenes,
+    }),
+    [accent, slots, scenes]
+  );
+
+  const seekEngine = useCallback((tt: number) => {
+    const w = iframeRef.current?.contentWindow as unknown as { seek?: (t: number) => void } | null;
+    w?.seek?.(tt);
+  }, []);
+
+  const pushToEngine = useCallback(() => {
+    const w = iframeRef.current?.contentWindow as unknown as
+      | { initTemplate?: (cfg: unknown) => void; seek?: (t: number) => void }
+      | null;
+    if (!w?.initTemplate) return;
+    w.initTemplate({ id: 'scenes', dur: totalDur, fontsUrl: FONTS_URL, data: engineData() });
+    w.seek?.(tRef.current);
+  }, [engineData, totalDur]);
+
+  // Перестроить превью при изменении контента (дебаунс для плавности при печати).
+  useEffect(() => {
+    if (!ready || phase !== 'edit') return;
+    if (pushTimer.current) clearTimeout(pushTimer.current);
+    pushTimer.current = setTimeout(pushToEngine, 120);
+    return () => { if (pushTimer.current) clearTimeout(pushTimer.current); };
+  }, [ready, phase, pushToEngine]);
+
+  // Плеер реального времени.
+  const loop = useCallback(
+    (ts: number) => {
+      if (playRef.current) {
+        if (!lastTsRef.current) lastTsRef.current = ts;
+        const dt = (ts - lastTsRef.current) / 1000;
+        lastTsRef.current = ts;
+        let nt = tRef.current + dt;
+        if (nt >= totalDur) nt = 0;
+        tRef.current = nt;
+        setT(nt);
+        seekEngine(nt);
+      } else {
+        lastTsRef.current = 0;
+      }
+      rafRef.current = requestAnimationFrame(loop);
+    },
+    [totalDur, seekEngine]
+  );
+  useEffect(() => {
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+  }, [loop]);
+
+  function togglePlay() {
+    playRef.current = !playRef.current;
+    setPlaying(playRef.current);
+  }
+  function scrub(v: number) {
+    const nt = v * totalDur;
+    tRef.current = nt;
+    setT(nt);
+    seekEngine(nt);
   }
 
-  const doCutout = useCallback(async (file: File) => {
-    setCutBusy(true);
-    setCutErr(null);
-    setCutProg(0);
+  function chooseTemplate(tt: SceneTemplate) {
+    setTpl(tt);
+    setScenes(tt.scenes.map((s) => ({ ...s })));
+    setSlots(new Array(tt.slotCount).fill(null));
+    setAccent(tt.accent);
+    setSelIdx(0);
+    tRef.current = 0;
+    setT(0);
+    playRef.current = false;
+    setPlaying(false);
+    setOutput(null);
+    setRenderErr(null);
+    setPhase('edit');
+    // при первом заходе iframe уже мог быть готов — форсим пуш
+    setTimeout(() => pushToEngine(), 60);
+  }
+
+  const doCutout = useCallback(async (file: File, slot: number) => {
+    setSlotBusy(slot);
+    setSlotProg(0);
     try {
       const blob = await removeBackground(file, {
-        progress: (_k, cur, total) => setCutProg(total > 0 ? Math.round((cur / total) * 100) : 0),
+        progress: (_k, cur, total) => setSlotProg(total > 0 ? Math.round((cur / total) * 100) : 0),
         output: { format: 'image/png' },
       });
       const reader = new FileReader();
-      reader.onload = () => setSubject(reader.result as string);
+      reader.onload = () => {
+        const url = reader.result as string;
+        setSlots((prev) => prev.map((s, i) => (i === slot ? url : s)));
+      };
       reader.readAsDataURL(blob);
     } catch (e) {
-      setCutErr(e instanceof Error ? e.message : 'Ошибка удаления фона');
+      setRenderErr(e instanceof Error ? e.message : 'Ошибка удаления фона');
     } finally {
-      setCutBusy(false);
+      setSlotBusy(null);
     }
   }, []);
 
-  function onPick(files: FileList | null) {
+  function pickSlot(slot: number, files: FileList | null) {
     const f = files?.[0];
     if (!f || !f.type.startsWith('image/')) return;
-    setSrcUrl(URL.createObjectURL(f));
-    doCutout(f);
+    doCutout(f, slot);
   }
 
   async function pickMusic() {
@@ -88,21 +192,32 @@ export default function TemplatesApp() {
     if (p) setMusicPath(p);
   }
 
+  function patchScene(i: number, patch: Partial<SceneSpec>) {
+    setScenes((prev) => prev.map((s, idx) => (idx === i ? ({ ...s, ...patch } as SceneSpec) : s)));
+  }
+
   async function render() {
-    if (!subject || !tpl) return;
+    if (!tpl) return;
+    const filled = slots.filter(Boolean).length;
+    if (filled < tpl.slotCount) {
+      setRenderErr(`Загрузите все фото (${filled}/${tpl.slotCount})`);
+      return;
+    }
     const out = await window.electronAPI.proExportSavePath('mp4');
     if (!out) return;
+    playRef.current = false;
+    setPlaying(false);
     setPhase('rendering');
     setProgress(0);
     setRenderErr(null);
     const { w, h } = FORMATS[format];
     const res = await window.electronAPI.renderTemplate({
-      templateId: tpl.id,
-      data: { eyebrow, title, subtitle, cta, accent, subjectImage: subject },
+      templateId: 'scenes',
+      data: engineData(),
       width: w,
       height: h,
       fps: 30,
-      durationSec: duration,
+      durationSec: totalDur,
       outputPath: out,
       musicPath: musicPath || undefined,
     });
@@ -115,33 +230,36 @@ export default function TemplatesApp() {
     }
   }
 
-  // ── Галерея примеров ──
+  // ── Галерея ──
   if (phase === 'gallery') {
     return (
       <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
         <Header onHome={() => setAppMode('select')} title="Шаблоны" />
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 24 }}>
-          {/* Переключатель категорий */}
           <div style={{ display: 'inline-flex', gap: 4, background: 'var(--bg-tertiary)', padding: 4, borderRadius: 10, marginBottom: 18 }}>
-            {([['montage', '🔥 Тренды'], ['photo', '🖼️ Фото-постеры']] as const).map(([k, label]) => (
+            {([['scenes', '🎬 Шаблоны'], ['montage', '🔥 Тренды']] as const).map(([k, label]) => (
               <button key={k} onClick={() => setTab(k)} style={{ padding: '7px 16px', borderRadius: 7, fontSize: 13, fontWeight: 600, border: 'none', cursor: 'pointer', background: tab === k ? 'var(--accent-green)' : 'transparent', color: tab === k ? '#000' : 'var(--text-secondary)' }}>{label}</button>
             ))}
           </div>
 
-          {tab === 'photo' ? (
+          {tab === 'scenes' ? (
             <>
               <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Выбери пример — дальше добавишь своё фото и текст.
+                Многосценовые шаблоны с переходами. Выбери → загрузи фото по слотам → правь тексты/переходы вживую → рендер.
               </p>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16 }}>
-                {TEMPLATES.map((t) => (
-                  <button key={t.id} onClick={() => chooseTemplate(t)}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 16 }}>
+                {SCENE_TEMPLATES.map((tt) => (
+                  <button key={tt.key} onClick={() => chooseTemplate(tt)}
                     style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
-                    <video src={t.preview} autoPlay loop muted playsInline
-                      style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-                    <div style={{ padding: '10px 12px' }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{t.name}</div>
-                      <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 2 }}>{t.tag}</div>
+                    <div style={{ position: 'relative' }}>
+                      <video src={tt.preview} autoPlay loop muted playsInline
+                        style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
+                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 20, background: 'rgba(0,0,0,0.6)', fontSize: 11, fontWeight: 600, color: '#fff' }}>▶{tt.uses}</div>
+                      <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.scenes.length} сцен</div>
+                    </div>
+                    <div style={{ padding: '9px 11px' }}>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)' }}>{tt.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tt.tag}</div>
                     </div>
                   </button>
                 ))}
@@ -150,27 +268,21 @@ export default function TemplatesApp() {
           ) : (
             <>
               <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 16 }}>
-                Выбери тренд → кинь свои ролики (напр. 10 из поездки) → соберётся монтаж под биты.
+                Выбери тренд → кинь свои ролики → соберётся монтаж под биты.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 16 }}>
-                {MONTAGE_TEMPLATES.map((t) => (
-                  <button key={t.id} onClick={() => applyMontageTemplate(t)}
+                {MONTAGE_TEMPLATES.map((tt) => (
+                  <button key={tt.id} onClick={() => applyMontageTemplate(tt)}
                     style={{ padding: 0, border: '1px solid var(--border)', borderRadius: 14, overflow: 'hidden', cursor: 'pointer', background: 'var(--bg-secondary)', textAlign: 'left' }}>
                     <div style={{ position: 'relative' }}>
-                      <video src={t.preview} autoPlay loop muted playsInline
+                      <video src={tt.preview} autoPlay loop muted playsInline
                         style={{ width: '100%', aspectRatio: '9 / 16', objectFit: 'cover', display: 'block', background: '#000' }} />
-                      {/* Бейдж использований (CapCut-стиль) */}
-                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 20, background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)', fontSize: 11, fontWeight: 600, color: '#fff' }}>
-                        <span style={{ fontSize: 11 }}>▶</span>{t.uses}
-                      </div>
-                      {/* Длительность */}
-                      <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{t.duration}с</div>
+                      <div style={{ position: 'absolute', top: 8, left: 8, display: 'flex', alignItems: 'center', gap: 4, padding: '3px 7px', borderRadius: 20, background: 'rgba(0,0,0,0.6)', fontSize: 11, fontWeight: 600, color: '#fff' }}>▶{tt.uses}</div>
+                      <div style={{ position: 'absolute', bottom: 8, right: 8, padding: '2px 6px', borderRadius: 6, background: 'rgba(0,0,0,0.6)', fontSize: 10.5, fontWeight: 600, color: '#fff' }}>{tt.duration}с</div>
                     </div>
                     <div style={{ padding: '9px 11px' }}>
-                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}>
-                        <span>{t.icon}</span>{t.name}
-                      </div>
-                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{t.tag}</div>
+                      <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: 5 }}><span>{tt.icon}</span>{tt.name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 2 }}>{tt.tag}</div>
                     </div>
                   </button>
                 ))}
@@ -182,72 +294,153 @@ export default function TemplatesApp() {
     );
   }
 
-  // ── Редактор / рендер / результат ──
+  const sel = scenes[selIdx];
+  const done = phase === 'done';
+
+  // ── Редактор с живым превью ──
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
-      <Header onHome={() => setAppMode('select')} title={tpl?.name || 'Шаблон'}
-        onBack={phase === 'done' ? undefined : () => setPhase('gallery')} />
+      <Header onHome={() => setAppMode('select')} title={tpl?.name || 'Шаблон'} onBack={done ? undefined : () => setPhase('gallery')} />
 
       <div style={{ flex: 1, minHeight: 0, display: 'flex' }}>
-        {/* Превью */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
-          {phase === 'done' && output ? (
-            <video src={mediaUrl(output)} controls autoPlay loop style={{ maxHeight: '100%', maxWidth: '100%', borderRadius: 12, background: '#000' }} />
-          ) : subject ? (
-            <div style={{ position: 'relative' }}>
-              <img src={subject} alt="" style={{ maxHeight: '70vh', maxWidth: '100%', objectFit: 'contain', background: 'repeating-conic-gradient(#2a2a2a 0% 25%, #1c1c1c 0% 50%) 50% / 20px 20px', borderRadius: 12 }} />
-              {phase === 'rendering' && (
-                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', borderRadius: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-                  <div style={{ width: '70%', height: 8, background: 'var(--bg-tertiary)', borderRadius: 4, overflow: 'hidden' }}>
-                    <div style={{ width: `${progress}%`, height: '100%', background: 'var(--accent-green)', transition: 'width .2s' }} />
+        {/* Живое превью + таймлайн */}
+        <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', padding: 16, gap: 12 }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {done && output ? (
+              <video src={mediaUrl(output)} controls autoPlay loop style={{ maxHeight: '100%', maxWidth: '100%', borderRadius: 12, background: '#000' }} />
+            ) : (
+              <div style={{ position: 'relative', height: '100%', aspectRatio: `${FORMATS[format].ratio}`, maxWidth: '100%', borderRadius: 12, overflow: 'hidden', background: '#000', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+                <iframe
+                  ref={iframeRef}
+                  src={RUNTIME_URL}
+                  title="preview"
+                  onLoad={() => { setReady(true); setTimeout(pushToEngine, 30); }}
+                  style={{ width: '100%', height: '100%', border: 'none', display: 'block', pointerEvents: 'none' }}
+                />
+                {phase === 'rendering' && (
+                  <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.65)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
+                    <div style={{ width: '70%', height: 8, background: 'var(--bg-tertiary)', borderRadius: 4, overflow: 'hidden' }}>
+                      <div style={{ width: `${progress}%`, height: '100%', background: 'var(--accent-green)', transition: 'width .2s' }} />
+                    </div>
+                    <span style={{ color: '#fff', fontSize: 14 }}>{progress < 80 ? `Рендер кадров… ${progress}%` : progress < 100 ? 'Склейка + музыка…' : 'Готово'}</span>
                   </div>
-                  <span style={{ color: '#fff', fontSize: 14 }}>{progress < 80 ? `Рендер кадров… ${progress}%` : progress < 100 ? 'Склейка + музыка…' : 'Готово'}</span>
-                </div>
-              )}
-            </div>
-          ) : (
-            <label style={{ width: 320, height: 400, border: '2px dashed var(--border)', borderRadius: 16, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, cursor: 'pointer', color: 'var(--text-secondary)' }}>
-              {cutBusy ? (
-                <>
-                  <div style={{ fontSize: 40 }}>✂️</div>
-                  <div style={{ fontSize: 14 }}>Удаляю фон… {cutProg}%</div>
-                  {srcUrl && <img src={srcUrl} alt="" style={{ maxWidth: 140, maxHeight: 140, opacity: 0.5, borderRadius: 8, marginTop: 8 }} />}
-                </>
-              ) : (
-                <>
-                  <div style={{ fontSize: 44 }}>🖼️</div>
-                  <div style={{ fontSize: 15, color: 'var(--text-primary)', fontWeight: 600 }}>Выберите фото</div>
-                  <div style={{ fontSize: 12.5 }}>фон уберётся автоматически (ИИ)</div>
-                  {cutErr && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{cutErr}</div>}
-                </>
-              )}
-              <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { onPick(e.target.files); e.target.value = ''; }} />
-            </label>
+                )}
+              </div>
+            )}
+          </div>
+
+          {!done && (
+            <>
+              {/* Транспорт */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <button onClick={togglePlay} style={{ width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 15 }}>{playing ? '⏸' : '▶'}</button>
+                <input type="range" min={0} max={1000} value={Math.round((t / totalDur) * 1000)} onChange={(e) => scrub(Number(e.target.value) / 1000)} style={{ flex: 1, accentColor: 'var(--accent-green)' }} />
+                <span style={{ fontSize: 12, color: 'var(--text-secondary)', width: 74, textAlign: 'right' }}>{t.toFixed(1)} / {totalDur.toFixed(1)}с</span>
+              </div>
+
+              {/* Таймлайн сцен: блоки пропорционально длительности, метки переходов, клик = выбрать/сик */}
+              <div style={{ display: 'flex', gap: 3, height: 58, position: 'relative' }}>
+                {scenes.map((s, i) => {
+                  const startAcc = scenes.slice(0, i).reduce((a, x) => a + x.dur, 0);
+                  const active = i === selIdx;
+                  return (
+                    <button key={i}
+                      onClick={() => { setSelIdx(i); scrub(startAcc / totalDur + 0.001); }}
+                      title={sceneLabel(s)}
+                      style={{
+                        flex: s.dur, minWidth: 0, position: 'relative', borderRadius: 8, cursor: 'pointer', textAlign: 'left', padding: '6px 8px', overflow: 'hidden',
+                        border: active ? '2px solid var(--accent-green)' : '1px solid var(--border)',
+                        background: s.type === 'photo' ? 'var(--bg-tertiary)' : s.type === 'cta' ? '#2a2030' : '#1c2436',
+                        color: 'var(--text-primary)',
+                      }}>
+                      <div style={{ fontSize: 9.5, textTransform: 'uppercase', letterSpacing: 0.5, color: 'var(--text-secondary)' }}>{s.type === 'photo' ? `фото ${s.slot + 1}` : s.type}</div>
+                      <div style={{ fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{sceneLabel(s)}</div>
+                      {i > 0 && <div style={{ position: 'absolute', top: 2, right: 4, fontSize: 8.5, color: 'var(--accent-green)' }}>⇥ {transLabel(s.trans)}</div>}
+                    </button>
+                  );
+                })}
+                {/* Playhead */}
+                <div style={{ position: 'absolute', top: -2, bottom: -2, left: `${(t / totalDur) * 100}%`, width: 2, background: 'var(--accent-green)', pointerEvents: 'none' }} />
+              </div>
+            </>
           )}
         </div>
 
         {/* Панель */}
-        <div style={{ width: 380, flexShrink: 0, borderLeft: '1px solid var(--border)', background: 'var(--bg-secondary)', overflowY: 'auto', padding: 18 }}>
-          {phase === 'done' ? (
+        <div style={{ width: 360, flexShrink: 0, borderLeft: '1px solid var(--border)', background: 'var(--bg-secondary)', overflowY: 'auto', padding: 18 }}>
+          {done ? (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
               <div className="font-semibold" style={{ fontSize: 16, color: 'var(--text-primary)' }}>Готово ✅</div>
-              <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ролик сохранён. Открой папку или сделай ещё.</p>
+              <p style={{ fontSize: 13, color: 'var(--text-secondary)' }}>Ролик сохранён.</p>
               {output && <button onClick={() => window.electronAPI.showItemInFolder(output)} style={btn(true)}>Показать в папке</button>}
               <button onClick={() => setPhase('edit')} style={btn(false)}>Изменить</button>
               <button onClick={() => setPhase('gallery')} style={btn(false)}>Другой шаблон</button>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, opacity: subject ? 1 : 0.5, pointerEvents: subject ? 'auto' : 'none' }}>
-              <Group label="Текст">
-                <Field label="Надзаголовок" value={eyebrow} onChange={setEyebrow} />
-                <Field label="Заголовок" value={title} onChange={setTitle} />
-                <Field label="Подзаголовок" value={subtitle} onChange={setSubtitle} />
-                <Field label="Кнопка (CTA)" value={cta} onChange={setCta} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Слоты фото */}
+              <Group label={`Фото (${slots.filter(Boolean).length}/${slots.length})`}>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {slots.map((s, i) => (
+                    <label key={i} style={{ width: 72, height: 72, borderRadius: 10, border: `1px dashed ${s ? 'var(--accent-green)' : 'var(--border)'}`, background: s ? `#111 url(${s}) center/contain no-repeat` : 'var(--bg-tertiary)', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', position: 'relative', overflow: 'hidden' }}>
+                      {slotBusy === i ? (
+                        <span style={{ fontSize: 10, color: 'var(--text-secondary)' }}>✂️ {slotProg}%</span>
+                      ) : !s ? (
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)', textAlign: 'center' }}>＋ фото {i + 1}</span>
+                      ) : null}
+                      <input type="file" accept="image/*" style={{ display: 'none' }} onChange={(e) => { pickSlot(i, e.target.files); e.target.value = ''; }} />
+                    </label>
+                  ))}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Фон убирается автоматически (ИИ).</div>
               </Group>
+
+              {/* Редактор выбранной сцены */}
+              {sel && (
+                <Group label={`Сцена ${selIdx + 1} · ${sel.type}`}>
+                  {selIdx > 0 && (
+                    <label style={{ display: 'block' }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Переход входа</span>
+                      <select value={sel.trans} onChange={(e) => patchScene(selIdx, { trans: e.target.value as Transition })}
+                        style={selectStyle}>
+                        {TRANSITIONS.map((tr) => <option key={tr.key} value={tr.key}>{tr.label}</option>)}
+                      </select>
+                    </label>
+                  )}
+                  {sel.type === 'text' && (
+                    <>
+                      <Field label="Надзаголовок" value={sel.kicker || ''} onChange={(v) => patchScene(selIdx, { kicker: v })} />
+                      <Field label="Текст" value={sel.text} onChange={(v) => patchScene(selIdx, { text: v })} />
+                    </>
+                  )}
+                  {sel.type === 'photo' && (
+                    <>
+                      <Field label="Подпись" value={sel.caption || ''} onChange={(v) => patchScene(selIdx, { caption: v })} />
+                      <label style={{ display: 'block' }}>
+                        <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Слот фото</span>
+                        <select value={sel.slot} onChange={(e) => patchScene(selIdx, { slot: Number(e.target.value) })} style={selectStyle}>
+                          {slots.map((_, i) => <option key={i} value={i}>Фото {i + 1}</option>)}
+                        </select>
+                      </label>
+                    </>
+                  )}
+                  {sel.type === 'cta' && (
+                    <>
+                      <Field label="Заголовок" value={sel.title || ''} onChange={(v) => patchScene(selIdx, { title: v })} />
+                      <Field label="Кнопка (CTA)" value={sel.cta || ''} onChange={(v) => patchScene(selIdx, { cta: v })} />
+                    </>
+                  )}
+                  <label style={{ display: 'block' }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Длительность сцены · {sel.dur.toFixed(1)}с</span>
+                    <input type="range" min={0.6} max={3} step={0.1} value={sel.dur} onChange={(e) => patchScene(selIdx, { dur: Number(e.target.value) })} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
+                  </label>
+                </Group>
+              )}
+
               <Group label="Акцент">
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   {ACCENTS.map((c) => (
-                    <button key={c} onClick={() => setAccent(c)} style={{ width: 28, height: 28, borderRadius: '50%', background: c, border: accent === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
+                    <button key={c} onClick={() => setAccent(c)} style={{ width: 26, height: 26, borderRadius: '50%', background: c, border: accent === c ? '2px solid #fff' : '2px solid transparent', cursor: 'pointer' }} />
                   ))}
                 </div>
               </Group>
@@ -258,9 +451,6 @@ export default function TemplatesApp() {
                   ))}
                 </div>
               </Group>
-              <Group label={`Длительность · ${duration}с`}>
-                <input type="range" min={4} max={12} value={duration} onChange={(e) => setDuration(+e.target.value)} style={{ width: '100%', accentColor: 'var(--accent-green)' }} />
-              </Group>
               <Group label="Музыка">
                 <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                   <button onClick={pickMusic} style={btn(false)}>{musicPath ? 'Сменить трек' : 'Выбрать трек'}</button>
@@ -269,7 +459,7 @@ export default function TemplatesApp() {
                 {musicPath && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 6, wordBreak: 'break-all' }}>{musicPath.split(/[\\/]/).pop()}</div>}
               </Group>
               {renderErr && <div style={{ fontSize: 12, color: 'var(--danger)' }}>{renderErr}</div>}
-              <button onClick={render} disabled={!subject || phase === 'rendering'} style={{ ...btn(true), height: 44, fontSize: 15, opacity: phase === 'rendering' ? 0.6 : 1 }}>
+              <button onClick={render} disabled={phase === 'rendering'} style={{ ...btn(true), height: 44, fontSize: 15, opacity: phase === 'rendering' ? 0.6 : 1 }}>
                 {phase === 'rendering' ? `Рендер… ${progress}%` : '✨ Сгенерировать'}
               </button>
             </div>
@@ -279,6 +469,8 @@ export default function TemplatesApp() {
     </div>
   );
 }
+
+const transLabel = (k: Transition): string => TRANSITIONS.find((x) => x.key === k)?.label.split(' ')[0] || k;
 
 function Header({ title, onHome, onBack }: { title: string; onHome: () => void; onBack?: () => void }) {
   return (
@@ -294,6 +486,7 @@ function Header({ title, onHome, onBack }: { title: string; onHome: () => void; 
 }
 
 const hbtn: React.CSSProperties = { width: 36, height: 36, borderRadius: 8, background: 'transparent', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 18 };
+const selectStyle: React.CSSProperties = { width: '100%', marginTop: 3, padding: '8px 10px', borderRadius: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 13 };
 
 function Group({ label, children }: { label: string; children: React.ReactNode }) {
   return (

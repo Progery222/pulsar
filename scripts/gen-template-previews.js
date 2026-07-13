@@ -26,10 +26,39 @@ const LOG = path.join(ROOT, 'scripts', '_genlog.txt');
 const log = (...a) => fs.appendFileSync(LOG, a.map(String).join(' ') + '\n');
 try { fs.writeFileSync(LOG, ''); } catch {}
 
+const S2 = [SUBJECT, SUBJECT], S3 = [SUBJECT, SUBJECT, SUBJECT];
 const JOBS = [
-  { id: 'kinetic', dur: 3, data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
-  { id: 'glitch', dur: 3, data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
-  { id: 'reel', dur: 6, data: { accent: '#ff5c8a', eyebrow: 'presenting', title: 'SUMMER', subtitle: 'shop now', cta: 'Tap to shop', subjectImage: SUBJECT, slots: [SUBJECT, SUBJECT] } },
+  { id: 'kinetic', out: 'kinetic', dur: 3, data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
+  { id: 'glitch', out: 'glitch', dur: 3, data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
+  {
+    id: 'scenes', out: 'scenes-story-reel', dur: 6.0,
+    data: { accent: '#ff5c8a', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'text', dur: 1.3, trans: 'fade', kicker: 'presenting', text: 'SUMMER', size: 16, align: 'left' },
+      { type: 'photo', dur: 1.5, trans: 'wipe', slot: 0, caption: 'look 01', from: 'left' },
+      { type: 'photo', dur: 1.5, trans: 'mirror', slot: 1, caption: 'look 02', from: 'right', capBottom: true, kenScale: true },
+      { type: 'cta', dur: 1.7, trans: 'zoom', title: 'new drop', cta: 'Tap to shop' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-kinetic-trio', dur: 6.2,
+    data: { accent: '#ccff00', subjectImage: SUBJECT, slots: S2, scenes: [
+      { type: 'text', dur: 1.1, trans: 'fade', kicker: 'drop 02', text: 'GO CRAZY', size: 15, align: 'left' },
+      { type: 'photo', dur: 1.3, trans: 'swipe', slot: 0, caption: 'move 01', from: 'left' },
+      { type: 'text', dur: 1.0, trans: 'swipeUp', text: 'LET’S GO', size: 17, align: 'center' },
+      { type: 'photo', dur: 1.3, trans: 'zoom', slot: 1, caption: 'move 02', from: 'right', capBottom: true },
+      { type: 'cta', dur: 1.5, trans: 'wipe', title: 'shop now', cta: 'Get it' },
+    ] },
+  },
+  {
+    id: 'scenes', out: 'scenes-mirror-fashion', dur: 7.0,
+    data: { accent: '#c8a26a', subjectImage: SUBJECT, slots: S3, scenes: [
+      { type: 'text', dur: 1.2, trans: 'fade', kicker: 'the edit', text: 'AW 2026', size: 15, align: 'center' },
+      { type: 'photo', dur: 1.4, trans: 'mirror', slot: 0, caption: '01', from: 'left' },
+      { type: 'photo', dur: 1.4, trans: 'mirror', slot: 1, caption: '02', from: 'right', capBottom: true },
+      { type: 'photo', dur: 1.4, trans: 'mirror', slot: 2, caption: '03', from: 'left', kenScale: true },
+      { type: 'cta', dur: 1.6, trans: 'zoom', title: 'quiet luxury', cta: 'Discover' },
+    ] },
+  },
 ];
 
 async function renderOne(job) {
@@ -60,8 +89,8 @@ async function renderOne(job) {
   if (!win.isDestroyed()) win.destroy();
   log(job.id, 'frames written', fs.readdirSync(tmp).length, 'tmp', tmp);
 
-  const out = path.join(outDir, `${job.id}.mp4`);
-  log(job.id, 'ffmpeg bin exists?', fs.existsSync(ffmpegBin), 'spawning ->', out);
+  const out = path.join(outDir, `${job.out || job.id}.mp4`);
+  log(job.out || job.id, 'ffmpeg spawning ->', out);
   await new Promise((resolve, reject) => {
     const p = spawn(ffmpegBin, [
       '-y', '-hide_banner', '-loglevel', 'error', '-framerate', String(FPS),

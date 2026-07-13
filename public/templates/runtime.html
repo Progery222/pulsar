@@ -408,6 +408,18 @@ function sceneCTA(root, d, opts) {
   };
 }
 
+// Data-driven сцена из спецификации (тип + контент + переход). Используется
+// редактором: сцены приходят как d.scenes и редактируются вживую.
+function sceneFromSpec(spec, d) {
+  const dur = spec.dur || 1.5;
+  const trans = spec.trans || 'fade';
+  if (spec.type === 'text') return { dur, trans, build: (r) => sceneTextCard(r, d, { kicker: spec.kicker || '', text: spec.text || '', size: spec.size || 15, align: spec.align || 'left', bg: spec.bg, color: spec.color, accent: d.accent }) };
+  if (spec.type === 'cta') return { dur, trans, build: (r) => sceneCTA(r, d, { title: spec.title || '', cta: spec.cta || '', bg: spec.bg, accent: d.accent }) };
+  return { dur, trans, build: (r) => scenePhoto(r, d, { slot: spec.slot || 0, caption: spec.caption || '', from: spec.from || 'left', capBottom: spec.capBottom, kenScale: spec.kenScale, bg: spec.bg, w: spec.w, accent: d.accent }) };
+}
+// Универсальный многосценовый шаблон: сцены задаются данными (d.scenes).
+reg('scenes', (stage, d) => sceneRunner(stage, d, (d.scenes || []).map((s) => sceneFromSpec(s, d))));
+
 // Полноценный многосценовый шаблон REEL (интро-текст → фото → фото → аутро-CTA),
 // каждая сцена входит своим переходом.
 reg('reel', (stage, d) => {
@@ -419,13 +431,28 @@ reg('reel', (stage, d) => {
   ]);
 });
 
+// Инъекция шрифтов по http-URL (для живого превью в iframe рендерера).
+function injectFontsUrl(base) {
+  const b = base.replace(/\/$/, '');
+  const s = el('style');
+  s.textContent =
+    `@font-face{font-family:'Oswald';src:url('${b}/Oswald.ttf');font-weight:700;}` +
+    `@font-face{font-family:'Montserrat';src:url('${b}/Montserrat.ttf');}` +
+    `@font-face{font-family:'RussoOne';src:url('${b}/RussoOne.ttf');}` +
+    `@font-face{font-family:'Rubik';src:url('${b}/Rubik.ttf');}`;
+  document.head.appendChild(s);
+}
+
 // ────────────────────────────────────────────────────────────────
-let SEEK = null, DUR = 6;
+let SEEK = null, DUR = 6, FONTS_DONE = false;
 window.initTemplate = function (cfg) {
   const stage = document.getElementById('stage');
   stage.innerHTML = '';
   DUR = cfg.dur || 6;
-  if (cfg.fontsDir) injectFonts(cfg.fontsDir);
+  if (!FONTS_DONE) {
+    if (cfg.fontsDir) { injectFonts(cfg.fontsDir); FONTS_DONE = true; }
+    else if (cfg.fontsUrl) { injectFontsUrl(cfg.fontsUrl); FONTS_DONE = true; }
+  }
   const fn = TEMPLATES[cfg.id] || TEMPLATES.story;
   SEEK = fn(stage, cfg.data || {});
   window.seek(0);
