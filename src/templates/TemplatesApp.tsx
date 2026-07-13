@@ -265,7 +265,8 @@ export default function TemplatesApp() {
   }, []);
 
   const addVideo = useCallback(async (file: File, slot: number) => {
-    const p = (file as File & { path?: string }).path;
+    let p = '';
+    try { p = window.electronAPI.getPathForFile(file); } catch { p = (file as File & { path?: string }).path || ''; }
     if (!p) { setRenderErr('Не удалось получить путь к видео'); return; }
     setSlotBusy(slot);
     setSlotProg(0);

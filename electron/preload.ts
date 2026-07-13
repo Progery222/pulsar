@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type { BeatData } from '../src/types';
 import type { VubProcessRequest, VubProgressEvent } from '../src/vub/types';
 import type { FunnelStartRequest, FunnelProgressEvent } from '../src/funnel/types';
@@ -8,6 +8,8 @@ const electronAPI = {
   // Системные диалоги выбора файлов (§5.2, §5.3).
   selectVideos: (): Promise<string[]> => ipcRenderer.invoke('dialog:selectVideos'),
   selectAudio: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectAudio'),
+  // Путь к файлу из <input>/drag-drop (File.path удалён в Electron 32+).
+  getPathForFile: (file: File): string => webUtils.getPathForFile(file),
   selectDirectory: (): Promise<string | null> => ipcRenderer.invoke('dialog:selectDirectory'),
 
   // Листинг директории для бокового файлового проводника (dir null = диски/home).
