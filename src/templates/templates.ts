@@ -13,6 +13,14 @@ export interface TemplateDef {
 
 export const TEMPLATES: TemplateDef[] = [
   {
+    id: 'reel',
+    name: 'Story Reel',
+    tag: 'мультисцена · переходы',
+    preview: 'templates/previews/reel.mp4',
+    accent: '#ff5c8a',
+    defaults: { eyebrow: 'presenting', title: 'SUMMER', subtitle: 'new drop', cta: 'Tap to shop' },
+  },
+  {
     id: 'kinetic',
     name: 'Kinetic Pop',
     tag: 'драйв · плашки',

@@ -296,6 +296,129 @@ reg('glitch', (stage, d) => {
   };
 });
 
+// ════════════════════════════════════════════════════════════════
+// МУЛЬТИСЦЕНОВЫЙ ДВИЖОК: шаблон = последовательность сцен, каждая
+// переходит в следующую (fade / mirror / swipe / swipeUp / zoom / wipe).
+// scenes: [{ dur, trans, build(root, d) -> render(localT) }].
+function sceneRunner(stage, d, scenes) {
+  const TRANS = 0.55;
+  const wrap = el('div', `position:absolute;inset:0;perspective:1400px;`); stage.appendChild(wrap);
+  const roots = [], renders = [], durs = [], transTypes = [];
+  scenes.forEach((sc) => {
+    const root = el('div', `position:absolute;inset:0;overflow:hidden;background:#000;backface-visibility:hidden;transform-style:preserve-3d;will-change:transform,opacity;`);
+    wrap.appendChild(root); roots.push(root);
+    renders.push(sc.build(root, d) || (() => {}));
+    durs.push(sc.dur); transTypes.push(sc.trans || 'fade');
+  });
+  const starts = []; let acc = 0; durs.forEach((dd) => { starts.push(acc); acc += dd; });
+  // Оверлей для wipe/text-переходов (цветная плашка проезжает через кадр).
+  const wipe = el('div', `position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-family:'RussoOne',sans-serif;font-size:11vw;text-transform:uppercase;color:#0a0a0a;opacity:0;pointer-events:none;will-change:transform,opacity;`);
+  wrap.appendChild(wipe);
+
+  const reset = (r) => { r.style.opacity = '1'; r.style.transform = 'none'; r.style.clipPath = 'none'; };
+  const applyTrans = (type, A, B, p, accent) => {
+    reset(A); reset(B); wipe.style.opacity = '0';
+    switch (type) {
+      case 'swipe': A.style.transform = `translateX(${-p*100}%)`; B.style.transform = `translateX(${(1-p)*100}%)`; break;
+      case 'swipeUp': A.style.transform = `translateY(${-p*100}%)`; B.style.transform = `translateY(${(1-p)*100}%)`; break;
+      case 'zoom': A.style.transform = `scale(${1+0.5*p})`; A.style.opacity = String(1-p); B.style.transform = `scale(${1.5-0.5*p})`; B.style.opacity = String(p); break;
+      case 'mirror':
+        if (p < 0.5) { A.style.transform = `rotateY(${p*180}deg)`; B.style.opacity = '0'; }
+        else { A.style.opacity = '0'; B.style.transform = `rotateY(${(p-1)*180}deg)`; }
+        break;
+      case 'wipe': case 'text': {
+        A.style.opacity = p < 0.5 ? '1' : '0'; B.style.opacity = p < 0.5 ? '0' : '1';
+        wipe.style.opacity = '1'; wipe.style.background = accent;
+        wipe.style.transform = `translateX(${-100 + p*200}%) skewX(-8deg)`;
+        wipe.textContent = type === 'text' ? (d.title || '') : '';
+        break;
+      }
+      default: A.style.opacity = String(1-p); B.style.opacity = String(p);
+    }
+  };
+
+  // Масштабируем хореографию под фактическую длительность (DUR из seek) —
+  // сцены растягиваются/сжимаются пропорционально, а не обрезаются.
+  return (t, DUR) => {
+    const factor = (DUR && DUR > 0) ? DUR / acc : 1;
+    const sc = starts.map((s) => s * factor);
+    const trans = TRANS * factor;
+    let ci = 0; for (let i = 0; i < sc.length; i++) { if (sc[i] <= t) ci = i; else break; }
+    for (let i = 0; i < roots.length; i++) if (i !== ci) roots[i].style.opacity = '0';
+    reset(roots[ci]);
+    const localT = t - sc[ci];
+    const localAuthored = localT / factor;
+    if (localT < trans && ci > 0) {
+      roots[ci-1].style.opacity = '1';
+      renders[ci-1](durs[ci-1]);
+      renders[ci](localAuthored);
+      applyTrans(transTypes[ci], roots[ci-1], roots[ci], clamp01(localT / trans), d.accent || '#ccff00');
+    } else {
+      wipe.style.opacity = '0';
+      renders[ci](localAuthored);
+    }
+  };
+}
+
+// Хелперы сцен (каждый build возвращает render(localT)).
+function sceneTextCard(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = opts.bg || '#0a0a0c';
+  const big = el('div', `position:absolute;left:6%;right:6%;top:50%;transform:translateY(-50%);text-align:${opts.align||'left'};font-family:'RussoOne',sans-serif;font-size:${opts.size||15}vw;line-height:0.95;text-transform:uppercase;color:${opts.color||'#fff'};will-change:transform,opacity,clip-path;`, opts.text || '');
+  root.appendChild(big);
+  const kick = el('div', `position:absolute;left:6%;top:calc(50% - ${(opts.size||15)*0.75}vw);font-family:'Montserrat',sans-serif;font-weight:700;font-size:3vw;letter-spacing:0.5vw;text-transform:uppercase;color:${accent};will-change:opacity,transform;`, opts.kicker || '');
+  root.appendChild(kick);
+  return (lt) => {
+    big.style.clipPath = `inset(${(1-eio(seg(lt,0.05,0.6)))*100}% 0 0 0)`;
+    big.style.transform = `translateY(calc(-50% + ${(1-eoc(seg(lt,0.05,0.7)))*4}vh))`;
+    kick.style.opacity = String(clamp01(seg(lt,0.0,0.35)));
+    kick.style.transform = `translateX(${(1-eoc(seg(lt,0.0,0.5)))*-6}vw)`;
+  };
+}
+function scenePhoto(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  const img = (d.slots && d.slots[opts.slot]) || d.subjectImage || '';
+  root.style.background = opts.bg || 'radial-gradient(120% 90% at 50% 40%, #1c1c22 0%, #08080b 70%)';
+  const subj = el('img', `position:absolute;left:50%;top:52%;width:${opts.w||58}vw;transform:translate(-50%,-50%);filter:drop-shadow(0 3vh 4vh rgba(0,0,0,0.6));will-change:transform,opacity;`);
+  subj.src = img; root.appendChild(subj);
+  const plate = el('div', `position:absolute;left:6%;${opts.capBottom?'bottom:10%':'top:12%'};font-family:'Oswald',sans-serif;font-weight:700;font-size:6vw;letter-spacing:0.2vw;text-transform:uppercase;color:#0a0a0a;background:${accent};padding:0.6vh 2.4vw;transform:skewX(-6deg);will-change:transform,opacity;`, opts.caption || '');
+  root.appendChild(plate);
+  const dir = opts.from === 'right' ? 1 : -1;
+  return (lt) => {
+    const sp = eob(seg(lt,0.0,0.7));
+    subj.style.opacity = String(clamp01(seg(lt,0.0,0.4)));
+    subj.style.transform = `translate(-50%,-50%) scale(${(opts.kenScale? (1+0.12*clamp01(seg(lt,0,1))): (0.9+0.1*clamp01(sp)))}) translateX(${(1-clamp01(sp))*8*dir}vw)`;
+    plate.style.opacity = String(lt>=0.15?1:0);
+    plate.style.transform = `skewX(-6deg) translateX(${(1-clamp01(eob(seg(lt,0.15,0.6))))*140*dir}%)`;
+  };
+}
+function sceneCTA(root, d, opts) {
+  const accent = opts.accent || d.accent || '#ccff00';
+  root.style.background = opts.bg || '#0a0a0c';
+  const t1 = el('div', `position:absolute;left:0;width:100%;top:34%;text-align:center;font-family:'RussoOne',sans-serif;font-size:12vw;text-transform:uppercase;color:#fff;will-change:transform,opacity;`, opts.title || d.title || '');
+  root.appendChild(t1);
+  const cta = el('div', `position:absolute;left:0;width:100%;top:58%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:800;font-size:3.6vw;text-transform:uppercase;color:#0a0a0a;will-change:transform,opacity;`,
+    `<span style="display:inline-block;background:${accent};padding:1.8vh 5vw;border-radius:100px;">${opts.cta || d.cta || ''}</span>`);
+  root.appendChild(cta);
+  return (lt) => {
+    t1.style.opacity = String(clamp01(seg(lt,0.0,0.4)));
+    t1.style.transform = `scale(${0.8+0.2*clamp01(eob(seg(lt,0.0,0.6)))})`;
+    cta.style.opacity = String(clamp01(seg(lt,0.3,0.7)));
+    cta.style.transform = `scale(${0.85+0.15*clamp01(eob(seg(lt,0.3,0.9)))})`;
+  };
+}
+
+// Полноценный многосценовый шаблон REEL (интро-текст → фото → фото → аутро-CTA),
+// каждая сцена входит своим переходом.
+reg('reel', (stage, d) => {
+  return sceneRunner(stage, d, [
+    { dur: 1.3, trans: 'fade', build: (r) => sceneTextCard(r, d, { kicker: d.eyebrow || 'presenting', text: d.title || 'SUMMER', size: 16, align: 'left', accent: d.accent }) },
+    { dur: 1.5, trans: 'wipe', build: (r) => scenePhoto(r, d, { slot: 0, caption: d.subtitle || 'look 01', from: 'left', accent: d.accent }) },
+    { dur: 1.5, trans: 'mirror', build: (r) => scenePhoto(r, d, { slot: 1, caption: 'look 02', from: 'right', capBottom: true, kenScale: true, accent: d.accent }) },
+    { dur: 1.7, trans: 'zoom', build: (r) => sceneCTA(r, d, { title: d.subtitle || 'shop now', cta: d.cta || 'Tap to shop', accent: d.accent }) },
+  ]);
+});
+
 // ────────────────────────────────────────────────────────────────
 let SEEK = null, DUR = 6;
 window.initTemplate = function (cfg) {

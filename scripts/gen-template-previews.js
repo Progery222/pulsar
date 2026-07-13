@@ -21,17 +21,19 @@ const SUBJECT =
       "<path d='M52 560 C52 372 118 292 200 292 C282 292 348 372 348 560 Z'/></g></svg>"
   );
 
-const W = 216, H = 384, FPS = 24, DUR = 3;
+const W = 216, H = 384, FPS = 24;
 const LOG = path.join(ROOT, 'scripts', '_genlog.txt');
 const log = (...a) => fs.appendFileSync(LOG, a.map(String).join(' ') + '\n');
 try { fs.writeFileSync(LOG, ''); } catch {}
 
 const JOBS = [
-  { id: 'kinetic', data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
-  { id: 'glitch', data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
+  { id: 'kinetic', dur: 3, data: { accent: '#ccff00', alt: '#ff2d6b', eyebrow: 'new drop', title: 'GO', subtitle: 'crazy', cta: 'Shop now', subjectImage: SUBJECT } },
+  { id: 'glitch', dur: 3, data: { accent: '#00e5ff', eyebrow: 'exclusive', title: 'HYPE', subtitle: 'drop 02', cta: 'Get it', subjectImage: SUBJECT } },
+  { id: 'reel', dur: 6, data: { accent: '#ff5c8a', eyebrow: 'presenting', title: 'SUMMER', subtitle: 'shop now', cta: 'Tap to shop', subjectImage: SUBJECT, slots: [SUBJECT, SUBJECT] } },
 ];
 
 async function renderOne(job) {
+  const DUR = job.dur || 3;
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'tplprev-'));
   const win = new BrowserWindow({
     width: W, height: H, show: false, frame: false, enableLargerThanScreen: true,
