@@ -193,13 +193,19 @@ async function tiktokUses(url: string): Promise<{ uses: number | null; title: st
 }
 
 // Тренды TikTok через Apify (надёжно, free-тир): запускаем актёр и берём датасет.
-async function apifyTrending(opts: { token: string; actor?: string; country?: string; limit?: number }): Promise<{ items: unknown[] } | { error: string }> {
+async function apifyTrending(opts: { token: string; actor?: string; country?: string; limit?: number; input?: Record<string, unknown> }): Promise<{ items: unknown[] } | { error: string }> {
   try {
     const token = (opts.token || '').trim();
     if (!token) return { error: 'Нужен Apify-токен' };
-    const actor = (opts.actor || 'novi~tiktok-music-trend-api').replace('/', '~');
+    // pay-per-result по умолчанию (не требует платной аренды, покрывается free-кредитами).
+    const actor = (opts.actor || 'data_xplorer~tiktok-trends').replace('/', '~');
     const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
-    const input = { countryCode: opts.country || 'US', country: opts.country || 'US', region: opts.country || 'US', limit: opts.limit || 25, maxItems: opts.limit || 25, period: 7 };
+    const cc = opts.country || 'US';
+    const lim = opts.limit || 25;
+    // Если задан кастомный input — используем его; иначе широкий дефолт под разные актёры.
+    const input = opts.input && Object.keys(opts.input).length
+      ? opts.input
+      : { type: 'music', resultsType: 'music', mode: 'music', countryCode: cc, country: cc, region: cc, limit: lim, maxItems: lim, maxResults: lim, period: 7 };
     const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
     const text = await res.text();
     if (!res.ok) return { error: `Apify ${res.status}: ${text.slice(0, 200)}` };

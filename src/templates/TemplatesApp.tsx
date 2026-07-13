@@ -105,6 +105,8 @@ export default function TemplatesApp() {
   const [musicQuery, setMusicQuery] = useState('');
   const [trackUses, setTrackUses] = useState<number | null>(null);
   const [apifyToken, setApifyToken] = useState<string>(() => { try { return localStorage.getItem('pulsar.apifyToken') || ''; } catch { return ''; } });
+  const [apifyActor, setApifyActor] = useState<string>(() => { try { return localStorage.getItem('pulsar.apifyActor') || 'data_xplorer/tiktok-trends'; } catch { return 'data_xplorer/tiktok-trends'; } });
+  const [apifyInput, setApifyInput] = useState<string>(() => { try { return localStorage.getItem('pulsar.apifyInput') || ''; } catch { return ''; } });
   const [trendList, setTrendList] = useState<{ title: string; author: string; uses: number | null; link: string; playUrl: string }[]>([]);
   const [trendBusy, setTrendBusy] = useState(false);
   const [trendErr, setTrendErr] = useState<string | null>(null);
@@ -365,13 +367,17 @@ export default function TemplatesApp() {
   }
   const fmtUses = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
   function saveToken(v: string) { setApifyToken(v); try { localStorage.setItem('pulsar.apifyToken', v); } catch { /* noop */ } }
+  function saveActor(v: string) { setApifyActor(v); try { localStorage.setItem('pulsar.apifyActor', v); } catch { /* noop */ } }
+  function saveInput(v: string) { setApifyInput(v); try { localStorage.setItem('pulsar.apifyInput', v); } catch { /* noop */ } }
   async function loadTrends() {
     if (!apifyToken.trim()) { setShowToken(true); return; }
+    let input: Record<string, unknown> | undefined;
+    if (apifyInput.trim()) { try { input = JSON.parse(apifyInput); } catch { setTrendErr('Input: невалидный JSON'); return; } }
     setTrendBusy(true); setTrendErr(null);
     try {
-      const r = await window.electronAPI.apifyTrending({ token: apifyToken.trim(), limit: 25 });
+      const r = await window.electronAPI.apifyTrending({ token: apifyToken.trim(), actor: apifyActor.trim() || undefined, limit: 25, input });
       if ('error' in r) { setTrendErr(r.error); setTrendList([]); }
-      else { setTrendList(r.items); if (!r.items.length) setTrendErr('Пусто — TikTok/актёр не отдал треки'); }
+      else { setTrendList(r.items); if (!r.items.length) setTrendErr('Пусто — актёр не отдал треки (проверь actor/input под его доки)'); }
     } finally { setTrendBusy(false); }
   }
   async function useTrend(it: { title: string; uses: number | null; link: string; playUrl: string }) {
@@ -979,7 +985,11 @@ export default function TemplatesApp() {
                     <>
                       <input value={apifyToken} onChange={(e) => saveToken(e.target.value)} placeholder="Apify API token"
                         style={{ width: '100%', padding: '6px 9px', borderRadius: 7, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 11.5 }} />
-                      <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>Бесплатный токен: apify.com → Settings → API tokens. Free-тир ($5/мес) хватает на «иногда».</div>
+                      <input value={apifyActor} onChange={(e) => saveActor(e.target.value)} placeholder="actor id (напр. data_xplorer/tiktok-trends)"
+                        style={{ width: '100%', padding: '6px 9px', borderRadius: 7, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 11 }} />
+                      <textarea value={apifyInput} onChange={(e) => saveInput(e.target.value)} rows={2} placeholder='input JSON (опц., по докам актёра). напр. {"type":"music","region":"US"}'
+                        style={{ width: '100%', padding: '6px 9px', borderRadius: 7, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 10.5, resize: 'vertical', fontFamily: 'monospace' }} />
+                      <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>Бери <b>pay-per-result</b> актёр (не rental!) — иначе «actor is not rented». Токен: apify.com → Settings → API tokens.</div>
                     </>
                   )}
                   {trendErr && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{trendErr}</div>}
