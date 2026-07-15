@@ -635,7 +635,7 @@ function scenePrice(root, d, opts) {
   const accent = opts.accent || d.accent || '#ff2d6b';
   root.style.background = '#0a0a0c';
   let mo = null;
-  const m = slotMedia(d.slots && d.slots[opts.slot != null ? opts.slot : 0]);
+  const m = slotMedia(d.slots && d.slots[opts.slot != null ? opts.slot : -1]);
   if (m && (m.orig || m.src)) { mo = mkMedia(root, m, true); root.appendChild(el('div', `position:absolute;inset:0;background:linear-gradient(180deg, rgba(0,0,0,0.35), rgba(0,0,0,0.82));`)); }
   const name = el('div', `position:absolute;left:0;width:100%;top:18%;text-align:center;font-family:'Oswald',sans-serif;font-weight:700;font-size:7vw;text-transform:uppercase;color:#fff;will-change:opacity;`, opts.text || opts.title || ''); root.appendChild(name);
   const old = el('div', `position:absolute;left:0;width:100%;top:50%;text-align:center;font-family:'Montserrat',sans-serif;font-weight:600;font-size:5vw;color:#b9b9b9;text-decoration:line-through;will-change:opacity;`, opts.old || ''); root.appendChild(old);

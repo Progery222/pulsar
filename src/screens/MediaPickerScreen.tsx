@@ -188,7 +188,11 @@ export default function MediaPickerScreen() {
       >
         <button
           className="text-text-secondary hover:text-text-primary"
-          onClick={() => setScreen('home')}
+          onClick={() => {
+            // Сброс флага монтаж-шаблона, иначе он «залипнет» на следующий обычный флоу.
+            useUIStore.getState().setSkipMusic(false);
+            setScreen('home');
+          }}
         >
           ✕ Отмена
         </button>

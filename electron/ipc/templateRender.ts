@@ -69,6 +69,7 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
   const framesDir = path.join(tmp, 'frames');
   fs.mkdirSync(framesDir, { recursive: true });
 
+  try {
   const win = new BrowserWindow({
     width,
     height,
@@ -100,9 +101,13 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
       if (hooks.getCancelled?.()) throw new Error('Отменено');
       const tv = (i / fps).toFixed(4);
       // seekAndWait докручивает видео до нужного кадра; для шаблонов без видео — мгновенно.
-      await win.webContents.executeJavaScript(
-        `window.seekAndWait ? window.seekAndWait(${tv}).then(()=>true) : (window.seek(${tv}),true)`
-      );
+      // Таймаут-страховка: если seekAndWait завис (видео-слот не докрутился) — не виснем вечно.
+      await Promise.race([
+        win.webContents.executeJavaScript(
+          `window.seekAndWait ? window.seekAndWait(${tv}).then(()=>true) : (window.seek(${tv}),true)`
+        ),
+        new Promise((r) => setTimeout(r, 3000)),
+      ]);
       await new Promise((r) => setTimeout(r, 16));
       let img = await win.webContents.capturePage();
       const sz = img.getSize();
@@ -201,8 +206,11 @@ export async function renderTemplate(opts: TemplateRenderOpts, hooks: TemplateRe
     });
   });
 
-  fs.rmSync(tmp, { recursive: true, force: true });
   return outputPath;
+  } finally {
+    // Кадры-времянки чистим всегда — и на успехе, и на ошибке/отмене (был лик).
+    fs.rmSync(tmp, { recursive: true, force: true });
+  }
 }
 
 let cancelled = false;
