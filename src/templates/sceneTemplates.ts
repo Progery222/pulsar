@@ -30,7 +30,6 @@ export const OVERLAYS: { key: string; label: string }[] = [
 export const TRANSITIONS: { key: Transition; label: string }[] = [
   { key: 'fade', label: 'Растворение' },
   { key: 'wipe', label: 'Плашка-свайп' },
-  { key: 'text', label: 'Текст-переход' },
   { key: 'mirror', label: 'Зеркальный флип' },
   { key: 'swipe', label: 'Сдвиг вбок' },
   { key: 'swipeUp', label: 'Сдвиг вверх' },

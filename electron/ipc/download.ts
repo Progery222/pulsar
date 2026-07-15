@@ -97,6 +97,9 @@ function runDownload(url: string, outDir: string, cookiesBrowser?: string): Prom
     sendProgress({ stage: 'download', percent: 0, line: 'Получаю видео…' });
     const child = spawn(pyCmd(), args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
     let stderr = '';
+    let timedOut = false;
+    // Страховка от зависшего yt-dlp — иначе UI висит в busy навсегда.
+    const killTimer = setTimeout(() => { timedOut = true; try { child.kill(); } catch { /* noop */ } }, 5 * 60 * 1000);
 
     const onOut = (chunk: Buffer) => {
       const s = chunk.toString();
@@ -114,8 +117,10 @@ function runDownload(url: string, outDir: string, cookiesBrowser?: string): Prom
       stderr += c.toString();
       onOut(c);
     });
-    child.on('error', (err) => resolve({ error: `Не удалось запустить yt-dlp: ${err.message}` }));
+    child.on('error', (err) => { clearTimeout(killTimer); resolve({ error: `Не удалось запустить yt-dlp: ${err.message}` }); });
     child.on('close', (code) => {
+      clearTimeout(killTimer);
+      if (timedOut) { resolve({ error: 'Загрузка прервана: таймаут 5 мин' }); return; }
       if (code !== 0) {
         const tail = stderr.trim().split(/\r?\n/).filter(Boolean).pop() ?? `код ${code}`;
         resolve({ error: `Ошибка загрузки: ${tail}` });
@@ -149,6 +154,8 @@ function runAudioDownload(url: string, outDir: string, cookiesBrowser?: string):
     sendProgress({ stage: 'download', percent: 0, line: 'Получаю аудио…' });
     const child = spawn(pyCmd(), args, { env: { ...process.env, PYTHONUNBUFFERED: '1' } });
     let stderr = '';
+    let timedOut = false;
+    const killTimer = setTimeout(() => { timedOut = true; try { child.kill(); } catch { /* noop */ } }, 5 * 60 * 1000);
     const onOut = (chunk: Buffer) => {
       const s = chunk.toString();
       const m = [...s.matchAll(/\[download\]\s+(\d+(?:\.\d+)?)%/g)];
@@ -157,8 +164,10 @@ function runAudioDownload(url: string, outDir: string, cookiesBrowser?: string):
     };
     child.stdout.on('data', onOut);
     child.stderr.on('data', (c: Buffer) => { stderr += c.toString(); onOut(c); });
-    child.on('error', (err) => resolve({ error: `Не удалось запустить yt-dlp: ${err.message}` }));
+    child.on('error', (err) => { clearTimeout(killTimer); resolve({ error: `Не удалось запустить yt-dlp: ${err.message}` }); });
     child.on('close', (code) => {
+      clearTimeout(killTimer);
+      if (timedOut) { resolve({ error: 'Загрузка прервана: таймаут 5 мин' }); return; }
       if (code !== 0) {
         const tail = stderr.trim().split(/\r?\n/).filter(Boolean).pop() ?? `код ${code}`;
         resolve({ error: `Ошибка загрузки: ${tail}` });
@@ -192,57 +201,7 @@ async function tiktokUses(url: string): Promise<{ uses: number | null; title: st
   }
 }
 
-// Тренды TikTok через Apify (надёжно, free-тир): запускаем актёр и берём датасет.
-async function apifyTrending(opts: { token: string; actor?: string; country?: string; limit?: number; input?: Record<string, unknown> }): Promise<{ items: unknown[]; sample?: unknown } | { error: string }> {
-  try {
-    const token = (opts.token || '').trim();
-    if (!token) return { error: 'Нужен Apify-токен' };
-    // pay-per-result по умолчанию (не требует платной аренды, покрывается free-кредитами).
-    const actor = (opts.actor || 'data_xplorer~tiktok-trends').replace('/', '~');
-    const url = `https://api.apify.com/v2/acts/${actor}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
-    const cc = opts.country || 'US';
-    const lim = opts.limit || 25;
-    // Если задан кастомный input — используем его; иначе широкий дефолт под разные актёры.
-    const input = opts.input && Object.keys(opts.input).length
-      ? opts.input
-      : { type: 'music', resultsType: 'music', mode: 'music', countryCode: cc, country: cc, region: cc, limit: lim, maxItems: lim, maxResults: lim, period: 7 };
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
-    const text = await res.text();
-    if (!res.ok) return { error: `Apify ${res.status}: ${text.slice(0, 200)}` };
-    let items: unknown;
-    try { items = JSON.parse(text); } catch { return { error: 'Apify: неожиданный ответ' }; }
-    if (!Array.isArray(items) || !items.length) return { error: 'Apify: пустой результат' };
-
-    // Рекурсивно собираем строковые/числовые/url поля, потом выбираем по смыслу ключа.
-    const mapItem = (it: unknown) => {
-      const strs: Record<string, string> = {}, nums: Record<string, number> = {}, urls: Record<string, string> = {};
-      const walk = (o: unknown) => {
-        if (!o || typeof o !== 'object') return;
-        for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
-          const key = k.toLowerCase();
-          if (typeof v === 'string') { if (/^https?:\/\//.test(v)) { if (!urls[key]) urls[key] = v; } else if (v.trim() && !strs[key]) strs[key] = v; }
-          else if (typeof v === 'number') { if (!nums[key]) nums[key] = v; }
-          else if (v && typeof v === 'object') walk(v);
-        }
-      };
-      walk(it);
-      const pick = <T>(dict: Record<string, T>, re: RegExp): T | null => { for (const k of Object.keys(dict)) if (re.test(k)) return dict[k]; return null; };
-      const title = pick(strs, /title|songname|musicname|trackname|clip.?name|^song$|^track$|^music$/) || pick(strs, /(^|_)name$/) || pick(strs, /name/) || 'Без названия';
-      const author = pick(strs, /author.?name|artist|creator|nickname|singer|uploader|author|user.?name/) || '';
-      const uses = pick(nums, /video.?count|post.?count|usage|uses|used|clip.?count|count/) ?? null;
-      const link = pick(urls, /share|item.?url|video.?url|tiktok|music.?url|detail|^url$|^link$/) || pick(urls, /url|link/) || '';
-      const playUrl = pick(urls, /play.?url|audio|music.?play|mp3|sound|media/) || '';
-      return { title, author, uses, link, playUrl };
-    };
-    const list = (items as unknown[]).map(mapItem);
-    return { items: list, sample: items[0] };
-  } catch (e) {
-    return { error: e instanceof Error ? e.message : String(e) };
-  }
-}
-
 export function registerDownloadHandlers() {
-  ipcMain.handle('apify:trending', async (_e, opts: { token: string; actor?: string; country?: string; limit?: number }) => apifyTrending(opts));
   ipcMain.handle('tiktok:uses', async (_e, url: string) => {
     if (!url || !/^https?:\/\//i.test(url.trim())) return { uses: null, title: null };
     return tiktokUses(url.trim());

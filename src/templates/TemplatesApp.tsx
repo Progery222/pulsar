@@ -104,14 +104,6 @@ export default function TemplatesApp() {
   const [dlBusy, setDlBusy] = useState(false);
   const [musicQuery, setMusicQuery] = useState('');
   const [trackUses, setTrackUses] = useState<number | null>(null);
-  const [apifyToken, setApifyToken] = useState<string>(() => { try { return localStorage.getItem('pulsar.apifyToken') || ''; } catch { return ''; } });
-  const [apifyActor, setApifyActor] = useState<string>(() => { try { return localStorage.getItem('pulsar.apifyActor') || 'data_xplorer/tiktok-trends'; } catch { return 'data_xplorer/tiktok-trends'; } });
-  const [apifyInput, setApifyInput] = useState<string>(() => { try { return localStorage.getItem('pulsar.apifyInput') || ''; } catch { return ''; } });
-  const [trendList, setTrendList] = useState<{ title: string; author: string; uses: number | null; link: string; playUrl: string }[]>([]);
-  const [trendBusy, setTrendBusy] = useState(false);
-  const [trendErr, setTrendErr] = useState<string | null>(null);
-  const [showToken, setShowToken] = useState(false);
-  const [trendSample, setTrendSample] = useState<unknown>(null);
   const [musicStart, setMusicStart] = useState(0);
   const [musicDur, setMusicDur] = useState(0);
   const musicStartRef = useRef(0);
@@ -367,20 +359,6 @@ export default function TemplatesApp() {
     } finally { setDlBusy(false); }
   }
   const fmtUses = (n: number) => n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n);
-  function saveToken(v: string) { setApifyToken(v); try { localStorage.setItem('pulsar.apifyToken', v); } catch { /* noop */ } }
-  function saveActor(v: string) { setApifyActor(v); try { localStorage.setItem('pulsar.apifyActor', v); } catch { /* noop */ } }
-  function saveInput(v: string) { setApifyInput(v); try { localStorage.setItem('pulsar.apifyInput', v); } catch { /* noop */ } }
-  async function loadTrends() {
-    if (!apifyToken.trim()) { setShowToken(true); return; }
-    let input: Record<string, unknown> | undefined;
-    if (apifyInput.trim()) { try { input = JSON.parse(apifyInput); } catch { setTrendErr('Input: невалидный JSON'); return; } }
-    setTrendBusy(true); setTrendErr(null);
-    try {
-      const r = await window.electronAPI.apifyTrending({ token: apifyToken.trim(), actor: apifyActor.trim() || undefined, limit: 25, input });
-      if ('error' in r) { setTrendErr(r.error); setTrendList([]); setTrendSample(null); }
-      else { setTrendList(r.items); setTrendSample(r.sample ?? null); if (!r.items.length) setTrendErr('Пусто — актёр не отдал треки (проверь actor/input под его доки)'); }
-    } finally { setTrendBusy(false); }
-  }
   function togglePreviewUrl(id: string, url: string) {
     if (previewId === id) { previewRef.current?.pause(); setPreviewId(null); return; }
     if (!previewRef.current) previewRef.current = new Audio();
@@ -388,16 +366,6 @@ export default function TemplatesApp() {
     a.src = url; a.currentTime = 0; a.volume = 0.85; void a.play().catch(() => {});
     a.onended = () => setPreviewId(null);
     setPreviewId(id);
-  }
-  async function useTrend(it: { title: string; uses: number | null; link: string; playUrl: string }) {
-    const src = it.link || it.playUrl;
-    if (!src) { setRenderErr('У тренда нет ссылки на трек'); return; }
-    setDlBusy(true); setRenderErr(null);
-    try {
-      const r = await window.electronAPI.downloadAudio(src);
-      if ('error' in r) setRenderErr(r.error);
-      else { setMusicPath(r.path); setMusicName(it.title || r.path.split(/[\\/]/).pop() || null); setMusicStart(0); setMusicDur(0); setTrackUses(it.uses ?? null); }
-    } finally { setDlBusy(false); }
   }
   // Прослушивание трека в списке (отдельный аудио-элемент).
   const previewRef = useRef<HTMLAudioElement | null>(null);
@@ -980,45 +948,6 @@ export default function TemplatesApp() {
                     Выбери из библиотеки, скачай по ссылке или свой файл. Для TikTok можно вообще без музыки — добавишь трендовый звук при публикации.
                   </div>
                 )}
-
-                {/* Тренды TikTok через Apify */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6, padding: '8px', borderRadius: 8, background: 'var(--bg-tertiary)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-primary)' }}>🔥 Тренды TikTok</span>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {trendSample != null && <button onClick={() => window.alert(JSON.stringify(trendSample, null, 2).slice(0, 4000))} title="Показать сырые данные (для настройки)" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>🐞</button>}
-                      <button onClick={() => setShowToken((v) => !v)} title="Токен/актёр" style={{ border: 'none', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 13 }}>🔑</button>
-                      <button onClick={loadTrends} disabled={trendBusy} style={{ ...btn(false), width: 'auto', padding: '4px 10px', fontSize: 12 }}>{trendBusy ? '…' : '⟳ Обновить'}</button>
-                    </div>
-                  </div>
-                  {(showToken || !apifyToken) && (
-                    <>
-                      <input value={apifyToken} onChange={(e) => saveToken(e.target.value)} placeholder="Apify API token"
-                        style={{ width: '100%', padding: '6px 9px', borderRadius: 7, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 11.5 }} />
-                      <input value={apifyActor} onChange={(e) => saveActor(e.target.value)} placeholder="actor id (напр. data_xplorer/tiktok-trends)"
-                        style={{ width: '100%', padding: '6px 9px', borderRadius: 7, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 11 }} />
-                      <textarea value={apifyInput} onChange={(e) => saveInput(e.target.value)} rows={2} placeholder='input JSON (опц., по докам актёра). напр. {"type":"music","region":"US"}'
-                        style={{ width: '100%', padding: '6px 9px', borderRadius: 7, background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', fontSize: 10.5, resize: 'vertical', fontFamily: 'monospace' }} />
-                      <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', lineHeight: 1.4 }}>Бери <b>pay-per-result</b> актёр (не rental!) — иначе «actor is not rented». Токен: apify.com → Settings → API tokens.</div>
-                    </>
-                  )}
-                  {trendErr && <div style={{ fontSize: 11, color: 'var(--danger)' }}>{trendErr}</div>}
-                  {trendList.length > 0 && (
-                    <div style={{ maxHeight: 150, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      {trendList.map((it, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 5px', borderRadius: 6 }}>
-                          <span style={{ fontSize: 10, color: 'var(--text-secondary)', width: 16, flexShrink: 0 }}>{i + 1}</span>
-                          {it.playUrl && <button onClick={() => togglePreviewUrl(`tr-${i}`, it.playUrl)} title="Прослушать" style={{ width: 22, height: 22, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 10 }}>{previewId === `tr-${i}` ? '⏸' : '▶'}</button>}
-                          <div style={{ flex: 1, minWidth: 0 }}>
-                            <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.title}</div>
-                            <div style={{ fontSize: 9.5, color: 'var(--text-secondary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.author}{it.uses != null ? ` · 🎬 ${fmtUses(Number(it.uses))}` : ''}</div>
-                          </div>
-                          <button onClick={() => useTrend(it)} disabled={dlBusy || (!it.link && !it.playUrl)} title="Взять трек" style={{ ...btn(false), width: 'auto', padding: '3px 8px', fontSize: 11 }}>⬇</button>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
 
                 {/* Поиск по библиотеке */}
                 <input value={musicQuery} onChange={(e) => setMusicQuery(e.target.value)} placeholder="🔎 поиск по библиотеке…"
