@@ -3,9 +3,10 @@ import { useUIStore } from '../store/uiStore';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
 import { mixAudioTracks } from './audioMix';
+import RecorderEditor from './RecorderEditor';
 import type { Quality, RecorderSource, RecordingResult } from './types';
 
-type Phase = 'setup' | 'countdown' | 'recording' | 'saving' | 'done';
+type Phase = 'setup' | 'countdown' | 'recording' | 'saving' | 'done' | 'editor';
 
 const QUALITY: Record<Quality, { label: string; w?: number; h?: number; bitrate: number }> = {
   '1080p': { label: '1080p', w: 1920, h: 1080, bitrate: 12_000_000 },
@@ -272,6 +273,10 @@ export default function RecorderApp() {
     return <div style={center}><div style={{ color: 'var(--text-secondary)' }}>Сохраняю запись…</div></div>;
   }
 
+  if (phase === 'editor' && result) {
+    return <RecorderEditor result={result} onBack={() => setPhase('done')} />;
+  }
+
   if (phase === 'done' && result) {
     return (
       <div style={{ ...pageWrap, alignItems: 'center' }}>
@@ -282,8 +287,9 @@ export default function RecorderApp() {
           style={{ maxWidth: 720, width: '100%', borderRadius: 12, background: '#000', border: '1px solid var(--border)' }}
         />
         <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <button onClick={saveAsMp4} style={primaryBtn} disabled={saveProgress !== null}>
-            {saveProgress !== null ? `Сохранение… ${saveProgress}%` : 'Сохранить в MP4'}
+          <button onClick={() => setPhase('editor')} style={primaryBtn}>Открыть в редакторе (авто-зум)</button>
+          <button onClick={saveAsMp4} style={secondaryBtn} disabled={saveProgress !== null}>
+            {saveProgress !== null ? `Сохранение… ${saveProgress}%` : 'Сохранить как есть (MP4)'}
           </button>
           {savedMp4 && (
             <button onClick={() => window.electronAPI.recorderReveal(savedMp4)} style={secondaryBtn}>Показать в папке</button>
@@ -291,7 +297,7 @@ export default function RecorderApp() {
           <button onClick={() => { setPhase('setup'); loadSources(); }} style={secondaryBtn}>Записать ещё</button>
         </div>
         <div style={{ color: 'var(--text-secondary)', fontSize: 12.5, marginTop: 14, textAlign: 'center', maxWidth: 620 }}>
-          Собрано {result.cursor.length} точек курсора для авто-зума — редактор с зумом появится следующим шагом.
+          Собрано {result.cursor.length} точек курсора для авто-зума.
         </div>
       </div>
     );
