@@ -86,6 +86,18 @@ const CATEGORIES: { name: string; items: ModeDef[] }[] = [
     name: 'Видео',
     items: [
       {
+        title: 'Запись экрана',
+        description: 'Захват экрана/окна в высоком качестве с авто-зумом к курсору',
+        mode: 'recorder',
+        icon: (
+          <svg {...I(24)}>
+            <path d="M23 7l-7 5 7 5V7z" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+            <circle cx="8.5" cy="12" r="2.5" fill="currentColor" stroke="none" />
+          </svg>
+        ),
+      },
+      {
         title: 'Монтаж',
         description: 'Автоматический монтаж видео в ритм музыки',
         onClick: ({ setMontageChoose }) => setMontageChoose(true),

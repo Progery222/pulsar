@@ -23,6 +23,7 @@ import TtsApp from './tts/TtsApp';
 import DubApp from './dub/DubApp';
 import FunnelApp from './funnel/FunnelApp';
 import DownloadApp from './download/DownloadApp';
+import RecorderApp from './recorder/RecorderApp';
 import SettingsScreen from './screens/SettingsScreen';
 import Chrome from './components/Chrome';
 import Overlays from './components/Overlays';
@@ -255,6 +256,18 @@ function App() {
       <>
         <Chrome>
           <TemplatesApp />
+        </Chrome>
+        <Overlays />
+      </>
+    );
+  }
+
+  // Запись экрана (рекордер с авто-зумом курсора).
+  if (appMode === 'recorder') {
+    return (
+      <>
+        <Chrome>
+          <RecorderApp />
         </Chrome>
         <Overlays />
       </>

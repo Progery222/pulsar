@@ -14,6 +14,10 @@ python/models/
 
 config/
 feedback.secret.json
+
+# Референс-клон OpenScreen (читаем/копируем выверенные файлы в src/recorder,
+# сам чужой апп в репо не тащим). Собранный бандл рекордера — в public/recorder.
+screen-recorder/
 # public/studio — собранный бандл Студии коммитим в репо, чтобы облачный
 # авторелиз не собирал OpenReel в CI (pnpm/wasm фрагильны). Обновлять через
 # `npm run studio:build` перед релизом.

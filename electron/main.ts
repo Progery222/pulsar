@@ -42,6 +42,7 @@ import { registerUpdaterHandlers } from './ipc/updater';
 import { registerProExportHandlers } from './ipc/proExport';
 import { registerTemplateHandlers } from './ipc/templateRender';
 import { registerFeedbackHandlers } from './ipc/feedback';
+import { registerRecorderHandlers } from './ipc/recorder';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -94,6 +95,9 @@ function createWindow() {
       preload: path.join(MAIN_DIST, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      // Не тормозить renderer при свёрнутом окне — иначе MediaRecorder «Записи экрана»
+      // теряет кадры, пока наш UI свёрнут во время записи.
+      backgroundThrottling: false,
     },
   });
 
@@ -199,6 +203,7 @@ app.whenReady().then(() => {
   registerProExportHandlers();
   registerTemplateHandlers();
   registerFeedbackHandlers();
+  registerRecorderHandlers(() => win);
   createWindow();
 });
 

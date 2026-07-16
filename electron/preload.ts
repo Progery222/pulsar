@@ -226,6 +226,45 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('funnel-progress', listener);
   },
 
+  // --- Запись экрана (рекордер) ---
+  recorderGetSources: (): Promise<{ id: string; name: string; type: 'screen' | 'window'; thumbnail: string; appIcon: string | null }[]> =>
+    ipcRenderer.invoke('recorder:getSources'),
+  recorderSelectSource: (sourceId: string): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('recorder:selectSource', sourceId),
+  recorderCursorStart: (): Promise<{ ok: true; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } }> =>
+    ipcRenderer.invoke('recorder:cursorStart'),
+  recorderCursorStop: (): Promise<{ samples: { t: number; x: number; y: number }[]; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } | null }> =>
+    ipcRenderer.invoke('recorder:cursorStop'),
+  recorderMinimizeMain: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:minimizeMain'),
+  recorderRestoreMain: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:restoreMain'),
+  recorderSaveWebm: (data: ArrayBuffer): Promise<{ ok: true; path: string }> =>
+    ipcRenderer.invoke('recorder:saveWebm', data),
+  recorderToMp4: (webmPath: string, outPath: string): Promise<{ ok: true; path: string } | { error: string }> =>
+    ipcRenderer.invoke('recorder:toMp4', webmPath, outPath),
+  recorderReveal: (filePath: string): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:reveal', filePath),
+  onRecorderMp4Progress: (cb: (percent: number) => void): (() => void) => {
+    const listener = (_e: unknown, percent: number) => cb(percent);
+    ipcRenderer.on('recorder:mp4Progress', listener);
+    return () => ipcRenderer.removeListener('recorder:mp4Progress', listener);
+  },
+  // Плавающий контрол записи.
+  recorderOpenControl: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:openControl'),
+  recorderCloseControl: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:closeControl'),
+  recorderControlAction: (action: 'stop' | 'pause' | 'resume'): void =>
+    ipcRenderer.send('recorder:controlAction', action),
+  recorderPushState: (state: { elapsed: number; paused: boolean }): void =>
+    ipcRenderer.send('recorder:pushState', state),
+  onRecorderControlAction: (cb: (action: 'stop' | 'pause' | 'resume') => void): (() => void) => {
+    const listener = (_e: unknown, action: 'stop' | 'pause' | 'resume') => cb(action);
+    ipcRenderer.on('recorder:controlAction', listener);
+    return () => ipcRenderer.removeListener('recorder:controlAction', listener);
+  },
+  onRecorderState: (cb: (state: { elapsed: number; paused: boolean }) => void): (() => void) => {
+    const listener = (_e: unknown, state: { elapsed: number; paused: boolean }) => cb(state);
+    ipcRenderer.on('recorder:state', listener);
+    return () => ipcRenderer.removeListener('recorder:state', listener);
+  },
+
   // --- Режим «Замена титров» ---
   processCleaner: (request: unknown): Promise<{ ok: true }> =>
     ipcRenderer.invoke('cleaner:process', request),
