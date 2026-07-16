@@ -27,6 +27,7 @@ export default function RecorderApp() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mic, setMic] = useState(false);
   const [systemAudio, setSystemAudio] = useState(true);
+  const [webcam, setWebcam] = useState(false);
   const [quality, setQuality] = useState<Quality>('1080p');
   const [hideCursor, setHideCursor] = useState(false);
   const [useCountdown, setUseCountdown] = useState(true);
@@ -46,6 +47,9 @@ export default function RecorderApp() {
   const pauseStartRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const dimsRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+  const webcamRecRef = useRef<MediaRecorder | null>(null);
+  const webcamChunksRef = useRef<Blob[]>([]);
+  const webcamDoneRef = useRef<Promise<void> | null>(null);
 
   async function loadSources() {
     try {
@@ -122,6 +126,23 @@ export default function RecorderApp() {
       tracks.push(mixed.track);
     }
 
+    // Вебкамера — отдельный поток и отдельный рекордер (только видео, синхроним по старту).
+    webcamChunksRef.current = [];
+    webcamRecRef.current = null;
+    if (webcam) {
+      try {
+        const camStream = await navigator.mediaDevices.getUserMedia({ video: { width: 1280, height: 720 } });
+        streamsRef.current.push(camStream);
+        const camMime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].find((m) => MediaRecorder.isTypeSupported(m)) ?? 'video/webm';
+        const camRec = new MediaRecorder(camStream, { mimeType: camMime, videoBitsPerSecond: 6_000_000 });
+        camRec.ondataavailable = (ev) => { if (ev.data.size > 0) webcamChunksRef.current.push(ev.data); };
+        webcamDoneRef.current = new Promise<void>((res) => { camRec.onstop = () => res(); });
+        webcamRecRef.current = camRec;
+      } catch {
+        showToast('Камера недоступна — пишем без неё');
+      }
+    }
+
     const recStream = new MediaStream(tracks);
     const mimeType = pickMime();
     const rec = new MediaRecorder(recStream, { mimeType, videoBitsPerSecond: q.bitrate });
@@ -144,6 +165,7 @@ export default function RecorderApp() {
     startRef.current = Date.now();
     pausedMsRef.current = 0;
     rec.start(1000);
+    webcamRecRef.current?.start(1000);
     setPhase('recording');
     setElapsed(0);
     timerRef.current = setInterval(() => {
@@ -181,6 +203,7 @@ export default function RecorderApp() {
     const rec = recorderRef.current;
     if (rec && rec.state === 'recording') {
       rec.pause();
+      webcamRecRef.current?.state === 'recording' && webcamRecRef.current.pause();
       pauseStartRef.current = Date.now();
       window.electronAPI.recorderPushState({ elapsed, paused: true });
     }
@@ -191,6 +214,7 @@ export default function RecorderApp() {
     if (rec && rec.state === 'paused') {
       pausedMsRef.current += Date.now() - pauseStartRef.current;
       rec.resume();
+      webcamRecRef.current?.state === 'paused' && webcamRecRef.current.resume();
     }
   }
 
@@ -198,6 +222,7 @@ export default function RecorderApp() {
     const rec = recorderRef.current;
     if (rec && rec.state !== 'inactive') {
       setPhase('saving');
+      if (webcamRecRef.current && webcamRecRef.current.state !== 'inactive') webcamRecRef.current.stop();
       rec.stop(); // → onRecStop
     }
   }
@@ -205,6 +230,11 @@ export default function RecorderApp() {
   async function onRecStop() {
     const durationMs = Date.now() - startRef.current - pausedMsRef.current;
     const blob = new Blob(chunksRef.current, { type: 'video/webm' });
+    // Дождаться флаша вебкамеры до остановки треков.
+    if (webcamDoneRef.current) {
+      await Promise.race([webcamDoneRef.current, new Promise((r) => setTimeout(r, 2000))]);
+    }
+    const camBlob = webcamChunksRef.current.length ? new Blob(webcamChunksRef.current, { type: 'video/webm' }) : null;
     cleanupStreams();
 
     const cursorData = await window.electronAPI.recorderCursorStop();
@@ -215,8 +245,15 @@ export default function RecorderApp() {
     try {
       const buf = await blob.arrayBuffer();
       const saved = await window.electronAPI.recorderSaveWebm(buf);
+      let webcamPath: string | undefined;
+      if (camBlob) {
+        const camBuf = await camBlob.arrayBuffer();
+        const camSaved = await window.electronAPI.recorderSaveWebm(camBuf);
+        webcamPath = camSaved.path;
+      }
       setResult({
         webmPath: saved.path,
+        webcamPath,
         durationMs,
         cursor: cursorData.samples,
         display: cursorData.display,
@@ -263,13 +300,21 @@ export default function RecorderApp() {
     const off = window.electronAPI.onRecorderMp4Progress((p) => setPrepPct(p));
     try {
       const res = await window.electronAPI.recorderToMp4(result.webmPath, tmp);
-      off();
       if ('error' in res) {
+        off();
         showToast('Не удалось подготовить запись: ' + res.error);
         setPhase('done');
         return;
       }
-      setResult({ ...result, editPath: res.path });
+      // Вебкамеру тоже в mp4 (для перемотки/синхрона в редакторе).
+      let webcamEditPath: string | undefined;
+      if (result.webcamPath) {
+        const camTmp = result.webcamPath.replace(/\.webm$/i, '-edit.mp4');
+        const camRes = await window.electronAPI.recorderToMp4(result.webcamPath, camTmp);
+        if (!('error' in camRes)) webcamEditPath = camRes.path;
+      }
+      off();
+      setResult({ ...result, editPath: res.path, webcamEditPath });
       setPhase('editor');
     } catch (e) {
       off();
@@ -384,6 +429,9 @@ export default function RecorderApp() {
         </label>
         <label style={optRow}>
           <input type="checkbox" checked={mic} onChange={(e) => setMic(e.target.checked)} /> Микрофон
+        </label>
+        <label style={optRow}>
+          <input type="checkbox" checked={webcam} onChange={(e) => setWebcam(e.target.checked)} /> Вебкамера
         </label>
         <label style={optRow}>
           <input type="checkbox" checked={useCountdown} onChange={(e) => setUseCountdown(e.target.checked)} /> Отсчёт 3 сек

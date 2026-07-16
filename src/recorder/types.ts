@@ -24,6 +24,8 @@ export type Quality = '1080p' | '1440p' | '4k' | 'native';
 export interface RecordingResult {
   webmPath: string;
   editPath?: string; // mp4 с корректной длительностью для редактора/перемотки
+  webcamPath?: string; // сырой webm вебкамеры (если писалась)
+  webcamEditPath?: string; // mp4 вебкамеры для редактора
   durationMs: number;
   cursor: CursorSample[];
   display: RecordedDisplay | null;

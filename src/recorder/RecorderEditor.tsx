@@ -149,6 +149,7 @@ function drawCaptions(ctx: CanvasRenderingContext2D, text: string, cx: number, c
 
 export default function RecorderEditor({ result, onBack }: { result: RecordingResult; onBack: () => void }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const webcamVidRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const springRef = useRef(createZoomSpring());
   const lastTsRef = useRef(0);
@@ -176,6 +177,11 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
   const [srcUrl, setSrcUrl] = useState<string | null>(null);
+  const [camUrl, setCamUrl] = useState<string | null>(null);
+  const [camOn, setCamOn] = useState(true);
+  const [camPos, setCamPos] = useState<'br' | 'bl' | 'tr' | 'tl'>('br');
+  const [camShape, setCamShape] = useState<'circle' | 'rect'>('circle');
+  const [camSize, setCamSize] = useState(22); // % ширины кадра
   const [trimStart, setTrimStart] = useState(0);
   const [trimEnd, setTrimEnd] = useState(result.durationMs / 1000);
   const [cuts, setCuts] = useState<{ id: string; start: number; end: number }[]>([]);
@@ -205,6 +211,26 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       if (url) URL.revokeObjectURL(url);
     };
   }, [result.editPath, result.webmPath]);
+
+  // Вебкамера (если писалась) — тоже blob-URL.
+  useEffect(() => {
+    const path = result.webcamEditPath ?? result.webcamPath;
+    if (!path) return;
+    let alive = true;
+    let url: string | null = null;
+    fetch(mediaUrl(path))
+      .then((r) => r.blob())
+      .then((b) => {
+        if (!alive) return;
+        url = URL.createObjectURL(b);
+        setCamUrl(url);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [result.webcamEditPath, result.webcamPath]);
 
   const telemetry = useMemo(() => samplesToTelemetry(result.cursor, result.display), [result]);
   const smoothTele = useMemo(() => smoothTelemetry(telemetry, cursorSmoothing), [telemetry, cursorSmoothing]);
@@ -417,6 +443,58 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
         ctx.restore();
       }
     }
+
+    // Вебкамера (PiP) — поверх всего, в углу кадра.
+    const camEl = webcamVidRef.current;
+    if (camOn && camEl && camEl.videoWidth > 0) {
+      const m = contentW * 0.03;
+      const size = (camSize / 100) * contentW;
+      const bx =
+        camPos === 'br' || camPos === 'tr' ? contentX + contentW - m - size : contentX + m;
+      const by =
+        camPos === 'br' || camPos === 'bl' ? contentY + contentH - m - size : contentY + m;
+      // cover-fit источника в квадрат size×size.
+      const vAR = camEl.videoWidth / camEl.videoHeight;
+      let sw = camEl.videoWidth;
+      let sh = camEl.videoHeight;
+      if (vAR > 1) sw = camEl.videoHeight;
+      else sh = camEl.videoWidth;
+      const sx = (camEl.videoWidth - sw) / 2;
+      const sy = (camEl.videoHeight - sh) / 2;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.5)';
+      ctx.shadowBlur = size * 0.12;
+      ctx.shadowOffsetY = size * 0.04;
+      if (camShape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(bx + size / 2, by + size / 2, size / 2, 0, Math.PI * 2);
+      } else {
+        roundRectPath(ctx, bx, by, size, size, size * 0.12);
+      }
+      ctx.fillStyle = '#000';
+      ctx.fill();
+      ctx.shadowColor = 'transparent';
+      ctx.clip();
+      try {
+        ctx.drawImage(camEl, sx, sy, sw, sh, bx, by, size, size);
+      } catch {
+        /* кадр камеры ещё не готов */
+      }
+      ctx.restore();
+      // Обводка.
+      ctx.save();
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = Math.max(2, size * 0.02);
+      if (camShape === 'circle') {
+        ctx.beginPath();
+        ctx.arc(bx + size / 2, by + size / 2, size / 2, 0, Math.PI * 2);
+        ctx.stroke();
+      } else {
+        roundRectPath(ctx, bx, by, size, size, size * 0.12);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
   }
 
   // Гео контента + перевод координат мыши в нормализованные (0..1) контента.
@@ -510,6 +588,9 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   function enforcePlayback() {
     const v = videoRef.current;
     if (!v || v.paused) return;
+    // Синхрон вебкамеры с основным видео.
+    const cam = webcamVidRef.current;
+    if (cam && Math.abs(cam.currentTime - v.currentTime) > 0.25) cam.currentTime = v.currentTime;
     const { trimStart, trimEnd, cuts } = editRef.current;
     const t = v.currentTime;
     if (t < trimStart - 0.05) {
@@ -547,7 +628,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, smoothTele, panFollow, clickPulse, captionOn, captionLines, annotations, selectedAnn, exporting]);
+  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, smoothTele, panFollow, clickPulse, captionOn, captionLines, annotations, selectedAnn, exporting, aspect, camOn, camPos, camShape, camSize, camUrl]);
 
   function togglePlay() {
     const v = videoRef.current;
@@ -556,9 +637,12 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       if (v.currentTime < trimStart || v.currentTime >= trimEnd - 0.05) v.currentTime = trimStart;
       v.playbackRate = speed;
       v.play();
+      const cam = webcamVidRef.current;
+      if (cam) { cam.currentTime = v.currentTime; cam.playbackRate = speed; cam.play().catch(() => {}); }
       setPlaying(true);
     } else {
       v.pause();
+      webcamVidRef.current?.pause();
       setPlaying(false);
     }
   }
@@ -568,6 +652,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     if (!v) return;
     const clamped = Math.max(trimStart, Math.min(trimEnd, sec));
     v.currentTime = clamped;
+    if (webcamVidRef.current) webcamVidRef.current.currentTime = clamped;
     setTime(clamped);
   }
 
@@ -638,6 +723,13 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     video.currentTime = trimStart;
     video.playbackRate = speed;
     video.muted = false;
+    const camV = webcamVidRef.current;
+    if (camV && camOn) {
+      camV.currentTime = trimStart;
+      camV.playbackRate = speed;
+      camV.muted = true;
+      camV.play().catch(() => {});
+    }
 
     const fps = 30;
     const canvasStream = canvas.captureStream(fps);
@@ -697,6 +789,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     video.removeEventListener('timeupdate', onTime);
     video.removeEventListener('ended', finish);
     video.pause();
+    webcamVidRef.current?.pause();
     setPlaying(false);
     video.muted = true;
 
@@ -764,6 +857,16 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
               }}
             />
           )}
+          {camUrl && (
+            <video
+              ref={webcamVidRef}
+              src={camUrl}
+              muted
+              playsInline
+              preload="auto"
+              style={{ position: 'absolute', width: 2, height: 2, opacity: 0, pointerEvents: 'none', left: -9999 }}
+            />
+          )}
         </div>
 
         {/* Панель настроек */}
@@ -818,6 +921,26 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
               </button>
             ))}
           </div>
+          {camUrl && (
+            <>
+              <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Вебкамера</div>
+              <label style={{ ...rowLabel, marginBottom: 8 }}>
+                <input type="checkbox" checked={camOn} onChange={(e) => setCamOn(e.target.checked)} /> Показывать камеру
+              </label>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                {([['circle', '● Круг'], ['rect', '▢ Квадрат']] as const).map(([id, label]) => (
+                  <button key={id} onClick={() => setCamShape(id)} disabled={!camOn} style={{ ...btnSecondary, flex: 1, fontSize: 11, opacity: camOn ? 1 : 0.5 }}>{label}</button>
+                ))}
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 5, marginBottom: 6 }}>
+                {([['tl', '↖'], ['tr', '↗'], ['bl', '↙'], ['br', '↘']] as const).map(([id, label]) => (
+                  <button key={id} onClick={() => setCamPos(id)} disabled={!camOn} style={{ padding: '5px 2px', fontSize: 13, borderRadius: 7, cursor: 'pointer', color: 'var(--text-primary)', background: 'var(--bg-tertiary)', border: `2px solid ${camPos === id ? 'var(--accent-green)' : 'var(--border)'}`, opacity: camOn ? 1 : 0.5 }}>{label}</button>
+                ))}
+              </div>
+              <Slider label={`Размер камеры ${camSize}%`} min={12} max={40} step={1} value={camSize} onChange={setCamSize} disabled={!camOn} />
+              <div style={{ height: 12 }} />
+            </>
+          )}
           <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Фон</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginBottom: 12 }}>
             {BACKGROUNDS.map((b) => (
