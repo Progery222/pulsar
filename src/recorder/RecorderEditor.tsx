@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
 import type { RecordingResult } from './types';
-import { buildAutoZoomRegions, computeZoomTransform, cursorAt, samplesToTelemetry, zoomTargetAt, type ZoomRegion } from './zoom/autoZoom';
+import { buildAutoZoomRegions, clampTransform, computeZoomTransform, cursorAt, samplesToTelemetry, smoothTelemetry, zoomTargetAt, type ZoomRegion } from './zoom/autoZoom';
 import { createZoomSpring, resetZoomSpring, stepZoomSpring } from './zoom/spring';
 import { ANN_COLORS, drawAnnotations, hitTest, type Annotation, type AnnKind, type Handle } from './annotations';
 
@@ -165,6 +165,9 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [radius, setRadius] = useState(16);
   const [cursorStyle, setCursorStyle] = useState<'off' | 'highlight' | 'spotlight' | 'pointer'>('highlight');
   const [cursorSize, setCursorSize] = useState(1);
+  const [panFollow, setPanFollow] = useState(true);
+  const [cursorSmoothing, setCursorSmoothing] = useState(0.5);
+  const [clickPulse, setClickPulse] = useState(true);
   const [captionOn, setCaptionOn] = useState(false);
   const [captionLang, setCaptionLang] = useState('ru');
   const [transcribing, setTranscribing] = useState(false);
@@ -198,6 +201,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   }, [result.editPath, result.webmPath]);
 
   const telemetry = useMemo(() => samplesToTelemetry(result.cursor, result.display), [result]);
+  const smoothTele = useMemo(() => smoothTelemetry(telemetry, cursorSmoothing), [telemetry, cursorSmoothing]);
 
   // Слова субтитров → строки (перенос по ~40 символам и по концу фразы).
   const captionLines = useMemo(() => {
@@ -279,10 +283,21 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     }
     ctx.restore();
 
-    // Зум-трансформация.
+    // Зум-трансформация. При включённом пан-следовании фокус внутри зум-сцены ведёт
+    // за живым (сглаженным) курсором, иначе держит статичную точку зависания.
     const tMs = video.currentTime * 1000;
     const tgt = zoomTargetAt(regions, tMs);
-    const tf = computeZoomTransform(contentW, contentH, tgt.scale, tgt.progress, tgt.focus.cx, tgt.focus.cy);
+    let fx = tgt.focus.cx;
+    let fy = tgt.focus.cy;
+    if (panFollow && tgt.progress > 0) {
+      const live = cursorAt(smoothTele, tMs);
+      if (live) {
+        fx = live.cx;
+        fy = live.cy;
+      }
+    }
+    const tfRaw = computeZoomTransform(contentW, contentH, tgt.scale, tgt.progress, fx, fy);
+    const tf = clampTransform(tfRaw, contentW, contentH);
     const cam = playing ? stepZoomSpring(springRef.current, tf, dtMs) : (resetZoomSpring(springRef.current, tf), tf);
 
     ctx.save();
@@ -298,16 +313,36 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     }
     ctx.restore();
 
-    // Оверлей курсора (подсветка/прожектор/указатель) из телеметрии.
-    if (cursorStyle !== 'off') {
-      const c = cursorAt(telemetry, tMs);
-      if (c) {
-        const sx = contentX + cam.x + c.cx * contentW * cam.scale;
-        const sy = contentY + cam.y + c.cy * contentH * cam.scale;
+    // Оверлей курсора (подсветка/прожектор/указатель) из сглаженной телеметрии.
+    const liveCursor = cursorAt(smoothTele, tMs);
+    if (cursorStyle !== 'off' && liveCursor) {
+      const sx = contentX + cam.x + liveCursor.cx * contentW * cam.scale;
+      const sy = contentY + cam.y + liveCursor.cy * contentH * cam.scale;
+      ctx.save();
+      roundRectPath(ctx, contentX, contentY, contentW, contentH, radius);
+      ctx.clip();
+      drawCursorOverlay(ctx, cursorStyle, sx, sy, W, H, cursorSize, contentX, contentY, contentW, contentH);
+      ctx.restore();
+    }
+
+    // Пульс «клика» — расходящееся кольцо в начале каждой зум-сцены (прокси клика).
+    if (clickPulse) {
+      const PULSE = 480;
+      for (const rg of regions) {
+        const age = tMs - rg.startMs;
+        if (age < 0 || age > PULSE) continue;
+        const p = age / PULSE;
+        const pc = cursorAt(smoothTele, rg.startMs) ?? rg.focus;
+        const px = contentX + cam.x + pc.cx * contentW * cam.scale;
+        const py = contentY + cam.y + pc.cy * contentH * cam.scale;
         ctx.save();
         roundRectPath(ctx, contentX, contentY, contentW, contentH, radius);
         ctx.clip();
-        drawCursorOverlay(ctx, cursorStyle, sx, sy, W, H, cursorSize, contentX, contentY, contentW, contentH);
+        ctx.strokeStyle = `rgba(255,255,255,${0.55 * (1 - p)})`;
+        ctx.lineWidth = Math.max(2, W * 0.004 * (1 - p));
+        ctx.beginPath();
+        ctx.arc(px, py, W * 0.012 + p * W * 0.05, 0, Math.PI * 2);
+        ctx.stroke();
         ctx.restore();
       }
     }
@@ -425,7 +460,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, telemetry, captionOn, captionLines, annotations, selectedAnn, exporting]);
+  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, smoothTele, panFollow, clickPulse, captionOn, captionLines, annotations, selectedAnn, exporting]);
 
   function togglePlay() {
     const v = videoRef.current;
@@ -596,6 +631,13 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
 
           <Slider label={`Сила зума ${zoomScale.toFixed(1)}×`} min={1.2} max={3} step={0.1} value={zoomScale} onChange={setZoomScale} disabled={!autoZoom} />
           <Slider label={`Длительность зума ${zoomDur.toFixed(1)}с`} min={1} max={4} step={0.1} value={zoomDur} onChange={setZoomDur} disabled={!autoZoom} />
+          <label style={{ ...rowLabel, marginBottom: 6 }}>
+            <input type="checkbox" checked={panFollow} onChange={(e) => setPanFollow(e.target.checked)} disabled={!autoZoom} /> Камера ведёт за курсором
+          </label>
+          <label style={{ ...rowLabel, marginBottom: 8 }}>
+            <input type="checkbox" checked={clickPulse} onChange={(e) => setClickPulse(e.target.checked)} disabled={!autoZoom} /> Пульс на кликах
+          </label>
+          <Slider label={`Сглаживание курсора ${Math.round(cursorSmoothing * 100)}%`} min={0} max={1} step={0.05} value={cursorSmoothing} onChange={setCursorSmoothing} />
 
           <div style={{ height: 12 }} />
           <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Фон</div>

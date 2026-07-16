@@ -41,6 +41,33 @@ export function samplesToTelemetry(samples: CursorSample[], display: RecordedDis
   }));
 }
 
+// Сглаживание траектории курсора (zero-phase EMA туда-обратно, без запаздывания).
+// strength 0..1: 0 — без сглаживания, 1 — сильное. Для оверлея и пан-следования.
+export function smoothTelemetry(points: TelemetryPoint[], strength: number): TelemetryPoint[] {
+  if (strength <= 0 || points.length < 3) return points;
+  const a = 1 - Math.min(0.92, Math.max(0, strength) * 0.9);
+  const fwd = points.map((p) => ({ ...p }));
+  for (let i = 1; i < fwd.length; i++) {
+    fwd[i].cx = a * points[i].cx + (1 - a) * fwd[i - 1].cx;
+    fwd[i].cy = a * points[i].cy + (1 - a) * fwd[i - 1].cy;
+  }
+  const out = fwd.map((p) => ({ ...p }));
+  for (let i = fwd.length - 2; i >= 0; i--) {
+    out[i].cx = a * fwd[i].cx + (1 - a) * out[i + 1].cx;
+    out[i].cy = a * fwd[i].cy + (1 - a) * out[i + 1].cy;
+  }
+  return out;
+}
+
+// Кламп трансформации камеры, чтобы масштабированный кадр не открывал чёрные края
+// (нужно для пан-следования за курсором к краям).
+export function clampTransform(tf: AppliedTransform, cw: number, ch: number): AppliedTransform {
+  if (tf.scale <= 1.0001) return tf;
+  const minX = cw - cw * tf.scale;
+  const minY = ch - ch * tf.scale;
+  return { scale: tf.scale, x: Math.min(0, Math.max(minX, tf.x)), y: Math.min(0, Math.max(minY, tf.y)) };
+}
+
 const MIN_DWELL_DURATION_MS = 450;
 const MAX_DWELL_DURATION_MS = 2600;
 const DWELL_MOVE_THRESHOLD = 0.02;
