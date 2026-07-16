@@ -10,6 +10,16 @@ import path from 'node:path';
 
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 
+// Цепочка atempo для произвольного коэффициента (ffmpeg atempo: 0.5..2 за один шаг).
+function atempoChain(factor: number): string[] {
+  const parts: string[] = [];
+  let f = factor;
+  while (f > 2) { parts.push('atempo=2.0'); f /= 2; }
+  while (f < 0.5) { parts.push('atempo=0.5'); f *= 2; }
+  if (Math.abs(f - 1) > 0.001) parts.push(`atempo=${f.toFixed(4)}`);
+  return parts;
+}
+
 export interface CursorSample {
   t: number; // мс от старта записи
   x: number; // абсолютные экранные DIP-координаты
@@ -203,6 +213,78 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
   ipcMain.handle('recorder:reveal', (_e, filePath: string) => {
     shell.showItemInFolder(filePath);
     return { ok: true };
+  });
+
+  // Покадровый экспорт: кадры (frame_%06d.jpg в temp-папке) → mp4/gif через ffmpeg.
+  // Аудио для mp4 собирается из исходника по оставшимся сегментам + скорость.
+  ipcMain.handle('recorder:encodeFrames', async (e, opts: {
+    dir: string;
+    fps: number;
+    format: 'mp4' | 'gif';
+    audioSrc?: string;
+    segments: { s: number; e: number }[];
+    speed: number;
+    frameCount: number;
+    outPath: string;
+  }) => {
+    if (!ffmpegBin) return { error: 'ffmpeg не найден' };
+    const framePattern = path.join(opts.dir, 'frame_%06d.jpg');
+    const fps = Number(opts.fps) || 30;
+
+    const runFfmpeg = (args: string[]) =>
+      new Promise<{ ok: true } | { error: string }>((resolve) => {
+        let err = '';
+        const ch = spawn(ffmpegBin, args, { windowsHide: true });
+        ch.stderr.on('data', (d: Buffer) => {
+          const s = d.toString();
+          err += s;
+          if (err.length > 8000) err = err.slice(-8000);
+          const fm = /frame=\s*(\d+)/.exec(s);
+          if (fm && opts.frameCount > 0) {
+            e.sender.send('recorder:encodeProgress', Math.min(99, 80 + Math.round((+fm[1] / opts.frameCount) * 20)));
+          }
+        });
+        ch.on('close', (code) => resolve(code === 0 ? { ok: true } : { error: err.slice(-800) || `ffmpeg exit ${code}` }));
+        ch.on('error', (er) => resolve({ error: er.message }));
+      });
+
+    let result: { ok: true } | { error: string };
+    if (opts.format === 'gif') {
+      result = await runFfmpeg([
+        '-y', '-framerate', String(fps), '-i', framePattern,
+        '-vf', 'fps=15,scale=iw*0.6:-2:flags=lanczos,split[s0][s1];[s0]palettegen=stats_mode=diff[p];[s1][p]paletteuse=dither=bayer',
+        opts.outPath,
+      ]);
+    } else {
+      const base = ['-y', '-framerate', String(fps), '-i', framePattern];
+      const vcodec = ['-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-movflags', '+faststart'];
+      // Аудио из исходника по сегментам (source-time) + atempo под скорость.
+      const withAudio = opts.audioSrc && opts.segments.length > 0;
+      if (withAudio) {
+        const segs = opts.segments;
+        const trim = segs.map((sg, i) => `[1:a]atrim=${sg.s.toFixed(3)}:${sg.e.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`).join(';');
+        const concat = segs.map((_, i) => `[a${i}]`).join('') + `concat=n=${segs.length}:v=0:a=1[ac]`;
+        const sp = Number(opts.speed) || 1;
+        const tempo = Math.abs(sp - 1) > 0.001 ? `;[ac]${atempoChain(sp).join(',')}[aout]` : '';
+        const outLabel = tempo ? '[aout]' : '[ac]';
+        const filter = `${trim};${concat}${tempo}`;
+        const args = [...base, '-i', opts.audioSrc!, '-filter_complex', filter, '-map', '0:v', '-map', outLabel, ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', opts.outPath];
+        result = await runFfmpeg(args);
+        // Фолбэк без звука (напр. в записи не было аудиодорожки).
+        if ('error' in result) {
+          result = await runFfmpeg([...base, ...vcodec, '-an', opts.outPath]);
+        }
+      } else {
+        result = await runFfmpeg([...base, ...vcodec, '-an', opts.outPath]);
+      }
+    }
+
+    try {
+      await fs.promises.rm(opts.dir, { recursive: true, force: true });
+    } catch {
+      /* не критично */
+    }
+    return 'error' in result ? result : { ok: true as const, path: opts.outPath };
   });
 
   // Открыть плавающий контрол (кнопки Стоп/Пауза) — always-on-top, снизу по центру.

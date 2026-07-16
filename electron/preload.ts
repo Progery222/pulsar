@@ -247,6 +247,16 @@ const electronAPI = {
     ipcRenderer.on('recorder:mp4Progress', listener);
     return () => ipcRenderer.removeListener('recorder:mp4Progress', listener);
   },
+  // Покадровый экспорт (mp4/gif).
+  recorderEncodeFrames: (opts: {
+    dir: string; fps: number; format: 'mp4' | 'gif'; audioSrc?: string;
+    segments: { s: number; e: number }[]; speed: number; frameCount: number; outPath: string;
+  }): Promise<{ ok: true; path: string } | { error: string }> => ipcRenderer.invoke('recorder:encodeFrames', opts),
+  onRecorderEncodeProgress: (cb: (percent: number) => void): (() => void) => {
+    const listener = (_e: unknown, percent: number) => cb(percent);
+    ipcRenderer.on('recorder:encodeProgress', listener);
+    return () => ipcRenderer.removeListener('recorder:encodeProgress', listener);
+  },
   // Плавающий контрол записи.
   recorderOpenControl: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:openControl'),
   recorderCloseControl: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:closeControl'),

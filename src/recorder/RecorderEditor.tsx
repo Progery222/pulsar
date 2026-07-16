@@ -192,6 +192,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [annColor, setAnnColor] = useState(ANN_COLORS[0]);
   const dragRef = useRef<{ id: string; handle: Handle; nx: number; ny: number } | null>(null);
   const exportingRef = useRef(false);
+  const offlineRef = useRef(false);
 
   // Грузим запись как blob-URL (same-origin): media:// кросс-origin — пятнает canvas
   // (ломает captureStream/экспорт) и мешает отрисовке кадра в скрытом <video>.
@@ -374,7 +375,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     }
     const tfRaw = computeZoomTransform(contentW, contentH, tgt.scale, tgt.progress, fx, fy);
     const tf = clampTransform(tfRaw, contentW, contentH);
-    const cam = playing ? stepZoomSpring(springRef.current, tf, dtMs) : (resetZoomSpring(springRef.current, tf), tf);
+    const cam = playing || offlineRef.current ? stepZoomSpring(springRef.current, tf, dtMs) : (resetZoomSpring(springRef.current, tf), tf);
 
     ctx.save();
     roundRectPath(ctx, contentX, contentY, contentW, contentH, radius);
@@ -618,6 +619,12 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   // Цикл превью.
   useEffect(() => {
     function loop(ts: number) {
+      // Во время покадрового экспорта цикл не рисует — кадрами управляет exportOffline
+      // (иначе wallclock-шаг ломает пружину зума).
+      if (offlineRef.current) {
+        rafRef.current = requestAnimationFrame(loop);
+        return;
+      }
       const dt = lastTsRef.current ? ts - lastTsRef.current : 16;
       lastTsRef.current = ts;
       enforcePlayback();
@@ -706,6 +713,99 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     setTrimEnd(duration);
     setCuts([]);
     setSpeed(1);
+  }
+
+  // Покадровый (детерминированный) экспорт в MP4/GIF через ffmpeg. Быстрее и точнее
+  // реалтайма, честно учитывает обрезку/вырезки/скорость/зум.
+  async function exportOffline(format: 'mp4' | 'gif') {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const dir = await window.electronAPI.selectDirectory();
+    if (!dir) return;
+
+    const seekAwait = (v: HTMLVideoElement, t: number) =>
+      new Promise<void>((res) => {
+        let done = false;
+        const fin = () => {
+          if (done) return;
+          done = true;
+          v.removeEventListener('seeked', fin);
+          res();
+        };
+        v.addEventListener('seeked', fin);
+        v.currentTime = t;
+        setTimeout(fin, 400);
+      });
+    const grabJpeg = () =>
+      new Promise<ArrayBuffer>((res, rej) => {
+        canvas.toBlob(
+          (b) => (b ? b.arrayBuffer().then(res) : rej(new Error('toBlob null'))),
+          'image/jpeg',
+          0.92
+        );
+      });
+    const mapToSource = (outTime: number) => {
+      let pos = outTime * speed;
+      for (const seg of keptSegments) {
+        const len = seg.e - seg.s;
+        if (pos <= len) return seg.s + pos;
+        pos -= len;
+      }
+      return trimEnd;
+    };
+
+    setExporting(true);
+    exportingRef.current = true;
+    offlineRef.current = true;
+    setExportPct(0);
+    video.pause();
+    webcamVidRef.current?.pause();
+    setPlaying(false);
+    resetZoomSpring(springRef.current, { scale: 1, x: 0, y: 0 });
+
+    const offEnc = window.electronAPI.onRecorderEncodeProgress((p) => setExportPct(p));
+    try {
+      const fps = 30;
+      const frameCount = Math.max(1, Math.round(editedDur * fps));
+      const frameDir = await window.electronAPI.proExportDir();
+      const cam = webcamVidRef.current;
+      for (let i = 0; i < frameCount; i++) {
+        const src = mapToSource(i / fps);
+        await seekAwait(video, src);
+        if (cam && camOn) await seekAwait(cam, src);
+        drawFrame(1000 / fps);
+        const buf = await grabJpeg();
+        await window.electronAPI.proWriteFrame(frameDir, i, buf);
+        if (i % 3 === 0) setExportPct(Math.round((i / frameCount) * 80));
+      }
+      const base = result.editPath ? result.editPath.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, '') : 'recording';
+      const outPath = `${dir}\\${base}-export.${format}`;
+      const res = await window.electronAPI.recorderEncodeFrames({
+        dir: frameDir,
+        fps,
+        format,
+        audioSrc: format === 'mp4' ? result.editPath : undefined,
+        segments: keptSegments,
+        speed,
+        frameCount,
+        outPath,
+      });
+      if ('error' in res) {
+        showToast('Ошибка экспорта: ' + res.error);
+      } else {
+        showToast('Готово: ' + res.path);
+        window.electronAPI.recorderReveal(res.path);
+      }
+    } catch (e) {
+      showToast('Ошибка экспорта: ' + (e as Error).message);
+    } finally {
+      offEnc();
+      offlineRef.current = false;
+      exportingRef.current = false;
+      setExporting(false);
+      setExportPct(0);
+    }
   }
 
   async function exportVideo() {
@@ -1026,9 +1126,13 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
           )}
 
           <div style={{ height: 18 }} />
-          <button onClick={exportVideo} disabled={exporting} style={{ ...btnPrimary, width: '100%' }}>
+          <button onClick={() => exportOffline('mp4')} disabled={exporting} style={{ ...btnPrimary, width: '100%' }}>
             {exporting ? `Экспорт… ${exportPct}%` : 'Экспорт в MP4'}
           </button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+            <button onClick={() => exportOffline('gif')} disabled={exporting} style={{ ...btnSecondary, flex: 1 }}>GIF</button>
+            <button onClick={exportVideo} disabled={exporting} style={{ ...btnSecondary, flex: 1 }} title="Реалтайм-захват (запасной способ)">Реалтайм</button>
+          </div>
           <button onClick={onBack} disabled={exporting} style={{ ...btnSecondary, width: '100%', marginTop: 8 }}>Назад</button>
         </div>
       </div>
