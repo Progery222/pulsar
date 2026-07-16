@@ -102,9 +102,9 @@ function VideosModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
       <div
-        className="flex max-h-[90%] flex-col rounded-card bg-bg-secondary p-4"
+        className="modal-panel flex max-h-[90%] flex-col rounded-card bg-bg-secondary p-4"
         style={{ width: '80%' }}
         onClick={(e) => e.stopPropagation()}
       >

@@ -158,8 +158,8 @@ export default function FirstRunSetup() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
-      <div style={{ width: 600, maxHeight: '88vh', overflowY: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 16, padding: 28 }}>
+    <div className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.7)' }}>
+      <div className="modal-panel" style={{ width: 600, maxHeight: '88vh', overflowY: 'auto', background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 16, padding: 28 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <h2 className="font-semibold" style={{ fontSize: 24, color: 'var(--accent-green)', marginBottom: 6 }}>
             Добро пожаловать в Pulsar

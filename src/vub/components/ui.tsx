@@ -45,10 +45,11 @@ export function Checkbox({
           alignItems: 'center',
           justifyContent: 'center',
           flexShrink: 0,
+          transition: 'border-color 0.15s ease, background-color 0.15s ease',
         }}
       >
         {checked && (
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+          <svg className="vub-check-mark" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#000" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         )}

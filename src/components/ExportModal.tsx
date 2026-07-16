@@ -98,11 +98,11 @@ export default function ExportModal() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
+      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-black/60"
       onClick={() => setShowExport(false)}
     >
       <div
-        className="flex w-[420px] flex-col rounded-card bg-bg-secondary p-5"
+        className="modal-panel flex w-[420px] flex-col rounded-card bg-bg-secondary p-5"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
