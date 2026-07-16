@@ -6,7 +6,7 @@ import { mixAudioTracks } from './audioMix';
 import RecorderEditor from './RecorderEditor';
 import type { Quality, RecorderSource, RecordingResult } from './types';
 
-type Phase = 'setup' | 'countdown' | 'recording' | 'saving' | 'done' | 'editor';
+type Phase = 'setup' | 'countdown' | 'recording' | 'saving' | 'done' | 'prepping' | 'editor';
 
 const QUALITY: Record<Quality, { label: string; w?: number; h?: number; bitrate: number }> = {
   '1080p': { label: '1080p', w: 1920, h: 1080, bitrate: 12_000_000 },
@@ -35,6 +35,7 @@ export default function RecorderApp() {
   const [result, setResult] = useState<RecordingResult | null>(null);
   const [saveProgress, setSaveProgress] = useState<number | null>(null);
   const [savedMp4, setSavedMp4] = useState<string | null>(null);
+  const [prepPct, setPrepPct] = useState(0);
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -248,6 +249,35 @@ export default function RecorderApp() {
     showToast('Сохранено: ' + res.path);
   }
 
+  // Подготовка редактора: разово перегоняем запись в MP4 (корректная длительность/перемотка;
+  // webm от MediaRecorder не имеет длительности → перемотка и экспорт в редакторе ломаются).
+  async function openEditor() {
+    if (!result) return;
+    if (result.editPath) {
+      setPhase('editor');
+      return;
+    }
+    setPhase('prepping');
+    setPrepPct(0);
+    const tmp = result.webmPath.replace(/\.webm$/i, '-edit.mp4');
+    const off = window.electronAPI.onRecorderMp4Progress((p) => setPrepPct(p));
+    try {
+      const res = await window.electronAPI.recorderToMp4(result.webmPath, tmp);
+      off();
+      if ('error' in res) {
+        showToast('Не удалось подготовить запись: ' + res.error);
+        setPhase('done');
+        return;
+      }
+      setResult({ ...result, editPath: res.path });
+      setPhase('editor');
+    } catch (e) {
+      off();
+      showToast('Ошибка подготовки: ' + (e as Error).message);
+      setPhase('done');
+    }
+  }
+
   // --- Рендер ---
   if (phase === 'countdown') {
     return (
@@ -276,6 +306,10 @@ export default function RecorderApp() {
     return <div style={center}><div style={{ color: 'var(--text-secondary)' }}>Сохраняю запись…</div></div>;
   }
 
+  if (phase === 'prepping') {
+    return <div style={center}><div style={{ color: 'var(--text-secondary)' }}>Подготовка редактора… {prepPct}%</div></div>;
+  }
+
   if (phase === 'editor' && result) {
     return <RecorderEditor result={result} onBack={() => setPhase('done')} />;
   }
@@ -290,7 +324,7 @@ export default function RecorderApp() {
           style={{ maxWidth: 720, width: '100%', borderRadius: 12, background: '#000', border: '1px solid var(--border)' }}
         />
         <div style={{ display: 'flex', gap: 12, marginTop: 20, flexWrap: 'wrap', justifyContent: 'center' }}>
-          <button onClick={() => setPhase('editor')} style={primaryBtn}>Открыть в редакторе (авто-зум)</button>
+          <button onClick={openEditor} style={primaryBtn}>Открыть в редакторе (авто-зум)</button>
           <button onClick={saveAsMp4} style={secondaryBtn} disabled={saveProgress !== null}>
             {saveProgress !== null ? `Сохранение… ${saveProgress}%` : 'Сохранить как есть (MP4)'}
           </button>

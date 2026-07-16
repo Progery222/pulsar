@@ -23,6 +23,7 @@ export type Quality = '1080p' | '1440p' | '4k' | 'native';
 
 export interface RecordingResult {
   webmPath: string;
+  editPath?: string; // mp4 с корректной длительностью для редактора/перемотки
   durationMs: number;
   cursor: CursorSample[];
   display: RecordedDisplay | null;

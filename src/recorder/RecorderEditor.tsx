@@ -458,10 +458,33 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       rec.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
     });
 
-    const onTime = () => setExportPct(Math.min(99, Math.round((video.currentTime / (duration || 1)) * 100)));
+    // Известная длительность (webm от MediaRecorder может не иметь корректной —
+    // не опираемся на video.duration).
+    const knownDur = result.durationMs / 1000 || duration || 0;
+    const finish = () => { if (rec.state !== 'inactive') rec.stop(); };
+
+    const onTime = () => {
+      const t = video.currentTime;
+      setExportPct(knownDur > 0 ? Math.min(99, Math.round((t / knownDur) * 100)) : 0);
+      if (knownDur > 0 && t >= knownDur - 0.15) finish();
+    };
     video.addEventListener('timeupdate', onTime);
-    const onEnded = () => { if (rec.state !== 'inactive') rec.stop(); };
-    video.addEventListener('ended', onEnded);
+    video.addEventListener('ended', finish);
+
+    // Сторож зависания: если воспроизведение началось, но время не идёт ~2с — стоп.
+    let lastT = -1;
+    let stalls = 0;
+    const watchdog = setInterval(() => {
+      const t = video.currentTime;
+      if (t > 0.05 && Math.abs(t - lastT) < 0.02) {
+        if (++stalls >= 7) finish();
+      } else {
+        stalls = 0;
+      }
+      lastT = t;
+    }, 300);
+    // Жёсткий предел на случай, если воспроизведение вообще не стартовало.
+    const hardStop = setTimeout(finish, Math.max(15000, knownDur * 1000 * 1.6 + 5000));
 
     rec.start(1000);
     try {
@@ -471,11 +494,21 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     }
 
     const blob = await done;
+    clearInterval(watchdog);
+    clearTimeout(hardStop);
     video.removeEventListener('timeupdate', onTime);
-    video.removeEventListener('ended', onEnded);
+    video.removeEventListener('ended', finish);
     video.pause();
     setPlaying(false);
     video.muted = true;
+
+    if (blob.size < 2000) {
+      setExporting(false);
+      exportingRef.current = false;
+      setExportPct(0);
+      showToast('Экспорт не удался: видео не воспроизвелось. Попробуйте ещё раз.');
+      return;
+    }
 
     try {
       const buf = await blob.arrayBuffer();
@@ -517,11 +550,14 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
           />
           <video
             ref={videoRef}
-            src={mediaUrl(result.webmPath)}
+            src={mediaUrl(result.editPath ?? result.webmPath)}
             muted
             playsInline
             style={{ display: 'none' }}
-            onLoadedMetadata={(e) => setDuration(e.currentTarget.duration || result.durationMs / 1000)}
+            onLoadedMetadata={(e) => {
+              const d = e.currentTarget.duration;
+              setDuration(Number.isFinite(d) && d > 0 ? d : result.durationMs / 1000);
+            }}
           />
         </div>
 
