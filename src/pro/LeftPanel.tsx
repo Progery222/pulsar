@@ -263,7 +263,7 @@ function MediaTile({ path, name }: { path: string; name: string }) {
       style={{ cursor: 'grab', borderRadius: 6, overflow: 'hidden', background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}
     >
       <div style={{ aspectRatio: '16 / 10', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24 }}>
-        {thumb ? <img src={mediaUrl(thumb)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : isVid ? '🎬' : '🎵'}
+        {thumb ? <img src={mediaUrl(thumb)} alt="" draggable={false} className="img-outline" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : isVid ? '🎬' : '🎵'}
       </div>
       <div style={{ fontSize: 10.5, padding: '2px 4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: 'var(--text-primary)' }}>{name}</div>
     </div>

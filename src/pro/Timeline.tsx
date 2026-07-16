@@ -1058,7 +1058,7 @@ function Thumb({ src, time, width, height }: { src: string; time: number; width:
   }, [src, Math.round(time * 4)]); // eslint-disable-line react-hooks/exhaustive-deps
   return (
     <div style={{ width, height, flex: '0 0 auto', background: '#000', overflow: 'hidden' }}>
-      {thumb && <img src={mediaUrl(thumb)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
+      {thumb && <img src={mediaUrl(thumb)} alt="" draggable={false} className="img-outline" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />}
     </div>
   );
 }

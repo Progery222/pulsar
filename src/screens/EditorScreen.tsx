@@ -574,7 +574,7 @@ export default function EditorScreen() {
             <div className="flex shrink-0 items-center gap-3 border-t border-border bg-bg-secondary px-4 py-3">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-bg-tertiary">
                 <div
-                  className="h-full rounded-full transition-all"
+                  className="h-full rounded-full transition-[width]"
                   style={{ width: `${exportProgress}%`, backgroundColor: 'var(--accent-green)' }}
                 />
               </div>

@@ -17,7 +17,7 @@ function ClipThumb({ src, time }: { src: string; time: number }) {
     };
   }, [src, time]);
   return thumb ? (
-    <img src={mediaUrl(thumb)} alt="" draggable={false} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+    <img src={mediaUrl(thumb)} alt="" draggable={false} className="img-outline" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
   ) : (
     <div style={{ width: '100%', height: '100%', background: '#000' }} />
   );

@@ -44,7 +44,7 @@ export default function UniqualizerPanel() {
           }}
         >
           <span
-            className="absolute rounded-full bg-white transition-all"
+            className="absolute rounded-full bg-white transition-[left]"
             style={{ width: 18, height: 18, top: 2, left: settings.enabled ? 20 : 2 }}
           />
         </button>
@@ -52,7 +52,7 @@ export default function UniqualizerPanel() {
 
       {/* Раскрывающаяся панель */}
       <div
-        className="overflow-hidden transition-all duration-200"
+        className="overflow-hidden transition-[max-height,opacity] duration-200"
         style={{ maxHeight: settings.enabled ? 600 : 0, opacity: settings.enabled ? 1 : 0 }}
       >
         {/* Количество уникальных копий */}

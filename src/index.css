@@ -58,20 +58,36 @@ body {
   font-weight: 400;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  /* Моноширинные цифры: таймкоды/счётчики/проценты не «прыгают» по ширине. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Заголовки — сбалансированный перенос, тело — без «висячих» слов. */
+h1, h2, h3, h4 {
+  text-wrap: balance;
+}
+p {
+  text-wrap: pretty;
+}
+
+/* Тонкий контур на превью/миниатюрах, чтобы кадр не сливался с фоном. */
+.img-outline {
+  outline: 1px solid rgba(255, 255, 255, 0.08);
+  outline-offset: -1px;
 }
 
 @layer components {
   /* Кнопки */
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-card bg-accent-green
-      font-semibold text-black transition-opacity hover:opacity-90
-      disabled:cursor-not-allowed disabled:opacity-40;
+      font-semibold text-black transition-[opacity,transform] hover:opacity-90
+      active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   .btn-secondary {
     @apply inline-flex items-center justify-center rounded-card border border-border
-      bg-transparent font-semibold text-text-primary transition-colors
-      hover:bg-bg-tertiary disabled:cursor-not-allowed disabled:opacity-40;
+      bg-transparent font-semibold text-text-primary transition-[color,background-color,transform]
+      hover:bg-bg-tertiary active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40;
   }
 
   /* Карточки и панели */

@@ -92,7 +92,7 @@ export default function ProcessingScreen() {
         style={{ width: 320, height: 6 }}
       >
         <div
-          className="h-full rounded-full transition-all duration-300"
+          className="h-full rounded-full transition-[width] duration-300"
           style={{ width: `${progress}%`, backgroundColor: 'var(--accent-green)' }}
         />
       </div>
