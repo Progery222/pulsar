@@ -91,6 +91,61 @@ function drawCursorOverlay(
   }
 }
 
+function drawCaptions(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, cw: number, ch: number, W: number) {
+  const fontSize = Math.round(W * 0.026);
+  ctx.font = `600 ${fontSize}px system-ui, sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'alphabetic';
+  const maxWidth = cw * 0.82;
+
+  // Перенос по словам, максимум 2 строки.
+  const wordsArr = text.split(/\s+/);
+  const lines: string[] = [];
+  let line = '';
+  for (const w of wordsArr) {
+    const test = line ? `${line} ${w}` : w;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = w;
+      if (lines.length === 2) break;
+    } else {
+      line = test;
+    }
+  }
+  if (lines.length < 2 && line) lines.push(line);
+
+  const lineH = fontSize * 1.28;
+  const blockH = lines.length * lineH;
+  const centerX = cx + cw / 2;
+  let baseY = cy + ch - fontSize * 0.9 - (lines.length - 1) * lineH;
+
+  // Фоновая плашка.
+  const padX = fontSize * 0.6;
+  const padY = fontSize * 0.35;
+  let maxLineW = 0;
+  for (const l of lines) maxLineW = Math.max(maxLineW, ctx.measureText(l).width);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  const bx = centerX - maxLineW / 2 - padX;
+  const by = baseY - fontSize - padY;
+  const bw = maxLineW + padX * 2;
+  const bh = blockH + padY * 2;
+  ctx.beginPath();
+  const r = fontSize * 0.35;
+  ctx.moveTo(bx + r, by);
+  ctx.arcTo(bx + bw, by, bx + bw, by + bh, r);
+  ctx.arcTo(bx + bw, by + bh, bx, by + bh, r);
+  ctx.arcTo(bx, by + bh, bx, by, r);
+  ctx.arcTo(bx, by, bx + bw, by, r);
+  ctx.fill();
+
+  ctx.fillStyle = '#fff';
+  for (const l of lines) {
+    ctx.fillText(l, centerX, baseY);
+    baseY += lineH;
+  }
+  ctx.textAlign = 'left';
+}
+
 export default function RecorderEditor({ result, onBack }: { result: RecordingResult; onBack: () => void }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -109,10 +164,50 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [radius, setRadius] = useState(16);
   const [cursorStyle, setCursorStyle] = useState<'off' | 'highlight' | 'spotlight' | 'pointer'>('highlight');
   const [cursorSize, setCursorSize] = useState(1);
+  const [captionOn, setCaptionOn] = useState(false);
+  const [captionLang, setCaptionLang] = useState('ru');
+  const [transcribing, setTranscribing] = useState(false);
+  const [words, setWords] = useState<{ text: string; start: number; end: number }[]>([]);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
 
   const telemetry = useMemo(() => samplesToTelemetry(result.cursor, result.display), [result]);
+
+  // Слова субтитров → строки (перенос по ~40 символам и по концу фразы).
+  const captionLines = useMemo(() => {
+    const lines: { start: number; end: number; text: string }[] = [];
+    let cur: { text: string; start: number; end: number }[] = [];
+    const flush = () => {
+      if (!cur.length) return;
+      lines.push({ start: cur[0].start, end: cur[cur.length - 1].end, text: cur.map((w) => w.text).join(' ').trim() });
+      cur = [];
+    };
+    for (const w of words) {
+      cur.push(w);
+      const text = cur.map((x) => x.text).join(' ');
+      if (text.length >= 40 || /[.!?…]$/.test(w.text)) flush();
+    }
+    flush();
+    return lines;
+  }, [words]);
+
+  async function transcribe() {
+    setTranscribing(true);
+    try {
+      const res = await window.electronAPI.proTranscribe(result.webmPath, captionLang);
+      if ('error' in res) {
+        showToast('Распознавание недоступно: ' + res.error + ' (нужен Python + Whisper — см. Настройки)');
+        return;
+      }
+      setWords(res.words);
+      setCaptionOn(true);
+      if (res.words.length === 0) showToast('Речь не распознана');
+    } catch (e) {
+      showToast('Ошибка распознавания: ' + (e as Error).message);
+    } finally {
+      setTranscribing(false);
+    }
+  }
 
   const regions: ZoomRegion[] = useMemo(() => {
     if (!autoZoom) return [];
@@ -190,6 +285,18 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
         ctx.restore();
       }
     }
+
+    // Субтитры (поверх, не зумятся).
+    if (captionOn && captionLines.length) {
+      const line = captionLines.find((l) => tMs >= l.start && tMs <= l.end + 400);
+      if (line) {
+        ctx.save();
+        roundRectPath(ctx, contentX, contentY, contentW, contentH, radius);
+        ctx.clip();
+        drawCaptions(ctx, line.text, contentX, contentY, contentW, contentH, W);
+        ctx.restore();
+      }
+    }
   }
 
   // Цикл превью.
@@ -204,7 +311,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, telemetry]);
+  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, telemetry, captionOn, captionLines]);
 
   function togglePlay() {
     const v = videoRef.current;
@@ -361,6 +468,25 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
             ))}
           </div>
           <Slider label={`Размер курсора ${cursorSize.toFixed(1)}×`} min={0.5} max={2.5} step={0.1} value={cursorSize} onChange={setCursorSize} disabled={cursorStyle === 'off'} />
+
+          <div style={{ height: 12 }} />
+          <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Субтитры</div>
+          {words.length > 0 && (
+            <label style={{ ...rowLabel, marginBottom: 8 }}>
+              <input type="checkbox" checked={captionOn} onChange={(e) => setCaptionOn(e.target.checked)} /> Показывать субтитры
+            </label>
+          )}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+            <select value={captionLang} onChange={(e) => setCaptionLang(e.target.value)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12 }}>
+              <option value="ru">RU</option>
+              <option value="en">EN</option>
+              <option value="auto">Авто</option>
+            </select>
+            <button onClick={transcribe} disabled={transcribing} style={{ ...btnSecondary, flex: 1 }}>
+              {transcribing ? 'Распознаю…' : words.length ? 'Перераспознать' : 'Распознать речь'}
+            </button>
+          </div>
+          {words.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Слов: {words.length}</div>}
 
           <div style={{ height: 18 }} />
           <button onClick={exportVideo} disabled={exporting} style={{ ...btnPrimary, width: '100%' }}>
