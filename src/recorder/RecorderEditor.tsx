@@ -171,11 +171,31 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [words, setWords] = useState<{ text: string; start: number; end: number }[]>([]);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
+  const [srcUrl, setSrcUrl] = useState<string | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null);
   const [annColor, setAnnColor] = useState(ANN_COLORS[0]);
   const dragRef = useRef<{ id: string; handle: Handle; nx: number; ny: number } | null>(null);
   const exportingRef = useRef(false);
+
+  // Грузим запись как blob-URL (same-origin): media:// кросс-origin — пятнает canvas
+  // (ломает captureStream/экспорт) и мешает отрисовке кадра в скрытом <video>.
+  useEffect(() => {
+    let alive = true;
+    let url: string | null = null;
+    fetch(mediaUrl(result.editPath ?? result.webmPath))
+      .then((r) => r.blob())
+      .then((b) => {
+        if (!alive) return;
+        url = URL.createObjectURL(b);
+        setSrcUrl(url);
+      })
+      .catch((e) => showToast('Не удалось загрузить запись: ' + (e as Error).message));
+    return () => {
+      alive = false;
+      if (url) URL.revokeObjectURL(url);
+    };
+  }, [result.editPath, result.webmPath]);
 
   const telemetry = useMemo(() => samplesToTelemetry(result.cursor, result.display), [result]);
 
@@ -548,17 +568,21 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
             onMouseLeave={onCanvasUp}
             style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.4)', cursor: annotations.length ? 'crosshair' : 'default' }}
           />
-          <video
-            ref={videoRef}
-            src={mediaUrl(result.editPath ?? result.webmPath)}
-            muted
-            playsInline
-            style={{ display: 'none' }}
-            onLoadedMetadata={(e) => {
-              const d = e.currentTarget.duration;
-              setDuration(Number.isFinite(d) && d > 0 ? d : result.durationMs / 1000);
-            }}
-          />
+          {srcUrl && (
+            <video
+              ref={videoRef}
+              src={srcUrl}
+              muted
+              playsInline
+              preload="auto"
+              // Рендерим за кадром (не display:none — иначе браузер не отрисовывает кадры для canvas).
+              style={{ position: 'absolute', width: 2, height: 2, opacity: 0, pointerEvents: 'none', left: -9999 }}
+              onLoadedMetadata={(e) => {
+                const d = e.currentTarget.duration;
+                setDuration(Number.isFinite(d) && d > 0 ? d : result.durationMs / 1000);
+              }}
+            />
+          )}
         </div>
 
         {/* Панель настроек */}
