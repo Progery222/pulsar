@@ -175,6 +175,11 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
   const [srcUrl, setSrcUrl] = useState<string | null>(null);
+  const [trimStart, setTrimStart] = useState(0);
+  const [trimEnd, setTrimEnd] = useState(result.durationMs / 1000);
+  const [cuts, setCuts] = useState<{ id: string; start: number; end: number }[]>([]);
+  const [speed, setSpeed] = useState(1);
+  const [findingPauses, setFindingPauses] = useState(false);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null);
   const [annColor, setAnnColor] = useState(ANN_COLORS[0]);
@@ -202,6 +207,33 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
 
   const telemetry = useMemo(() => samplesToTelemetry(result.cursor, result.display), [result]);
   const smoothTele = useMemo(() => smoothTelemetry(telemetry, cursorSmoothing), [telemetry, cursorSmoothing]);
+
+  // Актуальные параметры монтажа для цикла превью/энфорсмента (без пересоздания цикла).
+  const editRef = useRef({ trimStart, trimEnd, cuts, speed });
+  editRef.current = { trimStart, trimEnd, cuts, speed };
+
+  // Оставшиеся сегменты (обрезка минус вырезанные куски).
+  const keptSegments = useMemo(() => {
+    const sorted = [...cuts].filter((c) => c.end > c.start).sort((a, b) => a.start - b.start);
+    const segs: { s: number; e: number }[] = [];
+    let cur = trimStart;
+    for (const c of sorted) {
+      const cs = Math.max(trimStart, c.start);
+      const ce = Math.min(trimEnd, c.end);
+      if (ce <= cur) continue;
+      if (cs > cur) segs.push({ s: cur, e: Math.min(cs, trimEnd) });
+      cur = Math.max(cur, ce);
+      if (cur >= trimEnd) break;
+    }
+    if (cur < trimEnd) segs.push({ s: cur, e: trimEnd });
+    return segs;
+  }, [trimStart, trimEnd, cuts]);
+
+  const editedDur = useMemo(() => keptSegments.reduce((s, g) => s + (g.e - g.s), 0) / speed, [keptSegments, speed]);
+
+  useEffect(() => {
+    if (videoRef.current) videoRef.current.playbackRate = speed;
+  }, [speed]);
 
   // Слова субтитров → строки (перенос по ~40 символам и по концу фразы).
   const captionLines = useMemo(() => {
@@ -448,11 +480,40 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
 
   const selAnn = annotations.find((a) => a.id === selectedAnn) ?? null;
 
+  // Пропуск обрезанного/вырезанного во время воспроизведения.
+  function enforcePlayback() {
+    const v = videoRef.current;
+    if (!v || v.paused) return;
+    const { trimStart, trimEnd, cuts } = editRef.current;
+    const t = v.currentTime;
+    if (t < trimStart - 0.05) {
+      v.currentTime = trimStart;
+      return;
+    }
+    const c = cuts.find((c) => t >= c.start && t < c.end - 0.03);
+    if (c) {
+      const dest = Math.min(c.end, trimEnd);
+      if (dest >= trimEnd - 0.03) {
+        v.pause();
+        setPlaying(false);
+      } else {
+        v.currentTime = dest;
+      }
+      return;
+    }
+    if (t >= trimEnd - 0.03) {
+      v.pause();
+      setPlaying(false);
+      v.currentTime = trimEnd;
+    }
+  }
+
   // Цикл превью.
   useEffect(() => {
     function loop(ts: number) {
       const dt = lastTsRef.current ? ts - lastTsRef.current : 16;
       lastTsRef.current = ts;
+      enforcePlayback();
       drawFrame(dt);
       if (videoRef.current) setTime(videoRef.current.currentTime);
       rafRef.current = requestAnimationFrame(loop);
@@ -466,6 +527,8 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     const v = videoRef.current;
     if (!v) return;
     if (v.paused) {
+      if (v.currentTime < trimStart || v.currentTime >= trimEnd - 0.05) v.currentTime = trimStart;
+      v.playbackRate = speed;
       v.play();
       setPlaying(true);
     } else {
@@ -477,8 +540,61 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   function seek(sec: number) {
     const v = videoRef.current;
     if (!v) return;
-    v.currentTime = sec;
-    setTime(sec);
+    const clamped = Math.max(trimStart, Math.min(trimEnd, sec));
+    v.currentTime = clamped;
+    setTime(clamped);
+  }
+
+  // Авто-удаление длинных пауз (тишины) по пикам аудио → добавляем в вырезанное.
+  async function removePauses() {
+    setFindingPauses(true);
+    try {
+      const wf = await window.electronAPI.waveform(result.editPath ?? result.webmPath);
+      if (!wf || !wf.peaks.length) {
+        showToast('Не удалось проанализировать аудио (возможно, запись без звука)');
+        return;
+      }
+      const per = wf.peaks.length / wf.duration; // пиков в секунду
+      const THR = 0.03;
+      const MIN_SILENCE = 1.2;
+      const newCuts: { id: string; start: number; end: number }[] = [];
+      let runStart = -1;
+      for (let i = 0; i < wf.peaks.length; i++) {
+        const quiet = wf.peaks[i] < THR;
+        if (quiet && runStart < 0) runStart = i;
+        if ((!quiet || i === wf.peaks.length - 1) && runStart >= 0) {
+          const s = runStart / per;
+          const e = i / per;
+          if (e - s >= MIN_SILENCE) newCuts.push({ id: `c${Date.now()}_${i}`, start: s + 0.15, end: e - 0.15 });
+          runStart = -1;
+        }
+      }
+      if (!newCuts.length) {
+        showToast('Длинных пауз не найдено');
+        return;
+      }
+      setCuts((p) => [...p, ...newCuts]);
+      showToast(`Вырезано пауз: ${newCuts.length}`);
+    } catch (e) {
+      showToast('Ошибка анализа: ' + (e as Error).message);
+    } finally {
+      setFindingPauses(false);
+    }
+  }
+
+  function cutHere() {
+    // Вырезать 1с вокруг плейхеда (быстрый разрез).
+    const t = videoRef.current?.currentTime ?? 0;
+    const s = Math.max(trimStart, t - 0.5);
+    const e = Math.min(trimEnd, t + 0.5);
+    if (e > s) setCuts((p) => [...p, { id: `c${Date.now()}`, start: s, end: e }]);
+  }
+
+  function resetEdit() {
+    setTrimStart(0);
+    setTrimEnd(duration);
+    setCuts([]);
+    setSpeed(1);
   }
 
   async function exportVideo() {
@@ -493,7 +609,8 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     setExportPct(0);
     video.pause();
     setPlaying(true);
-    video.currentTime = 0;
+    video.currentTime = trimStart;
+    video.playbackRate = speed;
     video.muted = false;
 
     const fps = 30;
@@ -513,15 +630,15 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       rec.onstop = () => resolve(new Blob(chunks, { type: 'video/webm' }));
     });
 
-    // Известная длительность (webm от MediaRecorder может не иметь корректной —
-    // не опираемся на video.duration).
-    const knownDur = result.durationMs / 1000 || duration || 0;
+    // Прогресс по позиции внутри диапазона обрезки (вырезки/скорость учитывает
+    // enforcePlayback: он же поставит на паузу в trimEnd). video.duration ненадёжен.
+    const span = Math.max(0.1, trimEnd - trimStart);
     const finish = () => { if (rec.state !== 'inactive') rec.stop(); };
 
     const onTime = () => {
       const t = video.currentTime;
-      setExportPct(knownDur > 0 ? Math.min(99, Math.round((t / knownDur) * 100)) : 0);
-      if (knownDur > 0 && t >= knownDur - 0.15) finish();
+      setExportPct(Math.min(99, Math.max(0, Math.round(((t - trimStart) / span) * 100))));
+      if (t >= trimEnd - 0.12) finish();
     };
     video.addEventListener('timeupdate', onTime);
     video.addEventListener('ended', finish);
@@ -539,7 +656,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       lastT = t;
     }, 300);
     // Жёсткий предел на случай, если воспроизведение вообще не стартовало.
-    const hardStop = setTimeout(finish, Math.max(15000, knownDur * 1000 * 1.6 + 5000));
+    const hardStop = setTimeout(finish, Math.max(15000, (span / speed) * 1000 * 1.6 + 8000));
 
     rec.start(1000);
     try {
@@ -613,8 +730,11 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
               // Рендерим за кадром (не display:none — иначе браузер не отрисовывает кадры для canvas).
               style={{ position: 'absolute', width: 2, height: 2, opacity: 0, pointerEvents: 'none', left: -9999 }}
               onLoadedMetadata={(e) => {
-                const d = e.currentTarget.duration;
-                setDuration(Number.isFinite(d) && d > 0 ? d : result.durationMs / 1000);
+                const raw = e.currentTarget.duration;
+                const d = Number.isFinite(raw) && raw > 0 ? raw : result.durationMs / 1000;
+                setDuration(d);
+                // Подтянуть правую границу обрезки, если её ещё не двигали.
+                setTrimEnd((prev) => (Math.abs(prev - result.durationMs / 1000) < 0.5 ? d : prev));
               }}
             />
           )}
@@ -638,6 +758,26 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
             <input type="checkbox" checked={clickPulse} onChange={(e) => setClickPulse(e.target.checked)} disabled={!autoZoom} /> Пульс на кликах
           </label>
           <Slider label={`Сглаживание курсора ${Math.round(cursorSmoothing * 100)}%`} min={0} max={1} step={0.05} value={cursorSmoothing} onChange={setCursorSmoothing} />
+
+          <div style={{ height: 12 }} />
+          <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Монтаж</div>
+          <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 8 }}>
+            Итог: {editedDur.toFixed(1)}с{cuts.length ? ` · вырезано ${cuts.length}` : ''}
+          </div>
+          <Slider label={`Скорость ${speed.toFixed(1)}×`} min={0.5} max={4} step={0.1} value={speed} onChange={setSpeed} />
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <button onClick={removePauses} disabled={findingPauses} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }}>
+              {findingPauses ? 'Анализ…' : 'Убрать паузы'}
+            </button>
+            <button onClick={cutHere} style={{ ...btnSecondary, fontSize: 11.5 }} title="Вырезать ~1с у ползунка">✂ Разрез</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <button onClick={() => setTrimStart(Math.min(time, trimEnd - 0.3))} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }} title="Обрезать начало до ползунка">⟤ Начало</button>
+            <button onClick={() => setTrimEnd(Math.max(time, trimStart + 0.3))} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }} title="Обрезать конец до ползунка">Конец ⟥</button>
+          </div>
+          {(cuts.length > 0 || trimStart > 0 || trimEnd < duration - 0.05 || speed !== 1) && (
+            <button onClick={resetEdit} style={{ ...btnSecondary, width: '100%', fontSize: 11.5 }}>Сбросить монтаж</button>
+          )}
 
           <div style={{ height: 12 }} />
           <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Фон</div>
@@ -732,14 +872,80 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
         </div>
       </div>
 
-      {/* Транспорт */}
+      {/* Транспорт + таймлайн монтажа */}
       <div style={{ borderTop: '1px solid var(--border)', padding: '10px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={togglePlay} style={btnSecondary}>{playing ? '❚❚' : '▶'}</button>
         <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontVariantNumeric: 'tabular-nums', minWidth: 84 }}>
           {time.toFixed(1)} / {duration.toFixed(1)} с
         </span>
-        <input type="range" min={0} max={duration} step={0.05} value={time} onChange={(e) => seek(+e.target.value)} style={{ flex: 1 }} />
+        <Timeline
+          duration={duration}
+          time={time}
+          trimStart={trimStart}
+          trimEnd={trimEnd}
+          cuts={cuts}
+          onSeek={seek}
+          onTrimStart={(v) => setTrimStart(Math.max(0, Math.min(v, trimEnd - 0.3)))}
+          onTrimEnd={(v) => setTrimEnd(Math.min(duration, Math.max(v, trimStart + 0.3)))}
+        />
       </div>
+    </div>
+  );
+}
+
+// Таймлайн монтажа: клик — перемотка, синие ручки — обрезка начала/конца,
+// красные блоки — вырезанные куски, белая линия — плейхед.
+function Timeline({
+  duration, time, trimStart, trimEnd, cuts, onSeek, onTrimStart, onTrimEnd,
+}: {
+  duration: number; time: number; trimStart: number; trimEnd: number;
+  cuts: { id: string; start: number; end: number }[];
+  onSeek: (v: number) => void; onTrimStart: (v: number) => void; onTrimEnd: (v: number) => void;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<'l' | 'r' | null>(null);
+  const pct = (t: number) => `${(duration > 0 ? t / duration : 0) * 100}%`;
+  const timeAt = (clientX: number) => {
+    const r = ref.current!.getBoundingClientRect();
+    return Math.max(0, Math.min(duration, ((clientX - r.left) / r.width) * duration));
+  };
+  const onDown = (e: React.PointerEvent, which: 'l' | 'r') => {
+    e.stopPropagation();
+    dragRef.current = which;
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+  };
+  const onMove = (e: React.PointerEvent) => {
+    if (!dragRef.current) return;
+    const t = timeAt(e.clientX);
+    if (dragRef.current === 'l') onTrimStart(t);
+    else onTrimEnd(t);
+  };
+  const onUp = () => { dragRef.current = null; };
+
+  const handle: React.CSSProperties = {
+    position: 'absolute', top: -3, width: 10, height: 40, marginLeft: -5, borderRadius: 4,
+    background: '#0a84ff', cursor: 'ew-resize', boxShadow: '0 1px 4px rgba(0,0,0,0.4)',
+  };
+  return (
+    <div
+      ref={ref}
+      onPointerMove={onMove}
+      onPointerUp={onUp}
+      onClick={(e) => onSeek(timeAt(e.clientX))}
+      style={{ position: 'relative', flex: 1, height: 34, background: 'var(--bg-tertiary)', borderRadius: 8, cursor: 'pointer' }}
+    >
+      {/* Затемнение обрезанных концов */}
+      <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: pct(trimStart), background: 'rgba(0,0,0,0.5)', borderRadius: '8px 0 0 8px' }} />
+      <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: `${(1 - (duration > 0 ? trimEnd / duration : 1)) * 100}%`, background: 'rgba(0,0,0,0.5)', borderRadius: '0 8px 8px 0' }} />
+      {/* Вырезанные куски */}
+      {cuts.map((c) => (
+        <div key={c.id} style={{ position: 'absolute', top: 0, bottom: 0, left: pct(c.start), width: pct(c.end - c.start), background: 'rgba(255,59,48,0.5)' }} />
+      ))}
+      {/* Плейхед */}
+      <div style={{ position: 'absolute', top: -2, bottom: -2, left: pct(time), width: 2, background: '#fff', pointerEvents: 'none' }} />
+      {/* Ручки обрезки */}
+      <div style={{ ...handle, left: pct(trimStart) }} onPointerDown={(e) => onDown(e, 'l')} onClick={(e) => e.stopPropagation()} />
+      <div style={{ ...handle, left: pct(trimEnd) }} onPointerDown={(e) => onDown(e, 'r')} onClick={(e) => e.stopPropagation()} />
     </div>
   );
 }
