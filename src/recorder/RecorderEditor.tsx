@@ -4,6 +4,7 @@ import { mediaUrl } from '../utils/media';
 import type { RecordingResult } from './types';
 import { buildAutoZoomRegions, computeZoomTransform, cursorAt, samplesToTelemetry, zoomTargetAt, type ZoomRegion } from './zoom/autoZoom';
 import { createZoomSpring, resetZoomSpring, stepZoomSpring } from './zoom/spring';
+import { ANN_COLORS, drawAnnotations, hitTest, type Annotation, type AnnKind, type Handle } from './annotations';
 
 const BACKGROUNDS: { id: string; label: string; paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void }[] = [
   { id: 'none', label: 'Нет', paint: (ctx, w, h) => { ctx.clearRect(0, 0, w, h); } },
@@ -170,6 +171,11 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [words, setWords] = useState<{ text: string; start: number; end: number }[]>([]);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [selectedAnn, setSelectedAnn] = useState<string | null>(null);
+  const [annColor, setAnnColor] = useState(ANN_COLORS[0]);
+  const dragRef = useRef<{ id: string; handle: Handle; nx: number; ny: number } | null>(null);
+  const exportingRef = useRef(false);
 
   const telemetry = useMemo(() => samplesToTelemetry(result.cursor, result.display), [result]);
 
@@ -286,6 +292,15 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       }
     }
 
+    // Аннотации (поверх, не зумятся).
+    if (annotations.length) {
+      ctx.save();
+      roundRectPath(ctx, contentX, contentY, contentW, contentH, radius);
+      ctx.clip();
+      drawAnnotations(ctx, annotations, tMs, contentX, contentY, contentW, contentH, W, selectedAnn, !exportingRef.current);
+      ctx.restore();
+    }
+
     // Субтитры (поверх, не зумятся).
     if (captionOn && captionLines.length) {
       const line = captionLines.find((l) => tMs >= l.start && tMs <= l.end + 400);
@@ -299,6 +314,85 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     }
   }
 
+  // Гео контента + перевод координат мыши в нормализованные (0..1) контента.
+  function contentGeom() {
+    const canvas = canvasRef.current!;
+    const W = canvas.width;
+    const H = canvas.height;
+    const pad = (padding / 100) * W;
+    return { W, H, cx: pad, cy: pad, cw: W - pad * 2, ch: H - pad * 2 };
+  }
+  function eventToNorm(e: React.MouseEvent) {
+    const canvas = canvasRef.current!;
+    const rect = canvas.getBoundingClientRect();
+    const { W, H, cx, cy, cw, ch } = contentGeom();
+    const px = ((e.clientX - rect.left) / rect.width) * W;
+    const py = ((e.clientY - rect.top) / rect.height) * H;
+    return { nx: (px - cx) / cw, ny: (py - cy) / ch, aspect: cw / ch };
+  }
+
+  function onCanvasDown(e: React.MouseEvent) {
+    if (exporting) return;
+    const { nx, ny, aspect } = eventToNorm(e);
+    const tMs = (videoRef.current?.currentTime ?? 0) * 1000;
+    const hit = hitTest(annotations, nx, ny, tMs, aspect);
+    if (hit) {
+      setSelectedAnn(hit.id);
+      dragRef.current = { id: hit.id, handle: hit.handle, nx, ny };
+    } else {
+      setSelectedAnn(null);
+    }
+  }
+  function onCanvasMove(e: React.MouseEvent) {
+    const drag = dragRef.current;
+    if (!drag) return;
+    const { nx, ny } = eventToNorm(e);
+    const dnx = nx - drag.nx;
+    const dny = ny - drag.ny;
+    drag.nx = nx;
+    drag.ny = ny;
+    setAnnotations((prev) =>
+      prev.map((a) => {
+        if (a.id !== drag.id) return a;
+        const clamp = (v: number) => Math.max(0, Math.min(1, v));
+        if (drag.handle === 'p1') return { ...a, x: clamp(nx), y: clamp(ny) };
+        if (drag.handle === 'p2') return { ...a, x2: clamp(nx), y2: clamp(ny) };
+        return { ...a, x: clamp(a.x + dnx), y: clamp(a.y + dny), x2: clamp(a.x2 + dnx), y2: clamp(a.y2 + dny) };
+      })
+    );
+  }
+  function onCanvasUp() {
+    dragRef.current = null;
+  }
+
+  function addAnnotation(kind: AnnKind) {
+    const t = (videoRef.current?.currentTime ?? 0) * 1000;
+    const a: Annotation = {
+      id: `a${Date.now()}`,
+      kind,
+      startMs: t,
+      endMs: Math.min(result.durationMs, t + 3000),
+      x: kind === 'text' ? 0.4 : 0.35,
+      y: kind === 'text' ? 0.45 : 0.4,
+      x2: 0.6,
+      y2: 0.6,
+      text: kind === 'text' ? 'Текст' : '',
+      color: annColor,
+    };
+    setAnnotations((p) => [...p, a]);
+    setSelectedAnn(a.id);
+  }
+
+  function updateSelected(patch: Partial<Annotation>) {
+    setAnnotations((p) => p.map((a) => (a.id === selectedAnn ? { ...a, ...patch } : a)));
+  }
+  function deleteSelected() {
+    setAnnotations((p) => p.filter((a) => a.id !== selectedAnn));
+    setSelectedAnn(null);
+  }
+
+  const selAnn = annotations.find((a) => a.id === selectedAnn) ?? null;
+
   // Цикл превью.
   useEffect(() => {
     function loop(ts: number) {
@@ -311,7 +405,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, telemetry, captionOn, captionLines]);
+  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, telemetry, captionOn, captionLines, annotations, selectedAnn, exporting]);
 
   function togglePlay() {
     const v = videoRef.current;
@@ -340,6 +434,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     if (!dir) return;
 
     setExporting(true);
+    exportingRef.current = true;
     setExportPct(0);
     video.pause();
     setPlaying(true);
@@ -400,6 +495,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       showToast('Ошибка экспорта: ' + (e as Error).message);
     } finally {
       setExporting(false);
+      exportingRef.current = false;
       setExportPct(0);
     }
   }
@@ -413,7 +509,11 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
             ref={canvasRef}
             width={out.w}
             height={out.h}
-            style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}
+            onMouseDown={onCanvasDown}
+            onMouseMove={onCanvasMove}
+            onMouseUp={onCanvasUp}
+            onMouseLeave={onCanvasUp}
+            style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: 8, boxShadow: '0 4px 24px rgba(0,0,0,0.4)', cursor: annotations.length ? 'crosshair' : 'default' }}
           />
           <video
             ref={videoRef}
@@ -487,6 +587,40 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
             </button>
           </div>
           {words.length > 0 && <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 4 }}>Слов: {words.length}</div>}
+
+          <div style={{ height: 12 }} />
+          <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Аннотации</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            <button onClick={() => addAnnotation('arrow')} style={{ ...btnSecondary, flex: 1, padding: '6px 4px', fontSize: 11 }}>↗ Стрелка</button>
+            <button onClick={() => addAnnotation('box')} style={{ ...btnSecondary, flex: 1, padding: '6px 4px', fontSize: 11 }}>▭ Рамка</button>
+            <button onClick={() => addAnnotation('text')} style={{ ...btnSecondary, flex: 1, padding: '6px 4px', fontSize: 11 }}>T Текст</button>
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {ANN_COLORS.map((c) => (
+              <button
+                key={c}
+                onClick={() => { setAnnColor(c); if (selAnn) updateSelected({ color: c }); }}
+                style={{ width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer', border: `2px solid ${annColor === c ? 'var(--text-primary)' : 'transparent'}` }}
+              />
+            ))}
+          </div>
+          {selAnn && (
+            <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 6 }}>Выбрано: {selAnn.kind === 'arrow' ? 'стрелка' : selAnn.kind === 'box' ? 'рамка' : 'текст'} — тяните на превью</div>
+              {selAnn.kind === 'text' && (
+                <input
+                  value={selAnn.text}
+                  onChange={(e) => updateSelected({ text: e.target.value })}
+                  placeholder="Текст"
+                  style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-secondary)', color: 'var(--text-primary)', fontSize: 12, marginBottom: 8 }}
+                />
+              )}
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)' }}>Показ: {(selAnn.startMs / 1000).toFixed(1)}–{(selAnn.endMs / 1000).toFixed(1)}с</div>
+              <input type="range" min={0} max={result.durationMs} step={100} value={selAnn.startMs} onChange={(e) => updateSelected({ startMs: Math.min(+e.target.value, selAnn.endMs - 300) })} style={{ width: '100%' }} />
+              <input type="range" min={0} max={result.durationMs} step={100} value={selAnn.endMs} onChange={(e) => updateSelected({ endMs: Math.max(+e.target.value, selAnn.startMs + 300) })} style={{ width: '100%' }} />
+              <button onClick={deleteSelected} style={{ ...btnSecondary, width: '100%', marginTop: 6, color: '#ff6b6b' }}>Удалить</button>
+            </div>
+          )}
 
           <div style={{ height: 18 }} />
           <button onClick={exportVideo} disabled={exporting} style={{ ...btnPrimary, width: '100%' }}>
