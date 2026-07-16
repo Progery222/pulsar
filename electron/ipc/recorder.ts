@@ -26,6 +26,8 @@ let selectedSourceId: string | null = null;
 
 // Плавающее окно-контрол во время записи.
 let controlWin: BrowserWindow | null = null;
+// Окно заметок (сценарий) во время записи.
+let notesWin: BrowserWindow | null = null;
 
 function loadWindow(win: BrowserWindow, query: Record<string, string>) {
   const devUrl = process.env['VITE_DEV_SERVER_URL'];
@@ -244,6 +246,51 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
   ipcMain.handle('recorder:closeControl', () => {
     if (controlWin && !controlWin.isDestroyed()) controlWin.close();
     controlWin = null;
+    return { ok: true };
+  });
+
+  // Окно заметок/сценария во время записи.
+  ipcMain.handle('recorder:openNotes', () => {
+    if (notesWin && !notesWin.isDestroyed()) {
+      notesWin.focus();
+      return { ok: true };
+    }
+    const primary = screen.getPrimaryDisplay().workArea;
+    const w = 340;
+    const h = 460;
+    notesWin = new BrowserWindow({
+      width: w,
+      height: h,
+      x: Math.round(primary.x + primary.width - w - 24),
+      y: Math.round(primary.y + 24),
+      frame: false,
+      transparent: false,
+      backgroundColor: '#0d0d10',
+      resizable: true,
+      alwaysOnTop: true,
+      skipTaskbar: true,
+      webPreferences: {
+        preload: path.join(process.env.APP_ROOT ?? '', 'dist-electron', 'preload.js'),
+        contextIsolation: true,
+        nodeIntegration: false,
+      },
+    });
+    notesWin.setAlwaysOnTop(true, 'screen-saver');
+    // Не попадать в кадр захвата экрана.
+    try {
+      notesWin.setContentProtection(true);
+    } catch {
+      /* не критично */
+    }
+    loadWindow(notesWin, { win: 'recNotes' });
+    notesWin.on('closed', () => {
+      notesWin = null;
+    });
+    return { ok: true };
+  });
+  ipcMain.handle('recorder:closeNotes', () => {
+    if (notesWin && !notesWin.isDestroyed()) notesWin.close();
+    notesWin = null;
     return { ok: true };
   });
 

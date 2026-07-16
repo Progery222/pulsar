@@ -250,6 +250,8 @@ const electronAPI = {
   // Плавающий контрол записи.
   recorderOpenControl: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:openControl'),
   recorderCloseControl: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:closeControl'),
+  recorderOpenNotes: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:openNotes'),
+  recorderCloseNotes: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:closeNotes'),
   recorderControlAction: (action: 'stop' | 'pause' | 'resume'): void =>
     ipcRenderer.send('recorder:controlAction', action),
   recorderPushState: (state: { elapsed: number; paused: boolean }): void =>

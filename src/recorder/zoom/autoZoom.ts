@@ -109,6 +109,27 @@ export function buildAutoZoomRegions(opts: {
   return regions.sort((a, b) => a.startMs - b.startMs);
 }
 
+// Позиция курсора (нормализованная 0..1) в момент времени — линейная интерполяция телеметрии.
+export function cursorAt(telemetry: TelemetryPoint[], timeMs: number): ZoomFocus | null {
+  if (telemetry.length === 0) return null;
+  if (timeMs <= telemetry[0].timeMs) return { cx: telemetry[0].cx, cy: telemetry[0].cy };
+  const last = telemetry[telemetry.length - 1];
+  if (timeMs >= last.timeMs) return { cx: last.cx, cy: last.cy };
+  // Бинарный поиск ближайшего сегмента.
+  let lo = 0;
+  let hi = telemetry.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if (telemetry[mid].timeMs <= timeMs) lo = mid;
+    else hi = mid;
+  }
+  const a = telemetry[lo];
+  const b = telemetry[hi];
+  const span = b.timeMs - a.timeMs || 1;
+  const f = (timeMs - a.timeMs) / span;
+  return { cx: a.cx + (b.cx - a.cx) * f, cy: a.cy + (b.cy - a.cy) * f };
+}
+
 function easeInOut(t: number): number {
   return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
 }

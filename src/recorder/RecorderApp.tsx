@@ -28,6 +28,7 @@ export default function RecorderApp() {
   const [mic, setMic] = useState(false);
   const [systemAudio, setSystemAudio] = useState(true);
   const [quality, setQuality] = useState<Quality>('1080p');
+  const [hideCursor, setHideCursor] = useState(false);
   const [useCountdown, setUseCountdown] = useState(true);
   const [countdown, setCountdown] = useState(3);
   const [elapsed, setElapsed] = useState(0);
@@ -89,6 +90,7 @@ export default function RecorderApp() {
     const displayStream = await navigator.mediaDevices.getDisplayMedia({
       video: {
         frameRate: 60,
+        cursor: hideCursor ? 'never' : 'always',
         ...(q.w && q.h ? { width: { ideal: q.w }, height: { ideal: q.h } } : {}),
       } as MediaTrackConstraints,
       audio: systemAudio,
@@ -206,6 +208,7 @@ export default function RecorderApp() {
 
     const cursorData = await window.electronAPI.recorderCursorStop();
     await window.electronAPI.recorderCloseControl();
+    await window.electronAPI.recorderCloseNotes();
     await window.electronAPI.recorderRestoreMain();
 
     try {
@@ -311,7 +314,10 @@ export default function RecorderApp() {
           <h1 style={{ fontSize: 22, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Запись экрана</h1>
           <p style={{ fontSize: 13, color: 'var(--text-secondary)', margin: '4px 0 0' }}>Выберите, что записывать</p>
         </div>
-        <button onClick={loadSources} style={secondaryBtn}>Обновить</button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => window.electronAPI.recorderOpenNotes()} style={secondaryBtn}>Заметки</button>
+          <button onClick={loadSources} style={secondaryBtn}>Обновить</button>
+        </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 12, marginBottom: 20 }}>
@@ -347,6 +353,9 @@ export default function RecorderApp() {
         </label>
         <label style={optRow}>
           <input type="checkbox" checked={useCountdown} onChange={(e) => setUseCountdown(e.target.checked)} /> Отсчёт 3 сек
+        </label>
+        <label style={optRow} title="Работает не на всех системах — курсор можно нарисовать в редакторе">
+          <input type="checkbox" checked={hideCursor} onChange={(e) => setHideCursor(e.target.checked)} /> Скрыть системный курсор
         </label>
         <label style={{ ...optRow, gap: 8 }}>
           Качество

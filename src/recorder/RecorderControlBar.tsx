@@ -53,6 +53,13 @@ export default function RecorderControlBar() {
       <div style={{ flex: 1 }} />
 
       <button
+        title="Заметки"
+        onClick={() => window.electronAPI.recorderOpenNotes()}
+        style={{ ...btn, WebkitAppRegion: 'no-drag' } as React.CSSProperties}
+      >
+        ✎
+      </button>
+      <button
         title={paused ? 'Продолжить' : 'Пауза'}
         onClick={() => window.electronAPI.recorderControlAction(paused ? 'resume' : 'pause')}
         style={{ ...btn, WebkitAppRegion: 'no-drag' } as React.CSSProperties}

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
 import type { RecordingResult } from './types';
-import { buildAutoZoomRegions, computeZoomTransform, samplesToTelemetry, zoomTargetAt, type ZoomRegion } from './zoom/autoZoom';
+import { buildAutoZoomRegions, computeZoomTransform, cursorAt, samplesToTelemetry, zoomTargetAt, type ZoomRegion } from './zoom/autoZoom';
 import { createZoomSpring, resetZoomSpring, stepZoomSpring } from './zoom/spring';
 
 const BACKGROUNDS: { id: string; label: string; paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void }[] = [
@@ -39,6 +39,58 @@ function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.closePath();
 }
 
+function drawCursorOverlay(
+  ctx: CanvasRenderingContext2D,
+  style: 'highlight' | 'spotlight' | 'pointer',
+  x: number,
+  y: number,
+  W: number,
+  H: number,
+  size: number,
+  cx: number,
+  cy: number,
+  cw: number,
+  ch: number,
+) {
+  const base = W * 0.028 * size;
+  if (style === 'highlight') {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, base * 2.4);
+    g.addColorStop(0, 'rgba(255,214,10,0.42)');
+    g.addColorStop(0.5, 'rgba(255,214,10,0.18)');
+    g.addColorStop(1, 'rgba(255,214,10,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(x, y, base * 2.4, 0, Math.PI * 2);
+    ctx.fill();
+  } else if (style === 'spotlight') {
+    const r = base * 3.6;
+    const g = ctx.createRadialGradient(x, y, r * 0.35, x, y, r);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,0.55)');
+    ctx.fillStyle = g;
+    ctx.fillRect(cx, cy, cw, ch);
+  } else if (style === 'pointer') {
+    const s = base * 1.4;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(0, s);
+    ctx.lineTo(s * 0.28, s * 0.74);
+    ctx.lineTo(s * 0.46, s * 1.12);
+    ctx.lineTo(s * 0.62, s * 1.05);
+    ctx.lineTo(s * 0.44, s * 0.66);
+    ctx.lineTo(s * 0.72, s * 0.66);
+    ctx.closePath();
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+    ctx.lineWidth = s * 0.06;
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
 export default function RecorderEditor({ result, onBack }: { result: RecordingResult; onBack: () => void }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -55,6 +107,8 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [bg, setBg] = useState('violet');
   const [padding, setPadding] = useState(8); // % от ширины
   const [radius, setRadius] = useState(16);
+  const [cursorStyle, setCursorStyle] = useState<'off' | 'highlight' | 'spotlight' | 'pointer'>('highlight');
+  const [cursorSize, setCursorSize] = useState(1);
   const [exporting, setExporting] = useState(false);
   const [exportPct, setExportPct] = useState(0);
 
@@ -122,6 +176,20 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       /* кадр ещё не готов */
     }
     ctx.restore();
+
+    // Оверлей курсора (подсветка/прожектор/указатель) из телеметрии.
+    if (cursorStyle !== 'off') {
+      const c = cursorAt(telemetry, tMs);
+      if (c) {
+        const sx = contentX + cam.x + c.cx * contentW * cam.scale;
+        const sy = contentY + cam.y + c.cy * contentH * cam.scale;
+        ctx.save();
+        roundRectPath(ctx, contentX, contentY, contentW, contentH, radius);
+        ctx.clip();
+        drawCursorOverlay(ctx, cursorStyle, sx, sy, W, H, cursorSize, contentX, contentY, contentW, contentH);
+        ctx.restore();
+      }
+    }
   }
 
   // Цикл превью.
@@ -136,7 +204,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, bg, padding, radius, playing]);
+  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, telemetry]);
 
   function togglePlay() {
     const v = videoRef.current;
@@ -278,6 +346,21 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
 
           <Slider label={`Отступы ${padding}%`} min={0} max={18} step={1} value={padding} onChange={setPadding} />
           <Slider label={`Скругление ${radius}px`} min={0} max={48} step={1} value={radius} onChange={setRadius} />
+
+          <div style={{ height: 12 }} />
+          <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Курсор</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 6, marginBottom: 10 }}>
+            {([['off', 'Выкл'], ['highlight', 'Подсветка'], ['spotlight', 'Прожектор'], ['pointer', 'Указатель']] as const).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setCursorStyle(id)}
+                style={{ padding: '6px 4px', fontSize: 11, borderRadius: 8, cursor: 'pointer', color: 'var(--text-primary)', background: 'var(--bg-tertiary)', border: `2px solid ${cursorStyle === id ? 'var(--accent-green)' : 'var(--border)'}` }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <Slider label={`Размер курсора ${cursorSize.toFixed(1)}×`} min={0.5} max={2.5} step={0.1} value={cursorSize} onChange={setCursorSize} disabled={cursorStyle === 'off'} />
 
           <div style={{ height: 18 }} />
           <button onClick={exportVideo} disabled={exporting} style={{ ...btnPrimary, width: '100%' }}>
