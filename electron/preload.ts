@@ -242,6 +242,8 @@ const electronAPI = {
   recorderToMp4: (webmPath: string, outPath: string): Promise<{ ok: true; path: string } | { error: string }> =>
     ipcRenderer.invoke('recorder:toMp4', webmPath, outPath),
   recorderReveal: (filePath: string): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:reveal', filePath),
+  recorderAiNotes: (transcript: string, model?: string): Promise<{ ok: true; title: string; summary: string; chapters: { t: number; label: string }[] } | { error: string }> =>
+    ipcRenderer.invoke('recorder:aiNotes', transcript, model),
   onRecorderMp4Progress: (cb: (percent: number) => void): (() => void) => {
     const listener = (_e: unknown, percent: number) => cb(percent);
     ipcRenderer.on('recorder:mp4Progress', listener);

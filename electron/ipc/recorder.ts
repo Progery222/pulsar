@@ -2,7 +2,9 @@ import { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell } 
 import ffmpegStatic from 'ffmpeg-static';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import https from 'node:https';
 import path from 'node:path';
+import { getOpenRouterKey } from './config';
 
 // Запись экрана (нативный модуль Pulsar). Захват через desktopCapturer + getDisplayMedia
 // в renderer (MediaRecorder), трекинг курсора для авто-зума в редакторе, ремукс в mp4
@@ -213,6 +215,67 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
   ipcMain.handle('recorder:reveal', (_e, filePath: string) => {
     shell.showItemInFolder(filePath);
     return { ok: true };
+  });
+
+  // AI по транскрипту: заголовок + описание + главы (OpenRouter, текстовая модель).
+  ipcMain.handle('recorder:aiNotes', async (_e, transcript: string, model?: string) => {
+    const apiKey = getOpenRouterKey();
+    if (!apiKey) return { error: 'Не задан ключ OpenRouter (Настройки → ключ Воронки)' };
+    if (!transcript || transcript.trim().length < 5) return { error: 'Пустой транскрипт' };
+    const sys =
+      'Ты — редактор скринкастов. По транскрипту с таймкодами придумай: краткий цепляющий заголовок, ' +
+      'описание в 2–3 предложения и главы (тайм-коды в секундах от начала). Отвечай СТРОГО JSON без пояснений: ' +
+      '{"title":"...","summary":"...","chapters":[{"t":0,"label":"..."}]}. Язык — как в транскрипте.';
+    const body = JSON.stringify({
+      model: model || 'openai/gpt-4o-mini',
+      messages: [
+        { role: 'system', content: sys },
+        { role: 'user', content: transcript.slice(0, 12000) },
+      ],
+      temperature: 0.5,
+      response_format: { type: 'json_object' },
+    });
+    try {
+      const res = await new Promise<{ status: number; text: string }>((resolve, reject) => {
+        const req = https.request(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            method: 'POST',
+            family: 4,
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+              'Content-Length': Buffer.byteLength(body),
+              'HTTP-Referer': 'https://pulsar.local',
+              'X-Title': 'Pulsar Recorder',
+            },
+          },
+          (r) => {
+            let data = '';
+            r.setEncoding('utf8');
+            r.on('data', (c) => (data += c));
+            r.on('end', () => resolve({ status: r.statusCode || 0, text: data }));
+          }
+        );
+        req.setTimeout(90000, () => req.destroy(new Error('таймаут (90с)')));
+        req.on('error', reject);
+        req.write(body);
+        req.end();
+      });
+      if (res.status !== 200) return { error: `OpenRouter ${res.status}: ${res.text.slice(0, 200)}` };
+      const content = JSON.parse(res.text)?.choices?.[0]?.message?.content ?? '';
+      const parsed = JSON.parse(content);
+      return {
+        ok: true as const,
+        title: String(parsed.title ?? ''),
+        summary: String(parsed.summary ?? ''),
+        chapters: Array.isArray(parsed.chapters)
+          ? parsed.chapters.map((c: { t?: number; label?: string }) => ({ t: Number(c.t) || 0, label: String(c.label ?? '') }))
+          : [],
+      };
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
   });
 
   // Покадровый экспорт: кадры (frame_%06d.jpg в temp-папке) → mp4/gif через ffmpeg.

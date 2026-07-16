@@ -187,6 +187,8 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [cuts, setCuts] = useState<{ id: string; start: number; end: number }[]>([]);
   const [speed, setSpeed] = useState(1);
   const [findingPauses, setFindingPauses] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiNotes, setAiNotes] = useState<{ title: string; summary: string; chapters: { t: number; label: string }[] } | null>(null);
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null);
   const [annColor, setAnnColor] = useState(ANN_COLORS[0]);
@@ -708,6 +710,47 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     if (e > s) setCuts((p) => [...p, { id: `c${Date.now()}`, start: s, end: e }]);
   }
 
+  // Умная чистка речи: вырезать слова-паразиты по транскрипту (локально).
+  function smartClean() {
+    if (!words.length) {
+      showToast('Сначала распознайте речь (раздел «Субтитры»)');
+      return;
+    }
+    const fillers = new Set(['э', 'эм', 'ээ', 'эээ', 'мм', 'ммм', 'ну', 'вот', 'аа', 'ааа', 'типа', 'um', 'uh', 'uhh', 'erm', 'hmm', 'like']);
+    const added: { id: string; start: number; end: number }[] = [];
+    for (const w of words) {
+      const t = w.text.toLowerCase().replace(/[^\p{L}]/gu, '');
+      if (t && fillers.has(t)) added.push({ id: `f${w.start}`, start: w.start / 1000 - 0.04, end: w.end / 1000 + 0.06 });
+    }
+    if (!added.length) {
+      showToast('Слов-паразитов не найдено');
+      return;
+    }
+    setCuts((p) => [...p, ...added]);
+    showToast(`Вырезано слов-паразитов: ${added.length}`);
+  }
+
+  async function aiGenerate() {
+    if (!captionLines.length) {
+      showToast('Сначала распознайте речь (раздел «Субтитры»)');
+      return;
+    }
+    setAiBusy(true);
+    try {
+      const transcript = captionLines.map((l) => `[${(l.start / 1000).toFixed(0)}s] ${l.text}`).join('\n');
+      const res = await window.electronAPI.recorderAiNotes(transcript);
+      if ('error' in res) {
+        showToast('AI недоступен: ' + res.error);
+        return;
+      }
+      setAiNotes({ title: res.title, summary: res.summary, chapters: res.chapters });
+    } catch (e) {
+      showToast('Ошибка AI: ' + (e as Error).message);
+    } finally {
+      setAiBusy(false);
+    }
+  }
+
   function resetEdit() {
     setTrimStart(0);
     setTrimEnd(duration);
@@ -1006,6 +1049,34 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
           </div>
           {(cuts.length > 0 || trimStart > 0 || trimEnd < duration - 0.05 || speed !== 1) && (
             <button onClick={resetEdit} style={{ ...btnSecondary, width: '100%', fontSize: 11.5 }}>Сбросить монтаж</button>
+          )}
+
+          <div style={{ height: 12 }} />
+          <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>AI</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <button onClick={smartClean} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }} title="Вырезать слова-паразиты по транскрипту">Чистка речи</button>
+            <button onClick={aiGenerate} disabled={aiBusy} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }}>{aiBusy ? 'AI…' : 'Заголовок и главы'}</button>
+          </div>
+          {aiNotes && (
+            <div style={{ padding: 10, borderRadius: 8, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', marginBottom: 6 }}>
+              {aiNotes.title && <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>{aiNotes.title}</div>}
+              {aiNotes.summary && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 6, lineHeight: 1.4 }}>{aiNotes.summary}</div>}
+              {aiNotes.chapters.map((c, i) => (
+                <button key={i} onClick={() => seek(c.t)} style={{ display: 'block', width: '100%', textAlign: 'left', background: 'transparent', border: 'none', color: 'var(--accent-green)', fontSize: 11.5, cursor: 'pointer', padding: '2px 0' }}>
+                  {Math.floor(c.t / 60)}:{String(Math.floor(c.t % 60)).padStart(2, '0')} — {c.label}
+                </button>
+              ))}
+              <button
+                onClick={() => {
+                  const txt = `${aiNotes.title}\n\n${aiNotes.summary}\n\n${aiNotes.chapters.map((c) => `${Math.floor(c.t / 60)}:${String(Math.floor(c.t % 60)).padStart(2, '0')} ${c.label}`).join('\n')}`;
+                  navigator.clipboard?.writeText(txt);
+                  showToast('Скопировано');
+                }}
+                style={{ ...btnSecondary, width: '100%', fontSize: 11, marginTop: 6 }}
+              >
+                Копировать описание
+              </button>
+            </div>
           )}
 
           <div style={{ height: 12 }} />
