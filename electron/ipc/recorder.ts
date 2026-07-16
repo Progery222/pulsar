@@ -1,4 +1,4 @@
-import { app, BrowserWindow, desktopCapturer, ipcMain, screen, session, shell } from 'electron';
+import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, screen, session, shell } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -385,10 +385,23 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
     controlWin.on('closed', () => {
       controlWin = null;
     });
+    // Глобальные хоткеи управления записью (работают вне фокуса приложения).
+    try {
+      globalShortcut.register('CommandOrControl+Alt+S', () => getMainWindow()?.webContents.send('recorder:controlAction', 'stop'));
+      globalShortcut.register('CommandOrControl+Alt+P', () => getMainWindow()?.webContents.send('recorder:controlAction', 'pause'));
+    } catch {
+      /* горячая клавиша занята — не критично */
+    }
     return { ok: true };
   });
 
   ipcMain.handle('recorder:closeControl', () => {
+    try {
+      globalShortcut.unregister('CommandOrControl+Alt+S');
+      globalShortcut.unregister('CommandOrControl+Alt+P');
+    } catch {
+      /* noop */
+    }
     if (controlWin && !controlWin.isDestroyed()) controlWin.close();
     controlWin = null;
     return { ok: true };

@@ -189,6 +189,9 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [findingPauses, setFindingPauses] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNotes, setAiNotes] = useState<{ title: string; summary: string; chapters: { t: number; label: string }[] } | null>(null);
+  const [dubLang, setDubLang] = useState('en');
+  const [dubBusy, setDubBusy] = useState(false);
+  const [dubStage, setDubStage] = useState('');
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
   const [selectedAnn, setSelectedAnn] = useState<string | null>(null);
   const [annColor, setAnnColor] = useState(ANN_COLORS[0]);
@@ -730,6 +733,39 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     showToast(`Вырезано слов-паразитов: ${added.length}`);
   }
 
+  // Дубляж записи на другой язык (переиспользуем модуль dub).
+  async function dubRecording() {
+    const dir = await window.electronAPI.selectDirectory();
+    if (!dir) return;
+    setDubBusy(true);
+    setDubStage('старт…');
+    const off = window.electronAPI.onDubProgress((e) => setDubStage(`${e.stage} ${e.percent}%`));
+    try {
+      const res = await window.electronAPI.dubRun({
+        videoPath: result.editPath ?? result.webmPath,
+        sourceLang: 'auto',
+        targetLang: dubLang,
+        keepOriginal: true,
+        originalVolume: 0.12,
+        syncTiming: true,
+        burnSubs: false,
+        outputDir: dir,
+      });
+      if ('error' in res) {
+        showToast('Дубляж не удался: ' + res.error);
+      } else {
+        showToast('Дубляж готов: ' + res.out);
+        window.electronAPI.recorderReveal(res.out);
+      }
+    } catch (e) {
+      showToast('Ошибка дубляжа: ' + (e as Error).message);
+    } finally {
+      off();
+      setDubBusy(false);
+      setDubStage('');
+    }
+  }
+
   async function aiGenerate() {
     if (!captionLines.length) {
       showToast('Сначала распознайте речь (раздел «Субтитры»)');
@@ -1078,6 +1114,20 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
               </button>
             </div>
           )}
+          <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 2 }}>
+            <select value={dubLang} onChange={(e) => setDubLang(e.target.value)} style={{ padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12 }}>
+              <option value="en">EN</option>
+              <option value="es">ES</option>
+              <option value="de">DE</option>
+              <option value="fr">FR</option>
+              <option value="zh">ZH</option>
+              <option value="ar">AR</option>
+              <option value="ru">RU</option>
+            </select>
+            <button onClick={dubRecording} disabled={dubBusy} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }}>
+              {dubBusy ? (dubStage || 'Дубляж…') : 'Дубляж на язык'}
+            </button>
+          </div>
 
           <div style={{ height: 12 }} />
           <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Формат</div>

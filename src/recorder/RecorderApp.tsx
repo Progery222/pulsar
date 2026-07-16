@@ -70,8 +70,12 @@ export default function RecorderApp() {
   useEffect(() => {
     const off = window.electronAPI.onRecorderControlAction((action) => {
       if (action === 'stop') stopRecording();
-      else if (action === 'pause') pauseRecording();
       else if (action === 'resume') resumeRecording();
+      else if (action === 'pause') {
+        // Переключатель (для глобального хоткея): пауза ↔ продолжить.
+        if (recorderRef.current?.state === 'paused') resumeRecording();
+        else pauseRecording();
+      }
     });
     return off;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -341,7 +345,8 @@ export default function RecorderApp() {
             {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
           </span>
         </div>
-        <div style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 20 }}>Идёт запись… управление — в плавающей панели снизу</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 6 }}>Идёт запись… управление — в плавающей панели снизу</div>
+        <div style={{ color: 'var(--text-secondary)', fontSize: 12, marginBottom: 20, opacity: 0.8 }}>Хоткеи: Ctrl+Alt+S — стоп · Ctrl+Alt+P — пауза</div>
         <button onClick={stopRecording} style={{ ...primaryBtn, background: '#ff3b30' }}>Остановить</button>
       </div>
     );
