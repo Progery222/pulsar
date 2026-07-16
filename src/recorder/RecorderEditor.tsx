@@ -161,7 +161,8 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [zoomScale, setZoomScale] = useState(2);
   const [zoomDur, setZoomDur] = useState(2.2);
   const [bg, setBg] = useState('violet');
-  const [padding, setPadding] = useState(8); // % от ширины
+  const [aspect, setAspect] = useState<'src' | '16:9' | '9:16' | '1:1' | '4:3'>('src');
+  const [padding, setPadding] = useState(8); // % от меньшей стороны
   const [radius, setRadius] = useState(16);
   const [cursorStyle, setCursorStyle] = useState<'off' | 'highlight' | 'spotlight' | 'pointer'>('highlight');
   const [cursorSize, setCursorSize] = useState(1);
@@ -276,14 +277,24 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     return buildAutoZoomRegions({ telemetry, totalMs: result.durationMs, defaultDurationMs: zoomDur * 1000, scale: zoomScale });
   }, [autoZoom, telemetry, result.durationMs, zoomDur, zoomScale]);
 
-  // Выходное разрешение — до 1920 по ширине с сохранением пропорций.
+  // Выходной кадр по выбранному формату (длинная сторона 1920). srcAR — пропорции записи.
   const out = useMemo(() => {
     const srcW = result.width || 1920;
     const srcH = result.height || 1080;
-    const maxW = 1920;
-    const scale = Math.min(1, maxW / srcW);
-    return { w: Math.round(srcW * scale / 2) * 2, h: Math.round(srcH * scale / 2) * 2 };
-  }, [result]);
+    const srcAR = srcW / srcH;
+    const ARs: Record<string, number> = { src: srcAR, '16:9': 16 / 9, '9:16': 9 / 16, '1:1': 1, '4:3': 4 / 3 };
+    const ar = ARs[aspect] ?? srcAR;
+    let w: number;
+    let h: number;
+    if (ar >= 1) {
+      w = 1920;
+      h = 1920 / ar;
+    } else {
+      h = 1920;
+      w = 1920 * ar;
+    }
+    return { w: Math.round(w / 2) * 2, h: Math.round(h / 2) * 2, srcAR };
+  }, [result, aspect]);
 
   function drawFrame(dtMs: number) {
     const video = videoRef.current;
@@ -294,11 +305,18 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
 
     const W = canvas.width;
     const H = canvas.height;
-    const pad = (padding / 100) * W;
-    const contentX = pad;
-    const contentY = pad;
-    const contentW = W - pad * 2;
-    const contentH = H - pad * 2;
+    // Кадр записи вписан в область за вычетом отступов, с сохранением пропорций записи.
+    const pad = (padding / 100) * Math.min(W, H);
+    const availW = W - pad * 2;
+    const availH = H - pad * 2;
+    let contentW = availW;
+    let contentH = availW / out.srcAR;
+    if (contentH > availH) {
+      contentH = availH;
+      contentW = availH * out.srcAR;
+    }
+    const contentX = (W - contentW) / 2;
+    const contentY = (H - contentH) / 2;
 
     // Фон.
     BACKGROUNDS.find((b) => b.id === bg)?.paint(ctx, W, H);
@@ -406,8 +424,16 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     const canvas = canvasRef.current!;
     const W = canvas.width;
     const H = canvas.height;
-    const pad = (padding / 100) * W;
-    return { W, H, cx: pad, cy: pad, cw: W - pad * 2, ch: H - pad * 2 };
+    const pad = (padding / 100) * Math.min(W, H);
+    const availW = W - pad * 2;
+    const availH = H - pad * 2;
+    let cw = availW;
+    let ch = availW / out.srcAR;
+    if (ch > availH) {
+      ch = availH;
+      cw = availH * out.srcAR;
+    }
+    return { W, H, cx: (W - cw) / 2, cy: (H - ch) / 2, cw, ch };
   }
   function eventToNorm(e: React.MouseEvent) {
     const canvas = canvasRef.current!;
@@ -780,6 +806,18 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
           )}
 
           <div style={{ height: 12 }} />
+          <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Формат</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5,1fr)', gap: 5, marginBottom: 12 }}>
+            {([['src', 'Ориг'], ['16:9', '16:9'], ['9:16', '9:16'], ['1:1', '1:1'], ['4:3', '4:3']] as const).map(([id, label]) => (
+              <button
+                key={id}
+                onClick={() => setAspect(id)}
+                style={{ padding: '6px 2px', fontSize: 10.5, borderRadius: 7, cursor: 'pointer', color: 'var(--text-primary)', background: 'var(--bg-tertiary)', border: `2px solid ${aspect === id ? 'var(--accent-green)' : 'var(--border)'}` }}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Фон</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 6, marginBottom: 12 }}>
             {BACKGROUNDS.map((b) => (
