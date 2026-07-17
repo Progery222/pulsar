@@ -57,6 +57,38 @@ let cursorSamples: CursorSample[] = [];
 let cursorStartTime = 0;
 let recordedDisplay: RecordedDisplay | null = null;
 
+// Захват кликов ЛКМ через опрос GetAsyncKeyState (PowerShell) — без нативного модуля.
+let clickChild: ReturnType<typeof spawn> | null = null;
+let clickTimes: number[] = [];
+
+function startClickPoller() {
+  clickTimes = [];
+  if (process.platform !== 'win32') return;
+  const ps =
+    "Add-Type -Name U -Namespace W -MemberDefinition '[DllImport(\"user32.dll\")] public static extern short GetAsyncKeyState(int k);'; " +
+    '$p=$false; while($true){ $d=([W.U]::GetAsyncKeyState(1) -band 0x8000) -ne 0; if($d -and -not $p){ Write-Output CLICK; [Console]::Out.Flush() }; $p=$d; Start-Sleep -Milliseconds 12 }';
+  try {
+    clickChild = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true });
+    clickChild.stdout?.on('data', (d: Buffer) => {
+      if (d.toString().includes('CLICK')) clickTimes.push(Date.now() - cursorStartTime);
+    });
+    clickChild.on('error', () => { clickChild = null; });
+  } catch {
+    clickChild = null;
+  }
+}
+
+function stopClickPoller() {
+  if (clickChild) {
+    try {
+      clickChild.kill();
+    } catch {
+      /* noop */
+    }
+    clickChild = null;
+  }
+}
+
 function recordingsDir(): string {
   const dir = path.join(app.getPath('userData'), 'recordings');
   fs.mkdirSync(dir, { recursive: true });
@@ -137,16 +169,18 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
       const p = screen.getCursorScreenPoint();
       cursorSamples.push({ t: Date.now() - cursorStartTime, x: p.x, y: p.y });
     }, 1000 / 60);
+    startClickPoller();
     return { ok: true, display: recordedDisplay };
   });
 
-  // Стоп трекинга — вернуть собранные сэмплы и метаданные дисплея.
+  // Стоп трекинга — вернуть собранные сэмплы, клики и метаданные дисплея.
   ipcMain.handle('recorder:cursorStop', () => {
     if (cursorTimer) {
       clearInterval(cursorTimer);
       cursorTimer = null;
     }
-    return { samples: cursorSamples, display: recordedDisplay };
+    stopClickPoller();
+    return { samples: cursorSamples, display: recordedDisplay, clicks: clickTimes };
   });
 
   // Свернуть/восстановить главное окно во время записи (чтобы наш UI не мешал кадру).

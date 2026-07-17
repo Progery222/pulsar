@@ -260,6 +260,7 @@ export default function RecorderApp() {
         webcamPath,
         durationMs,
         cursor: cursorData.samples,
+        clicks: cursorData.clicks,
         display: cursorData.display,
         width: dimsRef.current.w,
         height: dimsRef.current.h,

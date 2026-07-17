@@ -233,7 +233,7 @@ const electronAPI = {
     ipcRenderer.invoke('recorder:selectSource', sourceId),
   recorderCursorStart: (): Promise<{ ok: true; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } }> =>
     ipcRenderer.invoke('recorder:cursorStart'),
-  recorderCursorStop: (): Promise<{ samples: { t: number; x: number; y: number }[]; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } | null }> =>
+  recorderCursorStop: (): Promise<{ samples: { t: number; x: number; y: number }[]; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } | null; clicks: number[] }> =>
     ipcRenderer.invoke('recorder:cursorStop'),
   recorderMinimizeMain: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:minimizeMain'),
   recorderRestoreMain: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:restoreMain'),

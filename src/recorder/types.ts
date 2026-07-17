@@ -28,6 +28,7 @@ export interface RecordingResult {
   webcamEditPath?: string; // mp4 вебкамеры для редактора
   durationMs: number;
   cursor: CursorSample[];
+  clicks?: number[]; // мс от старта записи (реальные клики ЛКМ)
   display: RecordedDisplay | null;
   width: number;
   height: number;

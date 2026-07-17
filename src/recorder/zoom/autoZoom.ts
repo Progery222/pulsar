@@ -111,13 +111,19 @@ export function buildAutoZoomRegions(opts: {
   totalMs: number;
   defaultDurationMs: number;
   scale: number;
+  clicks?: number[];
 }): ZoomRegion[] {
-  const { telemetry, totalMs, defaultDurationMs, scale } = opts;
+  const { telemetry, totalMs, defaultDurationMs, scale, clicks } = opts;
   if (totalMs <= 0 || telemetry.length < 2) return [];
   const dur = Math.min(defaultDurationMs, totalMs);
   if (dur <= 0) return [];
 
-  const candidates = detectDwellCandidates(telemetry).sort((a, b) => b.strength - a.strength);
+  // Реальные клики — приоритетные точки зума (фокус = позиция курсора в момент клика).
+  const clickCands: DwellCandidate[] = (clicks ?? []).map((t) => {
+    const f = cursorAt(telemetry, t) ?? { cx: 0.5, cy: 0.5 };
+    return { centerTimeMs: t, focus: f, strength: 1_000_000 };
+  });
+  const candidates = [...clickCands, ...detectDwellCandidates(telemetry)].sort((a, b) => b.strength - a.strength);
   const reserved: { start: number; end: number }[] = [];
   const centers: number[] = [];
   const regions: ZoomRegion[] = [];

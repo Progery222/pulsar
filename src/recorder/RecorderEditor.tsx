@@ -306,8 +306,8 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
 
   const regions: ZoomRegion[] = useMemo(() => {
     if (!autoZoom) return [];
-    return buildAutoZoomRegions({ telemetry, totalMs: result.durationMs, defaultDurationMs: zoomDur * 1000, scale: zoomScale });
-  }, [autoZoom, telemetry, result.durationMs, zoomDur, zoomScale]);
+    return buildAutoZoomRegions({ telemetry, totalMs: result.durationMs, defaultDurationMs: zoomDur * 1000, scale: zoomScale, clicks: result.clicks });
+  }, [autoZoom, telemetry, result.durationMs, result.clicks, zoomDur, zoomScale]);
 
   // Выходной кадр по выбранному формату (длинная сторона 1920). srcAR — пропорции записи.
   const out = useMemo(() => {
@@ -407,14 +407,17 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       ctx.restore();
     }
 
-    // Пульс «клика» — расходящееся кольцо в начале каждой зум-сцены (прокси клика).
+    // Пульс клика — расходящееся кольцо на реальных кликах (или на началах зум-сцен,
+    // если кликов нет — фолбэк).
     if (clickPulse) {
       const PULSE = 480;
-      for (const rg of regions) {
-        const age = tMs - rg.startMs;
+      const pulseTimes = result.clicks && result.clicks.length ? result.clicks : regions.map((r) => r.startMs);
+      for (const ct of pulseTimes) {
+        const age = tMs - ct;
         if (age < 0 || age > PULSE) continue;
         const p = age / PULSE;
-        const pc = cursorAt(smoothTele, rg.startMs) ?? rg.focus;
+        const pc = cursorAt(smoothTele, ct);
+        if (!pc) continue;
         const px = contentX + cam.x + pc.cx * contentW * cam.scale;
         const py = contentY + cam.y + pc.cy * contentH * cam.scale;
         ctx.save();
