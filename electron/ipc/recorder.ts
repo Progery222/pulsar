@@ -433,14 +433,20 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
         nodeIntegration: false,
       },
     });
-    notesWin.setAlwaysOnTop(true, 'screen-saver');
-    // Не попадать в кадр захвата экрана.
+    // Обычный alwaysOnTop (НЕ 'screen-saver' — тот уровень не даёт фокус клавиатуры на
+    // Windows, из-за чего в заметки нельзя печатать). Не попадать в кадр захвата.
     try {
       notesWin.setContentProtection(true);
     } catch {
       /* не критично */
     }
     loadWindow(notesWin, { win: 'recNotes' });
+    notesWin.webContents.once('did-finish-load', () => {
+      if (notesWin && !notesWin.isDestroyed()) {
+        notesWin.show();
+        notesWin.focus();
+      }
+    });
     notesWin.on('closed', () => {
       notesWin = null;
     });
