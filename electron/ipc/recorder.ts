@@ -13,6 +13,13 @@ import { getOpenRouterKey } from './config';
 
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 
+// Резолв относительного пути ассета (assets/music/...) в абсолютный.
+function resolveAsset(p: string): string {
+  if (path.isAbsolute(p)) return p;
+  const b = app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd());
+  return path.join(b, p);
+}
+
 // Цепочка atempo для произвольного коэффициента (ffmpeg atempo: 0.5..2 за один шаг).
 function atempoChain(factor: number): string[] {
   const parts: string[] = [];
@@ -365,6 +372,9 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
     format: 'mp4' | 'gif';
     audioSrc?: string;
     clickTrackPath?: string;
+    musicPath?: string;
+    musicVolume?: number;
+    audioDelaySec?: number;
     segments: { s: number; e: number }[];
     speed: number;
     frameCount: number;
@@ -403,31 +413,53 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
       const vcodec = ['-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-movflags', '+faststart'];
       const aac = ['-c:a', 'aac', '-b:a', '192k'];
       const click = opts.clickTrackPath;
-      // Аудио из исходника по сегментам (source-time) + atempo под скорость.
+      let music = opts.musicPath ? resolveAsset(opts.musicPath) : undefined;
+      if (music && !fs.existsSync(music)) music = undefined; // битый путь — молча пропускаем, голос не теряем
+      const musicVol = Math.max(0, Math.min(1, Number(opts.musicVolume ?? 0.15)));
+
+      // Собираем входы аудио и filter_complex: голос(сегменты+скорость) + клики + музыка → amix.
+      // Голос/клики сдвигаются на audioDelaySec (длительность интро), музыка играет с 0,
+      // итог обрезается до длины видео (интро+контент+аутро).
+      const videoLen = opts.frameCount / fps;
+      const delayMs = Math.round((Number(opts.audioDelaySec) || 0) * 1000);
+      const delayF = delayMs > 0 ? `,adelay=${delayMs}|${delayMs}` : '';
+      const inputArgs: string[] = [];
+      const filters: string[] = [];
+      const labels: string[] = [];
+      let idx = 1; // 0 = кадры
+
       const withAudio = opts.audioSrc && opts.segments.length > 0;
       if (withAudio) {
+        const ai = idx++;
+        inputArgs.push('-i', opts.audioSrc!);
         const segs = opts.segments;
-        const trim = segs.map((sg, i) => `[1:a]atrim=${sg.s.toFixed(3)}:${sg.e.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`).join(';');
+        const trim = segs.map((sg, i) => `[${ai}:a]atrim=${sg.s.toFixed(3)}:${sg.e.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`).join(';');
         const concat = segs.map((_, i) => `[a${i}]`).join('') + `concat=n=${segs.length}:v=0:a=1[ac]`;
         const sp = Number(opts.speed) || 1;
-        const tempo = Math.abs(sp - 1) > 0.001 ? `;[ac]${atempoChain(sp).join(',')}[main]` : ';[ac]anull[main]';
-        let filter = `${trim};${concat}${tempo}`;
-        const args = [...base, '-i', opts.audioSrc!];
-        let mapLabel = '[main]';
-        if (click) {
-          args.push('-i', click);
-          filter += ';[main][2:a]amix=inputs=2:normalize=0:duration=first[amixed]';
-          mapLabel = '[amixed]';
-        }
-        args.push('-filter_complex', filter, '-map', '0:v', '-map', mapLabel, ...vcodec, ...aac, '-shortest', opts.outPath);
+        const tempo = Math.abs(sp - 1) > 0.001 ? atempoChain(sp).join(',') : 'anull';
+        filters.push(`${trim};${concat};[ac]${tempo}${delayF}[main]`);
+        labels.push('[main]');
+      }
+      if (click) {
+        const ci = idx++;
+        inputArgs.push('-i', click);
+        filters.push(`[${ci}:a]anull${delayF}[clk]`);
+        labels.push('[clk]');
+      }
+      if (music) {
+        const mi = idx++;
+        inputArgs.push('-stream_loop', '-1', '-i', music);
+        filters.push(`[${mi}:a]volume=${musicVol.toFixed(3)}[mus]`);
+        labels.push('[mus]');
+      }
+
+      if (labels.length > 0) {
+        const mix = `${labels.join('')}amix=inputs=${labels.length}:normalize=0:duration=longest[amx];[amx]atrim=0:${videoLen.toFixed(3)}[aout]`;
+        const filter = `${filters.join(';')};${mix}`;
+        const args = [...base, ...inputArgs, '-filter_complex', filter, '-map', '0:v', '-map', '[aout]', ...vcodec, ...aac, opts.outPath];
         result = await runFfmpeg(args);
-        // Фолбэк без звука (напр. в записи не было аудиодорожки).
-        if ('error' in result) {
-          result = await runFfmpeg([...base, ...vcodec, '-an', opts.outPath]);
-        }
-      } else if (click) {
-        // Нет исходного звука — только клики.
-        result = await runFfmpeg([...base, '-i', click, '-map', '0:v', '-map', '1:a', ...vcodec, ...aac, '-shortest', opts.outPath]);
+        // Фолбэк без звука (напр. запись без аудиодорожки — atrim падает).
+        if ('error' in result) result = await runFfmpeg([...base, ...vcodec, '-an', opts.outPath]);
       } else {
         result = await runFfmpeg([...base, ...vcodec, '-an', opts.outPath]);
       }

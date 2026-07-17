@@ -7,6 +7,9 @@ import { createZoomSpring, resetZoomSpring, stepZoomSpring } from './zoom/spring
 import { ANN_COLORS, drawAnnotations, hitTest, type Annotation, type AnnKind, type Handle } from './annotations';
 import { makeClickTrackWav } from './clickTrack';
 import { keyLabel } from './keys';
+import tracksData from '../data/tracks.json';
+
+const TRACKS = tracksData as { id: string; title: string; artist: string; file: string; category: string }[];
 
 const BACKGROUNDS: { id: string; label: string; paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void }[] = [
   { id: 'none', label: 'Нет', paint: (ctx, w, h) => { ctx.clearRect(0, 0, w, h); } },
@@ -190,6 +193,13 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [cuts, setCuts] = useState<{ id: string; start: number; end: number }[]>([]);
   const [speed, setSpeed] = useState(1);
   const [clickSound, setClickSound] = useState(true);
+  const [musicPath, setMusicPath] = useState<string | null>(null);
+  const [musicName, setMusicName] = useState('');
+  const [musicVol, setMusicVol] = useState(0.15);
+  const [introOn, setIntroOn] = useState(false);
+  const [introText, setIntroText] = useState('');
+  const [outroOn, setOutroOn] = useState(false);
+  const [outroText, setOutroText] = useState('');
   const [findingPauses, setFindingPauses] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNotes, setAiNotes] = useState<{ title: string; summary: string; chapters: { t: number; label: string }[] } | null>(null);
@@ -891,20 +901,61 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     setPlaying(false);
     resetZoomSpring(springRef.current, { scale: 1, x: 0, y: 0 });
 
+    // Карточка-титр интро/аутро на текущий canvas.
+    const drawCard = (title: string) => {
+      const cvs = canvasRef.current!;
+      const ctx = cvs.getContext('2d')!;
+      const W = cvs.width;
+      const H = cvs.height;
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, '#6d28d9');
+      g.addColorStop(1, '#2563eb');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = '#fff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const fs = Math.round(W * 0.06);
+      ctx.font = `700 ${fs}px system-ui, sans-serif`;
+      const words = (title || '').split(/\s+/);
+      const lines: string[] = [];
+      let line = '';
+      for (const w of words) {
+        const t = line ? `${line} ${w}` : w;
+        if (ctx.measureText(t).width > W * 0.8 && line) { lines.push(line); line = w; } else line = t;
+      }
+      if (line) lines.push(line);
+      const lh = fs * 1.25;
+      let y = H / 2 - ((lines.length - 1) * lh) / 2;
+      for (const l of lines) { ctx.fillText(l, W / 2, y); y += lh; }
+    };
+
     const offEnc = window.electronAPI.onRecorderEncodeProgress((p) => setExportPct(p));
     try {
       const fps = 30;
-      const frameCount = Math.max(1, Math.round(editedDur * fps));
+      const CARD_SEC = 2;
+      const introFrames = introOn ? Math.round(CARD_SEC * fps) : 0;
+      const outroFrames = outroOn ? Math.round(CARD_SEC * fps) : 0;
+      const contentFrames = Math.max(1, Math.round(editedDur * fps));
+      const frameCount = introFrames + contentFrames + outroFrames;
       const frameDir = await window.electronAPI.proExportDir();
       const cam = webcamVidRef.current;
-      for (let i = 0; i < frameCount; i++) {
+      let fi = 0;
+      for (let k = 0; k < introFrames; k++) {
+        drawCard(introText || 'Intro');
+        await window.electronAPI.proWriteFrame(frameDir, fi++, await grabJpeg());
+      }
+      for (let i = 0; i < contentFrames; i++) {
         const src = mapToSource(i / fps);
         await seekAwait(video, src);
         if (cam && camOn) await seekAwait(cam, src);
         drawFrame(1000 / fps);
-        const buf = await grabJpeg();
-        await window.electronAPI.proWriteFrame(frameDir, i, buf);
-        if (i % 3 === 0) setExportPct(Math.round((i / frameCount) * 80));
+        await window.electronAPI.proWriteFrame(frameDir, fi++, await grabJpeg());
+        if (i % 3 === 0) setExportPct(Math.round((i / contentFrames) * 78));
+      }
+      for (let k = 0; k < outroFrames; k++) {
+        drawCard(outroText || 'Спасибо за просмотр');
+        await window.electronAPI.proWriteFrame(frameDir, fi++, await grabJpeg());
       }
       // Клик-дорожка (звук клика) — позиции кликов в выходном таймлайне.
       let clickTrackPath: string | undefined;
@@ -942,6 +993,9 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
         format,
         audioSrc: format === 'mp4' ? result.editPath : undefined,
         clickTrackPath,
+        musicPath: format === 'mp4' ? musicPath ?? undefined : undefined,
+        musicVolume: musicVol,
+        audioDelaySec: introFrames / fps,
         segments: keptSegments,
         speed,
         frameCount,
@@ -1153,6 +1207,52 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
           <label style={{ ...rowLabel, marginBottom: 8 }}>
             <input type="checkbox" checked={clickSound} onChange={(e) => setClickSound(e.target.checked)} /> Звук клика при экспорте
           </label>
+          <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 4 }}>Фоновая музыка</div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+            <select
+              value={musicPath && TRACKS.some((t) => t.file === musicPath) ? musicPath : ''}
+              onChange={(e) => {
+                const t = TRACKS.find((x) => x.file === e.target.value);
+                if (t) { setMusicPath(t.file); setMusicName(`${t.title} — ${t.artist}`); }
+                else { setMusicPath(null); setMusicName(''); }
+              }}
+              style={{ flex: 1, padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 11.5, minWidth: 0 }}
+            >
+              <option value="">Нет</option>
+              {TRACKS.slice(0, 60).map((t) => (
+                <option key={t.id} value={t.file}>{t.title} — {t.artist}</option>
+              ))}
+            </select>
+            <button
+              onClick={async () => {
+                const p = await window.electronAPI.selectAudio();
+                if (p) { setMusicPath(p); setMusicName(p.split(/[\\/]/).pop() ?? 'файл'); }
+              }}
+              style={{ ...btnSecondary, fontSize: 11 }}
+              title="Выбрать свой аудиофайл"
+            >
+              Файл…
+            </button>
+          </div>
+          {musicPath && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginBottom: 4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>♪ {musicName}</div>
+              <Slider label={`Громкость музыки ${Math.round(musicVol * 100)}%`} min={0} max={0.6} step={0.02} value={musicVol} onChange={setMusicVol} />
+            </>
+          )}
+          <div style={{ height: 6 }} />
+          <label style={{ ...rowLabel, marginBottom: 6 }}>
+            <input type="checkbox" checked={introOn} onChange={(e) => setIntroOn(e.target.checked)} /> Интро (2с)
+          </label>
+          {introOn && (
+            <input value={introText} onChange={(e) => setIntroText(e.target.value)} placeholder="Текст интро" style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12, marginBottom: 8 }} />
+          )}
+          <label style={{ ...rowLabel, marginBottom: 6 }}>
+            <input type="checkbox" checked={outroOn} onChange={(e) => setOutroOn(e.target.checked)} /> Аутро (2с)
+          </label>
+          {outroOn && (
+            <input value={outroText} onChange={(e) => setOutroText(e.target.value)} placeholder="Текст аутро" style={{ width: '100%', padding: '6px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12 }} />
+          )}
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
             <button onClick={removePauses} disabled={findingPauses} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }}>
               {findingPauses ? 'Анализ…' : 'Убрать паузы'}

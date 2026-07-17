@@ -253,6 +253,7 @@ const electronAPI = {
   recorderWriteTempWav: (data: ArrayBuffer): Promise<string> => ipcRenderer.invoke('recorder:writeTempWav', data),
   recorderEncodeFrames: (opts: {
     dir: string; fps: number; format: 'mp4' | 'gif'; audioSrc?: string; clickTrackPath?: string;
+    musicPath?: string; musicVolume?: number; audioDelaySec?: number;
     segments: { s: number; e: number }[]; speed: number; frameCount: number; outPath: string;
   }): Promise<{ ok: true; path: string } | { error: string }> => ipcRenderer.invoke('recorder:encodeFrames', opts),
   onRecorderEncodeProgress: (cb: (percent: number) => void): (() => void) => {
