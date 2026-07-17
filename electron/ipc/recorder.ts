@@ -3,6 +3,7 @@ import ffmpegStatic from 'ffmpeg-static';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import https from 'node:https';
+import os from 'node:os';
 import path from 'node:path';
 import { getOpenRouterKey } from './config';
 
@@ -312,6 +313,13 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
     }
   });
 
+  // Записать временный WAV (клик-дорожка) → путь во временной папке.
+  ipcMain.handle('recorder:writeTempWav', async (_e, data: ArrayBuffer) => {
+    const p = path.join(os.tmpdir(), `pulsar-clicks-${Date.now()}.wav`);
+    await fs.promises.writeFile(p, Buffer.from(data));
+    return p;
+  });
+
   // Покадровый экспорт: кадры (frame_%06d.jpg в temp-папке) → mp4/gif через ffmpeg.
   // Аудио для mp4 собирается из исходника по оставшимся сегментам + скорость.
   ipcMain.handle('recorder:encodeFrames', async (e, opts: {
@@ -319,6 +327,7 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
     fps: number;
     format: 'mp4' | 'gif';
     audioSrc?: string;
+    clickTrackPath?: string;
     segments: { s: number; e: number }[];
     speed: number;
     frameCount: number;
@@ -355,6 +364,8 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
     } else {
       const base = ['-y', '-framerate', String(fps), '-i', framePattern];
       const vcodec = ['-c:v', 'libx264', '-crf', '18', '-pix_fmt', 'yuv420p', '-preset', 'veryfast', '-movflags', '+faststart'];
+      const aac = ['-c:a', 'aac', '-b:a', '192k'];
+      const click = opts.clickTrackPath;
       // Аудио из исходника по сегментам (source-time) + atempo под скорость.
       const withAudio = opts.audioSrc && opts.segments.length > 0;
       if (withAudio) {
@@ -362,17 +373,33 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
         const trim = segs.map((sg, i) => `[1:a]atrim=${sg.s.toFixed(3)}:${sg.e.toFixed(3)},asetpts=PTS-STARTPTS[a${i}]`).join(';');
         const concat = segs.map((_, i) => `[a${i}]`).join('') + `concat=n=${segs.length}:v=0:a=1[ac]`;
         const sp = Number(opts.speed) || 1;
-        const tempo = Math.abs(sp - 1) > 0.001 ? `;[ac]${atempoChain(sp).join(',')}[aout]` : '';
-        const outLabel = tempo ? '[aout]' : '[ac]';
-        const filter = `${trim};${concat}${tempo}`;
-        const args = [...base, '-i', opts.audioSrc!, '-filter_complex', filter, '-map', '0:v', '-map', outLabel, ...vcodec, '-c:a', 'aac', '-b:a', '192k', '-shortest', opts.outPath];
+        const tempo = Math.abs(sp - 1) > 0.001 ? `;[ac]${atempoChain(sp).join(',')}[main]` : ';[ac]anull[main]';
+        let filter = `${trim};${concat}${tempo}`;
+        const args = [...base, '-i', opts.audioSrc!];
+        let mapLabel = '[main]';
+        if (click) {
+          args.push('-i', click);
+          filter += ';[main][2:a]amix=inputs=2:normalize=0:duration=first[amixed]';
+          mapLabel = '[amixed]';
+        }
+        args.push('-filter_complex', filter, '-map', '0:v', '-map', mapLabel, ...vcodec, ...aac, '-shortest', opts.outPath);
         result = await runFfmpeg(args);
         // Фолбэк без звука (напр. в записи не было аудиодорожки).
         if ('error' in result) {
           result = await runFfmpeg([...base, ...vcodec, '-an', opts.outPath]);
         }
+      } else if (click) {
+        // Нет исходного звука — только клики.
+        result = await runFfmpeg([...base, '-i', click, '-map', '0:v', '-map', '1:a', ...vcodec, ...aac, '-shortest', opts.outPath]);
       } else {
         result = await runFfmpeg([...base, ...vcodec, '-an', opts.outPath]);
+      }
+      if (click) {
+        try {
+          await fs.promises.rm(click, { force: true });
+        } catch {
+          /* noop */
+        }
       }
     }
 

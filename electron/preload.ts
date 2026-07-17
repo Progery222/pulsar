@@ -250,8 +250,9 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('recorder:mp4Progress', listener);
   },
   // Покадровый экспорт (mp4/gif).
+  recorderWriteTempWav: (data: ArrayBuffer): Promise<string> => ipcRenderer.invoke('recorder:writeTempWav', data),
   recorderEncodeFrames: (opts: {
-    dir: string; fps: number; format: 'mp4' | 'gif'; audioSrc?: string;
+    dir: string; fps: number; format: 'mp4' | 'gif'; audioSrc?: string; clickTrackPath?: string;
     segments: { s: number; e: number }[]; speed: number; frameCount: number; outPath: string;
   }): Promise<{ ok: true; path: string } | { error: string }> => ipcRenderer.invoke('recorder:encodeFrames', opts),
   onRecorderEncodeProgress: (cb: (percent: number) => void): (() => void) => {

@@ -5,6 +5,7 @@ import type { RecordingResult } from './types';
 import { buildAutoZoomRegions, clampTransform, computeZoomTransform, cursorAt, samplesToTelemetry, smoothTelemetry, zoomTargetAt, type ZoomRegion } from './zoom/autoZoom';
 import { createZoomSpring, resetZoomSpring, stepZoomSpring } from './zoom/spring';
 import { ANN_COLORS, drawAnnotations, hitTest, type Annotation, type AnnKind, type Handle } from './annotations';
+import { makeClickTrackWav } from './clickTrack';
 
 const BACKGROUNDS: { id: string; label: string; paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void }[] = [
   { id: 'none', label: 'Нет', paint: (ctx, w, h) => { ctx.clearRect(0, 0, w, h); } },
@@ -186,6 +187,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [trimEnd, setTrimEnd] = useState(result.durationMs / 1000);
   const [cuts, setCuts] = useState<{ id: string; start: number; end: number }[]>([]);
   const [speed, setSpeed] = useState(1);
+  const [clickSound, setClickSound] = useState(true);
   const [findingPauses, setFindingPauses] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [aiNotes, setAiNotes] = useState<{ title: string; summary: string; chapters: { t: number; label: string }[] } | null>(null);
@@ -861,6 +863,34 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
         await window.electronAPI.proWriteFrame(frameDir, i, buf);
         if (i % 3 === 0) setExportPct(Math.round((i / frameCount) * 80));
       }
+      // Клик-дорожка (звук клика) — позиции кликов в выходном таймлайне.
+      let clickTrackPath: string | undefined;
+      if (format === 'mp4' && clickSound && result.clicks && result.clicks.length) {
+        const outTimes: number[] = [];
+        for (const ms of result.clicks) {
+          const src = ms / 1000;
+          if (src < trimStart || src > trimEnd) continue;
+          let acc = 0;
+          let mapped: number | null = null;
+          for (const seg of keptSegments) {
+            if (src < seg.s) break;
+            if (src <= seg.e) {
+              mapped = (acc + (src - seg.s)) / speed;
+              break;
+            }
+            acc += seg.e - seg.s;
+          }
+          if (mapped != null) outTimes.push(mapped);
+        }
+        if (outTimes.length) {
+          try {
+            const wav = await makeClickTrackWav(outTimes, editedDur);
+            clickTrackPath = await window.electronAPI.recorderWriteTempWav(wav);
+          } catch {
+            /* без звука клика */
+          }
+        }
+      }
       const base = result.editPath ? result.editPath.split(/[\\/]/).pop()!.replace(/\.[^.]+$/, '') : 'recording';
       const outPath = `${dir}\\${base}-export.${format}`;
       const res = await window.electronAPI.recorderEncodeFrames({
@@ -868,6 +898,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
         fps,
         format,
         audioSrc: format === 'mp4' ? result.editPath : undefined,
+        clickTrackPath,
         segments: keptSegments,
         speed,
         frameCount,
@@ -1076,6 +1107,9 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
             Итог: {editedDur.toFixed(1)}с{cuts.length ? ` · вырезано ${cuts.length}` : ''}
           </div>
           <Slider label={`Скорость ${speed.toFixed(1)}×`} min={0.5} max={4} step={0.1} value={speed} onChange={setSpeed} />
+          <label style={{ ...rowLabel, marginBottom: 8 }}>
+            <input type="checkbox" checked={clickSound} onChange={(e) => setClickSound(e.target.checked)} /> Звук клика при экспорте
+          </label>
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
             <button onClick={removePauses} disabled={findingPauses} style={{ ...btnSecondary, flex: 1, fontSize: 11.5 }}>
               {findingPauses ? 'Анализ…' : 'Убрать паузы'}
