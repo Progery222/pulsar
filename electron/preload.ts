@@ -231,9 +231,9 @@ const electronAPI = {
     ipcRenderer.invoke('recorder:getSources'),
   recorderSelectSource: (sourceId: string): Promise<{ ok: true }> =>
     ipcRenderer.invoke('recorder:selectSource', sourceId),
-  recorderCursorStart: (): Promise<{ ok: true; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } }> =>
-    ipcRenderer.invoke('recorder:cursorStart'),
-  recorderCursorStop: (): Promise<{ samples: { t: number; x: number; y: number }[]; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } | null; clicks: number[] }> =>
+  recorderCursorStart: (captureKeys?: boolean): Promise<{ ok: true; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } }> =>
+    ipcRenderer.invoke('recorder:cursorStart', captureKeys),
+  recorderCursorStop: (): Promise<{ samples: { t: number; x: number; y: number }[]; display: { bounds: { x: number; y: number; width: number; height: number }; scaleFactor: number } | null; clicks: number[]; keys: { t: number; vk: number; mask: number }[] }> =>
     ipcRenderer.invoke('recorder:cursorStop'),
   recorderMinimizeMain: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:minimizeMain'),
   recorderRestoreMain: (): Promise<{ ok: true }> => ipcRenderer.invoke('recorder:restoreMain'),

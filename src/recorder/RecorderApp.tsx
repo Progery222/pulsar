@@ -28,6 +28,7 @@ export default function RecorderApp() {
   const [mic, setMic] = useState(false);
   const [systemAudio, setSystemAudio] = useState(true);
   const [webcam, setWebcam] = useState(false);
+  const [showKeys, setShowKeys] = useState(false);
   const [quality, setQuality] = useState<Quality>('1080p');
   const [hideCursor, setHideCursor] = useState(false);
   const [useCountdown, setUseCountdown] = useState(true);
@@ -162,7 +163,7 @@ export default function RecorderApp() {
       if (recorderRef.current && recorderRef.current.state !== 'inactive') stopRecording();
     });
 
-    await window.electronAPI.recorderCursorStart();
+    await window.electronAPI.recorderCursorStart(showKeys);
     await window.electronAPI.recorderMinimizeMain();
     await window.electronAPI.recorderOpenControl();
 
@@ -261,6 +262,7 @@ export default function RecorderApp() {
         durationMs,
         cursor: cursorData.samples,
         clicks: cursorData.clicks,
+        keys: cursorData.keys,
         display: cursorData.display,
         width: dimsRef.current.w,
         height: dimsRef.current.h,
@@ -438,6 +440,9 @@ export default function RecorderApp() {
         </label>
         <label style={optRow}>
           <input type="checkbox" checked={webcam} onChange={(e) => setWebcam(e.target.checked)} /> Вебкамера
+        </label>
+        <label style={optRow} title="Показывать нажатые клавиши поверх видео (для туториалов). Захват клавиш только во время записи.">
+          <input type="checkbox" checked={showKeys} onChange={(e) => setShowKeys(e.target.checked)} /> Показ клавиш
         </label>
         <label style={optRow}>
           <input type="checkbox" checked={useCountdown} onChange={(e) => setUseCountdown(e.target.checked)} /> Отсчёт 3 сек

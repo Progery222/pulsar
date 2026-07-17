@@ -29,6 +29,7 @@ export interface RecordingResult {
   durationMs: number;
   cursor: CursorSample[];
   clicks?: number[]; // мс от старта записи (реальные клики ЛКМ)
+  keys?: { t: number; vk: number; mask: number }[]; // нажатия клавиш (если включён захват)
   display: RecordedDisplay | null;
   width: number;
   height: number;

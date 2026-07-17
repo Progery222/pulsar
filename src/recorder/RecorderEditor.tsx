@@ -6,6 +6,7 @@ import { buildAutoZoomRegions, clampTransform, computeZoomTransform, cursorAt, s
 import { createZoomSpring, resetZoomSpring, stepZoomSpring } from './zoom/spring';
 import { ANN_COLORS, drawAnnotations, hitTest, type Annotation, type AnnKind, type Handle } from './annotations';
 import { makeClickTrackWav } from './clickTrack';
+import { keyLabel } from './keys';
 
 const BACKGROUNDS: { id: string; label: string; paint: (ctx: CanvasRenderingContext2D, w: number, h: number) => void }[] = [
   { id: 'none', label: 'Нет', paint: (ctx, w, h) => { ctx.clearRect(0, 0, w, h); } },
@@ -171,6 +172,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
   const [panFollow, setPanFollow] = useState(true);
   const [cursorSmoothing, setCursorSmoothing] = useState(0.5);
   const [clickPulse, setClickPulse] = useState(true);
+  const [keysOverlay, setKeysOverlay] = useState(true);
   const [captionOn, setCaptionOn] = useState(false);
   const [captionLang, setCaptionLang] = useState('ru');
   const [transcribing, setTranscribing] = useState(false);
@@ -455,6 +457,47 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
       }
     }
 
+    // Показ нажатых клавиш — бейдж последней клавиши (держится ~1.3с, затухает).
+    if (keysOverlay && result.keys && result.keys.length) {
+      const HOLD = 1300;
+      let latest: { t: number; vk: number; mask: number } | null = null;
+      for (const k of result.keys) {
+        if (k.t <= tMs && tMs - k.t < HOLD) {
+          if (!latest || k.t > latest.t) latest = k;
+        }
+      }
+      if (latest) {
+        const age = tMs - latest.t;
+        const alpha = age > HOLD - 300 ? Math.max(0, (HOLD - age) / 300) : 1;
+        const label = keyLabel(latest.vk, latest.mask);
+        const fs = Math.round(W * 0.026);
+        ctx.save();
+        roundRectPath(ctx, contentX, contentY, contentW, contentH, radius);
+        ctx.clip();
+        ctx.font = `700 ${fs}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const tw = ctx.measureText(label).width;
+        const padX = fs * 0.6;
+        const padY = fs * 0.4;
+        const bw = tw + padX * 2;
+        const bh = fs + padY * 2;
+        const bx = contentX + contentW / 2 - bw / 2;
+        const by = contentY + contentH - bh - contentH * 0.14;
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(18,18,20,0.85)';
+        roundRectPath(ctx, bx, by, bw, bh, fs * 0.35);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+        ctx.lineWidth = 1.5;
+        roundRectPath(ctx, bx, by, bw, bh, fs * 0.35);
+        ctx.stroke();
+        ctx.fillStyle = '#fff';
+        ctx.fillText(label, contentX + contentW / 2, by + bh / 2 + 1);
+        ctx.restore();
+      }
+    }
+
     // Вебкамера (PiP) — поверх всего, в углу кадра.
     const camEl = webcamVidRef.current;
     if (camOn && camEl && camEl.videoWidth > 0) {
@@ -645,7 +688,7 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
     rafRef.current = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, smoothTele, panFollow, clickPulse, captionOn, captionLines, annotations, selectedAnn, exporting, aspect, camOn, camPos, camShape, camSize, camUrl]);
+  }, [regions, bg, padding, radius, playing, cursorStyle, cursorSize, smoothTele, panFollow, clickPulse, keysOverlay, captionOn, captionLines, annotations, selectedAnn, exporting, aspect, camOn, camPos, camShape, camSize, camUrl]);
 
   function togglePlay() {
     const v = videoRef.current;
@@ -1229,6 +1272,11 @@ export default function RecorderEditor({ result, onBack }: { result: RecordingRe
             ))}
           </div>
           <Slider label={`Размер курсора ${cursorSize.toFixed(1)}×`} min={0.5} max={2.5} step={0.1} value={cursorSize} onChange={setCursorSize} disabled={cursorStyle === 'off'} />
+          {result.keys && result.keys.length > 0 && (
+            <label style={{ ...rowLabel, marginTop: 4 }}>
+              <input type="checkbox" checked={keysOverlay} onChange={(e) => setKeysOverlay(e.target.checked)} /> Показывать нажатые клавиши
+            </label>
+          )}
 
           <div style={{ height: 12 }} />
           <div style={{ fontSize: 12.5, color: 'var(--text-primary)', marginBottom: 6 }}>Субтитры</div>

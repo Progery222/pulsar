@@ -58,20 +58,57 @@ let cursorSamples: CursorSample[] = [];
 let cursorStartTime = 0;
 let recordedDisplay: RecordedDisplay | null = null;
 
-// Захват кликов ЛКМ через опрос GetAsyncKeyState (PowerShell) — без нативного модуля.
+// Захват кликов ЛКМ и (опц.) нажатий клавиш через опрос GetAsyncKeyState (PowerShell) —
+// без нативного модуля. Клики — всегда (для зума), клавиши — только по согласию.
 let clickChild: ReturnType<typeof spawn> | null = null;
 let clickTimes: number[] = [];
+let keyEvents: { t: number; vk: number; mask: number }[] = [];
 
-function startClickPoller() {
+function startInputPoller(captureKeys: boolean) {
   clickTimes = [];
+  keyEvents = [];
   if (process.platform !== 'win32') return;
-  const ps =
-    "Add-Type -Name U -Namespace W -MemberDefinition '[DllImport(\"user32.dll\")] public static extern short GetAsyncKeyState(int k);'; " +
-    '$p=$false; while($true){ $d=([W.U]::GetAsyncKeyState(1) -band 0x8000) -ne 0; if($d -and -not $p){ Write-Output CLICK; [Console]::Out.Flush() }; $p=$d; Start-Sleep -Milliseconds 12 }';
+  const decl = "Add-Type -Name U -Namespace W -MemberDefinition '[DllImport(\"user32.dll\")] public static extern short GetAsyncKeyState(int k);';";
+  const keyLoop = captureKeys
+    ? `
+$keys = 8,9,13,27,32,45,46,33,34,35,36,37,38,39,40 + (48..57) + (65..90) + (112..123)
+foreach($k in $keys){
+  $d = ([W.U]::GetAsyncKeyState($k) -band 0x8000) -ne 0
+  if($d -and -not $prev[$k]){
+    $m = 0
+    if(([W.U]::GetAsyncKeyState(17) -band 0x8000) -ne 0){$m+=1}
+    if(([W.U]::GetAsyncKeyState(16) -band 0x8000) -ne 0){$m+=2}
+    if(([W.U]::GetAsyncKeyState(18) -band 0x8000) -ne 0){$m+=4}
+    if((([W.U]::GetAsyncKeyState(91) -band 0x8000) -ne 0) -or (([W.U]::GetAsyncKeyState(92) -band 0x8000) -ne 0)){$m+=8}
+    Write-Output ("KEY " + $k + " " + $m)
+  }
+  $prev[$k] = $d
+}`
+    : '';
+  const ps = `${decl}
+$prev = @{}
+while($true){
+  $l = ([W.U]::GetAsyncKeyState(1) -band 0x8000) -ne 0
+  if($l -and -not $prev[1]){ Write-Output "CLICK" }
+  $prev[1] = $l${keyLoop}
+  [Console]::Out.Flush()
+  Start-Sleep -Milliseconds 14
+}`;
   try {
     clickChild = spawn('powershell', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-Command', ps], { windowsHide: true });
+    let buf = '';
     clickChild.stdout?.on('data', (d: Buffer) => {
-      if (d.toString().includes('CLICK')) clickTimes.push(Date.now() - cursorStartTime);
+      buf += d.toString();
+      const lines = buf.split(/\r?\n/);
+      buf = lines.pop() ?? '';
+      for (const line of lines) {
+        const t = Date.now() - cursorStartTime;
+        if (line === 'CLICK') clickTimes.push(t);
+        else if (line.startsWith('KEY ')) {
+          const parts = line.split(' ');
+          keyEvents.push({ t, vk: Number(parts[1]) || 0, mask: Number(parts[2]) || 0 });
+        }
+      }
     });
     clickChild.on('error', () => { clickChild = null; });
   } catch {
@@ -79,7 +116,7 @@ function startClickPoller() {
   }
 }
 
-function stopClickPoller() {
+function stopInputPoller() {
   if (clickChild) {
     try {
       clickChild.kill();
@@ -161,7 +198,7 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
   });
 
   // Старт трекинга курсора (60 Гц). Возвращает bounds/scale дисплея для нормализации.
-  ipcMain.handle('recorder:cursorStart', () => {
+  ipcMain.handle('recorder:cursorStart', (_e, captureKeys?: boolean) => {
     recordedDisplay = displayForSource(selectedSourceId);
     cursorSamples = [];
     cursorStartTime = Date.now();
@@ -170,18 +207,18 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
       const p = screen.getCursorScreenPoint();
       cursorSamples.push({ t: Date.now() - cursorStartTime, x: p.x, y: p.y });
     }, 1000 / 60);
-    startClickPoller();
+    startInputPoller(!!captureKeys);
     return { ok: true, display: recordedDisplay };
   });
 
-  // Стоп трекинга — вернуть собранные сэмплы, клики и метаданные дисплея.
+  // Стоп трекинга — вернуть собранные сэмплы, клики, клавиши и метаданные дисплея.
   ipcMain.handle('recorder:cursorStop', () => {
     if (cursorTimer) {
       clearInterval(cursorTimer);
       cursorTimer = null;
     }
-    stopClickPoller();
-    return { samples: cursorSamples, display: recordedDisplay, clicks: clickTimes };
+    stopInputPoller();
+    return { samples: cursorSamples, display: recordedDisplay, clicks: clickTimes, keys: keyEvents };
   });
 
   // Свернуть/восстановить главное окно во время записи (чтобы наш UI не мешал кадру).
