@@ -303,10 +303,68 @@ input[type='range']:disabled {
 input[type='range']:disabled::-webkit-slider-thumb {
   background: var(--text-secondary);
 }
-input[type='checkbox'],
-input[type='radio'] {
-  accent-color: var(--accent-green);
-  width: 15px;
-  height: 15px;
+/* Чекбоксы — под тёмную тему (без белого нативного квадрата). */
+input[type='checkbox'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-tertiary);
   cursor: pointer;
+  position: relative;
+  vertical-align: middle;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+input[type='checkbox']:hover {
+  border-color: var(--accent-green);
+}
+input[type='checkbox']:checked {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
+}
+input[type='checkbox']:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1.5px;
+  width: 4px;
+  height: 8px;
+  border: solid #04120c;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+input[type='checkbox']:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+/* Радио-кнопки — в том же стиле. */
+input[type='radio'] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: var(--bg-tertiary);
+  cursor: pointer;
+  position: relative;
+  vertical-align: middle;
+  transition: border-color 0.12s ease;
+}
+input[type='radio']:hover {
+  border-color: var(--accent-green);
+}
+input[type='radio']:checked {
+  border-color: var(--accent-green);
+}
+input[type='radio']:checked::after {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: var(--accent-green);
 }
