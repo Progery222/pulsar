@@ -24,6 +24,7 @@ import DubApp from './dub/DubApp';
 import FunnelApp from './funnel/FunnelApp';
 import DownloadApp from './download/DownloadApp';
 import RecorderApp from './recorder/RecorderApp';
+import ImgOptApp from './imgopt/ImgOptApp';
 import SettingsScreen from './screens/SettingsScreen';
 import Chrome from './components/Chrome';
 import Overlays from './components/Overlays';
@@ -268,6 +269,18 @@ function App() {
       <>
         <Chrome>
           <RecorderApp />
+        </Chrome>
+        <Overlays />
+      </>
+    );
+  }
+
+  // Оптимизатор изображений (сжатие/конвертация/трансформ, локально).
+  if (appMode === 'imgopt') {
+    return (
+      <>
+        <Chrome>
+          <ImgOptApp />
         </Chrome>
         <Overlays />
       </>

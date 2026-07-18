@@ -43,6 +43,7 @@ import { registerProExportHandlers } from './ipc/proExport';
 import { registerTemplateHandlers } from './ipc/templateRender';
 import { registerFeedbackHandlers } from './ipc/feedback';
 import { registerRecorderHandlers } from './ipc/recorder';
+import { registerImgOptHandlers } from './ipc/imgopt';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
 process.env.APP_ROOT = path.join(__dirname, '..');
@@ -204,6 +205,7 @@ app.whenReady().then(() => {
   registerTemplateHandlers();
   registerFeedbackHandlers();
   registerRecorderHandlers(() => win);
+  registerImgOptHandlers();
   createWindow();
 });
 

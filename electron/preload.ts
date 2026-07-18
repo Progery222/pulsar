@@ -226,6 +226,10 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('funnel-progress', listener);
   },
 
+  // --- Модуль «Изображения» (оптимизатор) ---
+  imgWriteFile: (dir: string, name: string, data: ArrayBuffer): Promise<{ ok: true; path: string } | { error: string }> =>
+    ipcRenderer.invoke('img:writeFile', dir, name, data),
+
   // --- Запись экрана (рекордер) ---
   recorderGetSources: (): Promise<{ id: string; name: string; type: 'screen' | 'window'; thumbnail: string; appIcon: string | null }[]> =>
     ipcRenderer.invoke('recorder:getSources'),
