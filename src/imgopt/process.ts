@@ -24,6 +24,7 @@ export interface ImgSettings {
   contrast: number; // %
   saturate: number; // %
   blur: number; // px
+  sharpen: number; // 0..2 (резкость/шарпен после ресайза)
   wmText: string;
   wmPos: WmPos;
   wmSize: number; // % от ширины
@@ -47,6 +48,7 @@ export const DEFAULT_SETTINGS: ImgSettings = {
   contrast: 100,
   saturate: 100,
   blur: 0,
+  sharpen: 0,
   wmText: '',
   wmPos: 'br',
   wmSize: 5,
@@ -97,6 +99,34 @@ function drawWatermark(ctx: CanvasRenderingContext2D, w: number, h: number, s: I
   ctx.restore();
 }
 
+// Резкость (unsharp): свёртка 3×3, усиливает края после апскейла. amount 0..2.
+function applySharpen(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) {
+  if (amount <= 0 || w < 3 || h < 3) return;
+  const src = ctx.getImageData(0, 0, w, h);
+  const out = ctx.createImageData(w, h);
+  const sd = src.data;
+  const od = out.data;
+  const a = amount;
+  const center = 1 + 4 * a;
+  const row = w * 4;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (x === 0 || y === 0 || x === w - 1 || y === h - 1) {
+        od[i] = sd[i]; od[i + 1] = sd[i + 1]; od[i + 2] = sd[i + 2]; od[i + 3] = sd[i + 3];
+        continue;
+      }
+      for (let c = 0; c < 3; c++) {
+        const p = i + c;
+        const v = center * sd[p] - a * (sd[p - 4] + sd[p + 4] + sd[p - row] + sd[p + row]);
+        od[p] = v < 0 ? 0 : v > 255 ? 255 : v;
+      }
+      od[i + 3] = sd[i + 3];
+    }
+  }
+  ctx.putImageData(out, 0, 0);
+}
+
 export function renderCanvas(source: CanvasImageSource, sw: number, sh: number, s: ImgSettings): HTMLCanvasElement {
   // 1. Кроп по пресету (центр).
   let cx = 0;
@@ -134,6 +164,7 @@ export function renderCanvas(source: CanvasImageSource, sw: number, sh: number, 
   ctx.drawImage(source, cx, cy, cw, ch, -bw / 2, -bh / 2, bw, bh);
   ctx.restore();
 
+  if (s.sharpen > 0) applySharpen(ctx, outW, outH, s.sharpen);
   if (s.wmText.trim()) drawWatermark(ctx, outW, outH, s);
   return canvas;
 }

@@ -238,6 +238,24 @@ export default function ImgOptApp() {
           )}
         </Sec>
 
+        <Sec title="Апскейл">
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {[2, 3, 4].map((f) => (
+              <button
+                key={f}
+                onClick={() => sel && set({ resizeEnabled: true, resizeW: Math.round(sel.sw * f), resizeH: Math.round(sel.sh * f), sharpen: s.sharpen || 0.6 })}
+                disabled={!sel}
+                style={chip}
+                title={`Увеличить в ${f} раза с резкостью`}
+              >
+                ×{f}
+              </button>
+            ))}
+          </div>
+          <Slider label={`Резкость ${s.sharpen.toFixed(2)}`} min={0} max={2} step={0.05} value={s.sharpen} onChange={(v) => set({ sharpen: v })} />
+          <div style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>Интерполяция + шарпен (без AI-дорисовки деталей)</div>
+        </Sec>
+
         <Sec title="Трансформ">
           <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
             <button onClick={() => set({ rotate: ((s.rotate + 270) % 360) as Rotate })} style={chip}>⟲</button>
