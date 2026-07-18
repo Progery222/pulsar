@@ -229,6 +229,13 @@ const electronAPI = {
   // --- Модуль «Изображения» (оптимизатор) ---
   imgWriteFile: (dir: string, name: string, data: ArrayBuffer): Promise<{ ok: true; path: string } | { error: string }> =>
     ipcRenderer.invoke('img:writeFile', dir, name, data),
+  imgUpscaleAI: (data: ArrayBuffer): Promise<{ ok: true; path: string } | { error: string }> =>
+    ipcRenderer.invoke('img:upscaleAI', data),
+  onImgUpscaleProgress: (cb: (percent: number) => void): (() => void) => {
+    const listener = (_e: unknown, percent: number) => cb(percent);
+    ipcRenderer.on('img:upscaleProgress', listener);
+    return () => ipcRenderer.removeListener('img:upscaleProgress', listener);
+  },
 
   // --- Запись экрана (рекордер) ---
   recorderGetSources: (): Promise<{ id: string; name: string; type: 'screen' | 'window'; thumbnail: string; appIcon: string | null }[]> =>

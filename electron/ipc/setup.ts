@@ -24,6 +24,7 @@ const PIP_PACKAGE: Record<string, string[]> = {
   translate: ['deep-translator'],
   download: ['yt-dlp'],
   whisper: ['faster-whisper'],
+  upscale: ['onnxruntime', 'pillow', 'numpy'],
 };
 
 interface SetupStatus {

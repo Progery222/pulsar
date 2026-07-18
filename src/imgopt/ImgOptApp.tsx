@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { showToast } from '../store/toastStore';
+import { mediaUrl } from '../utils/media';
 import { DEFAULT_SETTINGS, encode, extForFormat, renderCanvas, type CropPreset, type ImgFormat, type ImgSettings, type Rotate, type WmPos } from './process';
 
 interface Item {
@@ -31,6 +32,9 @@ export default function ImgOptApp() {
   const [procUrl, setProcUrl] = useState<string | null>(null);
   const [procSize, setProcSize] = useState<number | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
+  const [aiBusy, setAiBusy] = useState(false);
+  const [aiPct, setAiPct] = useState(0);
+  const [installing, setInstalling] = useState(false);
   const debTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const sel = useMemo(() => items.find((i) => i.id === selId) ?? null, [items, selId]);
@@ -126,6 +130,50 @@ export default function ImgOptApp() {
   function onResizeH(v: number) {
     if (lockAspect && sel) set({ resizeH: v, resizeW: Math.round(v * (sel.sw / sel.sh)) });
     else set({ resizeH: v });
+  }
+
+  // AI-апскейл (Python + ONNX super-resolution) исходного изображения.
+  async function aiUpscale() {
+    if (!sel) return;
+    setAiBusy(true);
+    setAiPct(0);
+    const off = window.electronAPI.onImgUpscaleProgress((p) => setAiPct(p));
+    try {
+      const buf = await sel.file.arrayBuffer();
+      const res = await window.electronAPI.imgUpscaleAI(buf);
+      if ('error' in res) {
+        showToast('AI-апскейл: ' + res.error);
+        return;
+      }
+      const blob = await (await fetch(mediaUrl(res.path))).blob();
+      const bitmap = await createImageBitmap(blob);
+      const base = sel.name.replace(/\.[^.]+$/, '');
+      const item: Item = { id: `ai-${Date.now()}`, name: `${base}-x3-ai.png`, file: new File([blob], `${base}-x3-ai.png`, { type: 'image/png' }), bitmap, sw: bitmap.width, sh: bitmap.height, origSize: blob.size, url: URL.createObjectURL(blob) };
+      setItems((prev) => [...prev, item]);
+      setSelId(item.id);
+      showToast(`AI-апскейл готов: ${bitmap.width}×${bitmap.height}`);
+    } catch (e) {
+      showToast('Ошибка AI-апскейла: ' + (e as Error).message);
+    } finally {
+      off();
+      setAiBusy(false);
+      setAiPct(0);
+    }
+  }
+
+  async function installUpscale() {
+    setInstalling(true);
+    const off = window.electronAPI.onSetupProgress((ev) => { if (ev.percent != null) setAiPct(ev.percent); });
+    try {
+      const res = await window.electronAPI.setupInstall('upscale');
+      showToast('error' in res ? 'Установка не удалась: ' + res.error : 'AI-движок установлен — можно апскейлить');
+    } catch (e) {
+      showToast('Ошибка установки: ' + (e as Error).message);
+    } finally {
+      off();
+      setInstalling(false);
+      setAiPct(0);
+    }
   }
 
   const saved = sel && procSize != null ? sel.origSize - procSize : 0;
@@ -253,7 +301,14 @@ export default function ImgOptApp() {
             ))}
           </div>
           <Slider label={`Резкость ${s.sharpen.toFixed(2)}`} min={0} max={2} step={0.05} value={s.sharpen} onChange={(v) => set({ sharpen: v })} />
-          <div style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>Интерполяция + шарпен (без AI-дорисовки деталей)</div>
+          <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginBottom: 8 }}>Интерполяция + шарпен (без AI-дорисовки деталей)</div>
+          <button onClick={aiUpscale} disabled={!sel || aiBusy} style={{ ...btnPrimary, width: '100%' }}>
+            {aiBusy ? `AI-апскейл… ${aiPct}%` : 'AI-апскейл ×3 (нейросеть)'}
+          </button>
+          <button onClick={installUpscale} disabled={installing} style={{ ...btnGhost, width: '100%', marginTop: 6, fontSize: 11.5 }}>
+            {installing ? `Установка… ${aiPct}%` : 'Установить AI-движок (onnxruntime)'}
+          </button>
+          <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 4 }}>ONNX super-resolution, локально. Первый раз — установка движка + загрузка модели.</div>
         </Sec>
 
         <Sec title="Трансформ">
