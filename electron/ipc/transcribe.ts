@@ -107,7 +107,8 @@ export async function transcribeWhisper(
     return await new Promise<TranscriptWord[]>((resolve, reject) => {
       const args = [whisperScript(), wav, '--language', language || 'auto', '--model', model];
       // Модель Whisper качается с HuggingFace; в заблокированных сетях — через зеркало.
-      const env = { ...process.env, HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com' };
+      // PYTHONIOENCODING/PYTHONUTF8 — чтобы кириллица из stdout приходила в UTF-8 (Windows cp1251 иначе бьёт текст).
+      const env = { ...process.env, HF_ENDPOINT: process.env.HF_ENDPOINT || 'https://hf-mirror.com', PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
       const child = spawn(pyCmd(), args, { env });
       let out = '';
       let err = '';

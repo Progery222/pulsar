@@ -17,6 +17,14 @@ import json
 import os
 import sys
 
+# На Windows stdout по умолчанию в кодировке консоли (cp1251) — форсируем UTF-8,
+# иначе кириллица приходит в Node как «мусор»/replacement-символы.
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+except Exception:  # noqa: BLE001
+    pass
+
 
 def _out(obj):
     sys.stdout.write(json.dumps(obj, ensure_ascii=False))

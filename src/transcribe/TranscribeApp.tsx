@@ -153,7 +153,7 @@ export default function TranscribeApp() {
                   {prog?.stage === 'extract'
                     ? 'Извлечение аудио…'
                     : (prog?.percent ?? 0) <= 1
-                      ? 'Загрузка модели…'
+                      ? 'Загрузка модели в память…'
                       : 'Распознавание речи…'}
                 </span>
                 <span style={{ fontVariantNumeric: 'tabular-nums' }}>{prog?.stage === 'transcribe' ? `${prog?.percent ?? 0}%` : ''}</span>
@@ -171,7 +171,7 @@ export default function TranscribeApp() {
                 />
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 8 }}>
-                Первый запуск может скачивать модель Whisper (~470 МБ) — тогда прогресс появится не сразу.
+                Модель Whisper загружается в память (несколько секунд) — качать заново не нужно, если она установлена. Затем пойдёт процент распознавания.
               </div>
               <style>{`@keyframes tsIndet{0%{transform:translateX(-30%)}50%{transform:translateX(300%)}100%{transform:translateX(-30%)}}`}</style>
             </div>
