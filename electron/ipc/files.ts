@@ -160,7 +160,9 @@ export function registerFileHandlers() {
     });
     if (res.canceled || !res.filePath) return { cancelled: true as const };
     try {
-      await fs.promises.writeFile(res.filePath, content, 'utf8');
+      // UTF-8 BOM — чтобы Windows-редакторы/плееры не путали кодировку кириллицы.
+      const withBom = content.charCodeAt(0) === 0xfeff ? content : String.fromCharCode(0xfeff) + content;
+      await fs.promises.writeFile(res.filePath, withBom, 'utf8');
       return { ok: true as const, path: res.filePath };
     } catch (err) {
       return { error: (err as Error).message };

@@ -83,7 +83,10 @@ export default function TranscribeApp() {
     const content = fmtKind === 'srt' ? toSRT(cues) : fmtKind === 'vtt' ? toVTT(cues) : toTXT(cues);
     const res = await window.electronAPI.saveTextFile(`${base}.${fmtKind}`, content);
     if ('error' in res) showToast('Не удалось сохранить: ' + res.error);
-    else if ('ok' in res) showToast('Сохранено: ' + res.path);
+    else if ('ok' in res) {
+      showToast('Сохранено: ' + res.path);
+      window.electronAPI.showItemInFolder(res.path); // открыть папку с выделением файла
+    }
   }
 
   function copyText() {
