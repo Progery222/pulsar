@@ -72,6 +72,16 @@ export function registerFileHandlers() {
       return { error: (e as Error).message };
     }
   });
+
+  // Транскрибация с прогрессом (модуль «Субтитры») -> события 'transcribe:progress'.
+  ipcMain.handle('transcribe:run', async (e, src: string, language: string) => {
+    try {
+      const words = await transcribeWhisper(src, language || 'auto', 'small', (ev) => e.sender.send('transcribe:progress', ev));
+      return { words };
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+  });
   // Листинг директории для бокового проводника. dir пустой -> диски (Windows) / home.
   ipcMain.handle('fs:listDir', async (_e, dir: string | null) => {
     try {

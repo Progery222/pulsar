@@ -27,6 +27,7 @@ export default function TranscribeApp() {
   const [selPath, setSelPath] = useState<string | null>(null);
   const [lang, setLang] = useState('auto');
   const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState<{ stage: 'extract' | 'transcribe'; percent: number } | null>(null);
   const [cuesByPath, setCuesByPath] = useState<Record<string, Cue[]>>({});
 
   const cues = selPath ? cuesByPath[selPath] : undefined;
@@ -46,8 +47,10 @@ export default function TranscribeApp() {
 
   async function transcribe(path: string) {
     setBusy(true);
+    setProg({ stage: 'extract', percent: 0 });
+    const off = window.electronAPI.onTranscribeProgress((ev) => setProg(ev));
     try {
-      const res = await window.electronAPI.proTranscribe(path, lang);
+      const res = await window.electronAPI.transcribeRun(path, lang);
       if ('error' in res) {
         showToast('Распознавание недоступно: ' + res.error + ' (нужен Python + Whisper — Настройки)');
         return;
@@ -58,7 +61,9 @@ export default function TranscribeApp() {
     } catch (e) {
       showToast('Ошибка распознавания: ' + (e as Error).message);
     } finally {
+      off();
       setBusy(false);
+      setProg(null);
     }
   }
 
@@ -126,7 +131,7 @@ export default function TranscribeApp() {
             </select>
           </label>
           <button onClick={() => selPath && transcribe(selPath)} disabled={!selPath || busy} style={primaryBtn}>
-            {busy ? 'Распознаю…' : 'Распознать речь'}
+            {busy ? (prog?.stage === 'transcribe' && (prog?.percent ?? 0) > 1 ? `Распознаю… ${prog?.percent}%` : 'Распознаю…') : 'Распознать речь'}
           </button>
           <div style={{ flex: 1 }} />
           <button onClick={() => exportAs('srt')} disabled={!cues} style={secondaryBtn}>SRT</button>
@@ -138,7 +143,36 @@ export default function TranscribeApp() {
         <div style={{ flex: 1, overflowY: 'auto', padding: 18 }}>
           {!selPath && <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Выберите видео слева.</div>}
           {selPath && !cues && !busy && <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Нажмите «Распознать речь». Работает офлайн через Whisper.</div>}
-          {busy && <div style={{ color: 'var(--text-secondary)', fontSize: 13 }}>Идёт распознавание… это может занять время в зависимости от длины.</div>}
+          {busy && (
+            <div style={{ maxWidth: 520 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5, color: 'var(--text-secondary)', marginBottom: 6 }}>
+                <span>
+                  {prog?.stage === 'extract'
+                    ? 'Извлечение аудио…'
+                    : (prog?.percent ?? 0) <= 1
+                      ? 'Загрузка модели…'
+                      : 'Распознавание речи…'}
+                </span>
+                <span style={{ fontVariantNumeric: 'tabular-nums' }}>{prog?.stage === 'transcribe' ? `${prog?.percent ?? 0}%` : ''}</span>
+              </div>
+              <div style={{ height: 8, borderRadius: 999, background: 'var(--bg-tertiary)', overflow: 'hidden' }}>
+                <div
+                  style={{
+                    height: '100%',
+                    width: prog?.stage === 'transcribe' && (prog?.percent ?? 0) > 1 ? `${prog?.percent}%` : '15%',
+                    background: 'var(--accent-green)',
+                    borderRadius: 999,
+                    transition: 'width 0.3s ease',
+                    animation: prog?.stage === 'extract' || (prog?.percent ?? 0) <= 1 ? 'tsIndet 1.1s ease-in-out infinite' : 'none',
+                  }}
+                />
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 8 }}>
+                Первый запуск может скачивать модель Whisper (~470 МБ) — тогда прогресс появится не сразу.
+              </div>
+              <style>{`@keyframes tsIndet{0%{transform:translateX(-30%)}50%{transform:translateX(300%)}100%{transform:translateX(-30%)}}`}</style>
+            </div>
+          )}
           {cues && cues.length > 0 && (
             <div style={{ maxWidth: 780 }}>
               {cues.map((c, i) => (

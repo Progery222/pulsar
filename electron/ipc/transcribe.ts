@@ -94,8 +94,15 @@ function whisperScript(): string {
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', 'whisper_asr.py');
 }
 
-export async function transcribeWhisper(videoPath: string, language: string, model = 'small'): Promise<TranscriptWord[]> {
+export async function transcribeWhisper(
+  videoPath: string,
+  language: string,
+  model = 'small',
+  onProgress?: (ev: { stage: 'extract' | 'transcribe'; percent: number }) => void
+): Promise<TranscriptWord[]> {
+  onProgress?.({ stage: 'extract', percent: 0 });
   const wav = await extractAudio(videoPath);
+  onProgress?.({ stage: 'transcribe', percent: 1 });
   try {
     return await new Promise<TranscriptWord[]>((resolve, reject) => {
       const args = [whisperScript(), wav, '--language', language || 'auto', '--model', model];
@@ -105,7 +112,14 @@ export async function transcribeWhisper(videoPath: string, language: string, mod
       let out = '';
       let err = '';
       child.stdout.on('data', (c) => (out += c.toString()));
-      child.stderr.on('data', (c) => (err += c.toString()));
+      child.stderr.on('data', (c) => {
+        const s = c.toString();
+        err += s;
+        for (const line of s.split(/\r?\n/)) {
+          const m = /PROGRESS\s+(\d+)/.exec(line);
+          if (m) onProgress?.({ stage: 'transcribe', percent: Math.min(99, Number(m[1])) });
+        }
+      });
       child.on('error', (e) => reject(e));
       child.on('close', () => {
         try {

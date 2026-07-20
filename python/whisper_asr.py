@@ -45,8 +45,18 @@ def main():
         lang = None if args.language in ("auto", "", None) else args.language
         segments, info = model.transcribe(args.audio, language=lang, word_timestamps=True)
 
+        # Прогресс — в stderr (stdout занят финальным JSON). % = конец сегмента / длина аудио.
+        total = float(getattr(info, "duration", 0) or 0)
+
+        def _progress(sec):
+            if total > 0:
+                pct = max(0, min(99, int(sec / total * 100)))
+                sys.stderr.write(f"PROGRESS {pct}\n")
+                sys.stderr.flush()
+
         words = []
         for seg in segments:
+            _progress(getattr(seg, "end", 0) or 0)
             if seg.words:
                 for w in seg.words:
                     t = (w.word or "").strip()

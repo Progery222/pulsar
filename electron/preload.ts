@@ -24,6 +24,13 @@ const electronAPI = {
   // Авто-титры: распознавание речи (offline Whisper) — слова с таймингами (мс).
   proTranscribe: (src: string, language: string): Promise<{ words: { text: string; start: number; end: number }[] } | { error: string }> =>
     ipcRenderer.invoke('pro:transcribe', src, language),
+  transcribeRun: (src: string, language: string): Promise<{ words: { text: string; start: number; end: number }[] } | { error: string }> =>
+    ipcRenderer.invoke('transcribe:run', src, language),
+  onTranscribeProgress: (cb: (ev: { stage: 'extract' | 'transcribe'; percent: number }) => void): (() => void) => {
+    const listener = (_e: unknown, ev: { stage: 'extract' | 'transcribe'; percent: number }) => cb(ev);
+    ipcRenderer.on('transcribe:progress', listener);
+    return () => ipcRenderer.removeListener('transcribe:progress', listener);
+  },
 
   // Анализ аудио (beat detection через Python) — §9.1.
   analyzeAudio: (audioPath: string): Promise<BeatData | { error: string }> =>
