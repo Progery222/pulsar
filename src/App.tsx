@@ -25,6 +25,7 @@ import FunnelApp from './funnel/FunnelApp';
 import DownloadApp from './download/DownloadApp';
 import RecorderApp from './recorder/RecorderApp';
 import ImgOptApp from './imgopt/ImgOptApp';
+import TranscribeApp from './transcribe/TranscribeApp';
 import SettingsScreen from './screens/SettingsScreen';
 import Chrome from './components/Chrome';
 import Overlays from './components/Overlays';
@@ -281,6 +282,18 @@ function App() {
       <>
         <Chrome>
           <ImgOptApp />
+        </Chrome>
+        <Overlays />
+      </>
+    );
+  }
+
+  // Транскрибация видео → субтитры (SRT/TXT/VTT), офлайн Whisper.
+  if (appMode === 'transcribe') {
+    return (
+      <>
+        <Chrome>
+          <TranscribeApp />
         </Chrome>
         <Overlays />
       </>

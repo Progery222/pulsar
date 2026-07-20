@@ -45,6 +45,10 @@ const electronAPI = {
   openFolder: (folderPath: string): Promise<string> =>
     ipcRenderer.invoke('shell:openPath', folderPath),
 
+  // Сохранить текстовый файл (SRT/TXT/VTT) через диалог.
+  saveTextFile: (defaultName: string, content: string): Promise<{ ok: true; path: string } | { cancelled: true } | { error: string }> =>
+    ipcRenderer.invoke('dialog:saveText', defaultName, content),
+
   // Миниатюра кадра видео (путь к закэшированному jpg или null).
   thumb: (src: string, time: number): Promise<string | null> =>
     ipcRenderer.invoke('media:thumb', src, time),

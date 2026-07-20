@@ -141,6 +141,22 @@ export function registerFileHandlers() {
     return shell.openPath(folderPath);
   });
 
+  // Сохранить текстовый файл (SRT/TXT/VTT) через диалог «Сохранить как».
+  ipcMain.handle('dialog:saveText', async (_e, defaultName: string, content: string) => {
+    const ext = (defaultName.split('.').pop() || 'txt').toLowerCase();
+    const res = await dialog.showSaveDialog({
+      defaultPath: defaultName,
+      filters: [{ name: ext.toUpperCase(), extensions: [ext] }, { name: 'Все файлы', extensions: ['*'] }],
+    });
+    if (res.canceled || !res.filePath) return { cancelled: true as const };
+    try {
+      await fs.promises.writeFile(res.filePath, content, 'utf8');
+      return { ok: true as const, path: res.filePath };
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+  });
+
   // Показать файл в проводнике (с выделением).
   ipcMain.handle('shell:showItem', async (_event, filePath: string) => {
     shell.showItemInFolder(filePath);
