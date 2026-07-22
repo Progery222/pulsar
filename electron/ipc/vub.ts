@@ -335,7 +335,9 @@ async function processOne(
       baseW = dims[0];
     }
   }
-  const finalOut = path.join(req.outputDir, task.outName);
+  // Папка вывода: общая (req.outputDir) либо рядом с исходником (та же папка, имя с суффиксом).
+  const outDir = req.saveNextToSource ? path.dirname(video.path) : req.outputDir;
+  const finalOut = path.join(outDir, task.outName);
   // ffmpeg на Windows не открывает выходной файл с не-ASCII именем (EINVAL) —
   // рендерим во временный ASCII-файл, затем переименовываем средствами Node.
   const isAscii = (s: string) => /^[\x00-\x7F]*$/.test(s);
@@ -399,6 +401,7 @@ async function processOne(
     : null;
 
   const cmd = ffmpeg(video.path).addInputOption('-nostdin');
+  const audioChain = hasAudio && plan.audioFilters.length ? plan.audioFilters.join(',') : null;
 
   // Водяной знак: накладываем в случайную из заданных зон. Титры (ass) — поверх всего.
   const wm = req.watermark;
@@ -412,13 +415,18 @@ async function processOne(
       `[1:v]scale=${Math.round(baseW * (wm.scale || 0.14))}:-1[wm];` +
       `[base][wm]overlay=W*${z.x.toFixed(3)}:H*${z.y.toFixed(3)}`;
     complex += assFilter ? `[ov];[ov]${assFilter}[v]` : `[v]`;
-    cmd.complexFilter(complex, ['v']);
+    // Аудио должно пройти через фильтрграф, иначе при водяном знаке звук пропадал.
+    const maps = ['v'];
+    if (hasAudio) {
+      complex += `;[0:a]${audioChain || 'anull'}[a]`;
+      maps.push('a');
+    }
+    cmd.complexFilter(complex, maps);
   } else {
     const vfList = [...plan.videoFilters, ...(assFilter ? [assFilter] : [])];
     if (vfList.length) cmd.videoFilters(vfList.join(','));
+    if (audioChain) cmd.audioFilters(audioChain);
   }
-
-  if (hasAudio && plan.audioFilters.length) cmd.audioFilters(plan.audioFilters.join(','));
 
   // Метаданные: полная очистка + случайные значения (§4.8).
   if (req.cleanMetadata) {
@@ -433,8 +441,11 @@ async function processOne(
   // com.android.*) из «нативного экспорта» реально записались в контейнер.
   cmd
     .outputOptions(venc)
-    .outputOptions('-movflags', '+faststart+use_metadata_tags')
-    .output(bodyOut);
+    .outputOptions('-movflags', '+faststart+use_metadata_tags');
+  // Явный аудиокодек — иначе на части исходников звук терялся.
+  if (hasAudio) cmd.outputOptions('-c:a', 'aac', '-b:a', '160k', '-ar', '44100');
+  else cmd.outputOptions('-an');
+  cmd.output(bodyOut);
 
   const cleanup = () => {
     if (assPath) fs.promises.unlink(assPath).catch(() => {});

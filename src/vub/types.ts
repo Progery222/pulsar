@@ -163,6 +163,7 @@ export interface VubProcessRequest {
   variations: number; // количество уникальных вариаций на каждое видео
   namePattern: string; // свой шаблон имени файлов (пусто = имя оригинала + _pulsar)
   outputDir: string;
+  saveNextToSource?: boolean; // сохранять результат в папку исходника (с суффиксом), а не в общую
 }
 
 // Событие прогресса (main -> renderer).

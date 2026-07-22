@@ -88,6 +88,8 @@ interface VubState {
   setNamePattern: (value: string) => void;
   outputDir: string | null;
   setOutputDir: (value: string | null) => void;
+  saveNextToSource: boolean; // сохранять рядом с исходником (та же папка, суффикс)
+  setSaveNextToSource: (value: boolean) => void;
 
   // Профили: снять текущие настройки и применить сохранённый снимок.
   snapshot: () => VubSnapshot;
@@ -218,6 +220,8 @@ export const useVubStore = create<VubState>((set, get) => ({
   setNamePattern: (value) => set({ namePattern: value }),
   outputDir: null,
   setOutputDir: (value) => set({ outputDir: value }),
+  saveNextToSource: false,
+  setSaveNextToSource: (value) => set({ saveNextToSource: value }),
 
   snapshot: () => {
     const s = get();

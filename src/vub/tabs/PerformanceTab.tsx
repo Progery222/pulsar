@@ -12,7 +12,7 @@ const cores = navigator.hardwareConcurrency || 4;
 export default function PerformanceTab() {
   const {
     threads, setThreads, variations, setVariations, namePattern, setNamePattern,
-    outputDir, setOutputDir,
+    outputDir, setOutputDir, saveNextToSource, setSaveNextToSource,
     videos, params, effects, watermark, text, template, hooks, hard, randomSubset, cleanMetadata, nativeExport, upscale, titles,
     isProcessing, setIsProcessing, progress, setProgress, updateProgress,
     snapshot, loadSnapshot,
@@ -81,7 +81,7 @@ export default function PerformanceTab() {
   }
 
   async function start() {
-    if (!videos.length || !outputDir || isProcessing) return;
+    if (!videos.length || (!outputDir && !saveNextToSource) || isProcessing) return;
     // Строки прогресса показывают будущие имена файлов (та же схема, что в main).
     const totalFiles = videos.length * variations;
     const initial: FileProgress[] = [];
@@ -132,14 +132,15 @@ export default function PerformanceTab() {
         threads,
         variations,
         namePattern,
-        outputDir,
+        outputDir: outputDir || '',
+        saveNextToSource,
       });
       window.electronAPI.historyAdd({
         id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         mode: 'vub',
         title: `Уникализатор • ${videos.length} видео × ${variations}`,
         createdAt: Date.now(),
-        outputDir,
+        outputDir: saveNextToSource ? '(рядом с исходником)' : outputDir,
         files: initial.map((p) => p.name),
         settings: null,
       });
@@ -321,7 +322,12 @@ export default function PerformanceTab() {
         </p>
       </div>
 
-      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12, cursor: 'pointer', fontSize: 14, color: 'var(--text-primary)' }}>
+        <input type="checkbox" checked={saveNextToSource} onChange={(e) => setSaveNextToSource(e.target.checked)} />
+        Сохранять рядом с исходником (в ту же папку, с суффиксом)
+      </label>
+
+      <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', opacity: saveNextToSource ? 0.45 : 1, pointerEvents: saveNextToSource ? 'none' : 'auto' }}>
         <button
           onClick={pickFolder}
           style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 16px', fontSize: 14, cursor: 'pointer' }}
@@ -368,9 +374,9 @@ export default function PerformanceTab() {
       <div style={{ marginTop: 20, display: 'flex', gap: 12 }}>
         <button
           onClick={start}
-          disabled={!videos.length || !outputDir || isProcessing}
+          disabled={!videos.length || (!outputDir && !saveNextToSource) || isProcessing}
           className="btn-primary"
-          style={{ padding: '10px 24px', fontSize: 14, opacity: !videos.length || !outputDir || isProcessing ? 0.4 : 1 }}
+          style={{ padding: '10px 24px', fontSize: 14, opacity: !videos.length || (!outputDir && !saveNextToSource) || isProcessing ? 0.4 : 1 }}
         >
           {isProcessing ? 'Обработка…' : 'Запустить обработку'}
         </button>
