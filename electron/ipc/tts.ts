@@ -37,7 +37,9 @@ export function runSynth(text: string, outWav: string, lang: string, engine: str
     const py = process.platform === 'win32' ? 'python' : 'python3';
     const argsv = ['synth', '--text-file', tmpTxt, '--out', outWav, '--lang', lang, '--engine', engine, '--speed', String(speed)];
     if (voice) argsv.push('--voice', voice);
-    const child = spawn(py, [scriptPath(), ...argsv]);
+    const child = spawn(py, [scriptPath(), ...argsv], {
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c) => (stdout += c.toString()));
@@ -85,7 +87,9 @@ export function registerTtsHandlers() {
   ipcMain.handle('tts:engines', () => {
     return new Promise((resolve) => {
       const py = process.platform === 'win32' ? 'python' : 'python3';
-      const child = spawn(py, [scriptPath(), 'engines']);
+      const child = spawn(py, [scriptPath(), 'engines'], {
+        env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+      });
       let stdout = '';
       child.stdout.on('data', (c) => (stdout += c.toString()));
       child.on('error', (err) => resolve({ error: err.message }));

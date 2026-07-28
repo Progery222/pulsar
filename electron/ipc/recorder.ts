@@ -1,5 +1,6 @@
 import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, screen, session, shell } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
+import ffprobeStatic from 'ffprobe-static';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import https from 'node:https';
@@ -12,6 +13,19 @@ import { getOpenRouterKey } from './config';
 // встроенным ffmpeg. См. src/recorder/*.
 
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
+const ffprobeBin = (ffprobeStatic as unknown as { path: string })?.path?.replace('app.asar', 'app.asar.unpacked');
+
+// Есть ли в файле аудиодорожка (иначе atrim по [1:a] роняет весь filter_complex).
+function hasAudioStream(file: string): Promise<boolean> {
+  if (!ffprobeBin || !file) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const ch = spawn(ffprobeBin, ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file], { windowsHide: true });
+    let out = '';
+    ch.stdout.on('data', (d: Buffer) => (out += d.toString()));
+    ch.on('close', () => resolve(out.trim().length > 0));
+    ch.on('error', () => resolve(true));
+  });
+}
 
 // Резолв относительного пути ассета (assets/music/...) в абсолютный.
 function resolveAsset(p: string): string {
@@ -428,7 +442,10 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
       const labels: string[] = [];
       let idx = 1; // 0 = кадры
 
-      const withAudio = opts.audioSrc && opts.segments.length > 0;
+      // Голос только если в исходнике реально есть аудиодорожка — иначе atrim падает
+      // и фолбэк терял бы музыку/клики.
+      const srcHasAudio = opts.audioSrc ? await hasAudioStream(opts.audioSrc) : false;
+      const withAudio = !!opts.audioSrc && srcHasAudio && opts.segments.length > 0;
       if (withAudio) {
         const ai = idx++;
         inputArgs.push('-i', opts.audioSrc!);

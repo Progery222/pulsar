@@ -40,25 +40,54 @@ export default function VideoPreview({
   // <video> через blob:-URL. Надёжно (как в Студии): без протокол/range/safety
   // проблем Chromium-медиапайплайна с кастомной схемой.
   const [blobUrls, setBlobUrls] = useState<Record<string, string>>({});
+  // Кэш blob-URL по пути источника: fetch только НОВЫХ путей, revoke только УДАЛЁННЫХ.
+  // Иначе при любой правке клипов (sources — новая ссылка) все видео перезагружались,
+  // а живые blob-URL ревокались → джанк/чёрное превью.
+  const urlCacheRef = useRef<Map<string, string>>(new Map());
   useEffect(() => {
     let alive = true;
-    const created: string[] = [];
+    const cache = urlCacheRef.current;
+    const wanted = new Set(sources);
     for (const src of sources) {
+      if (cache.has(src)) continue;
+      cache.set(src, ''); // помечаем «в процессе», чтобы не грузить дважды
       fetch(mediaUrl(src))
         .then((r) => r.blob())
         .then((b) => {
           if (!alive) return;
           const url = URL.createObjectURL(b);
-          created.push(url);
-          setBlobUrls((prev) => (prev[src] ? prev : { ...prev, [src]: url }));
+          cache.set(src, url);
+          setBlobUrls((prev) => ({ ...prev, [src]: url }));
         })
-        .catch((e) => console.error('[VideoPreview] fetch blob failed', src, e));
+        .catch((e) => {
+          cache.delete(src);
+          console.error('[VideoPreview] fetch blob failed', src, e);
+        });
+    }
+    // Освобождаем источники, которых больше нет.
+    for (const [src, url] of Array.from(cache.entries())) {
+      if (wanted.has(src)) continue;
+      if (url) URL.revokeObjectURL(url);
+      cache.delete(src);
+      setBlobUrls((prev) => {
+        if (!(src in prev)) return prev;
+        const next = { ...prev };
+        delete next[src];
+        return next;
+      });
     }
     return () => {
       alive = false;
-      created.forEach((u) => URL.revokeObjectURL(u));
     };
   }, [sources]);
+  // Полная очистка при размонтировании.
+  useEffect(() => {
+    const cache = urlCacheRef.current;
+    return () => {
+      for (const url of cache.values()) if (url) URL.revokeObjectURL(url);
+      cache.clear();
+    };
+  }, []);
 
   // Best-fit прямоугольник заданного соотношения внутри контейнера.
   useEffect(() => {

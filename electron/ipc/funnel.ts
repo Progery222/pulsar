@@ -593,7 +593,9 @@ function translateText(text: string, tgt: string): Promise<string> {
     }
     const tmp = path.join(os.tmpdir(), `funnel_tr_${Date.now()}.json`);
     fs.writeFileSync(tmp, JSON.stringify([text]), 'utf-8');
-    const child = spawn(pyCmd(), [scriptPath('translate.py'), '--in', tmp, '--src', 'auto', '--tgt', tgt]);
+    const child = spawn(pyCmd(), [scriptPath('translate.py'), '--in', tmp, '--src', 'auto', '--tgt', tgt], {
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    });
     let out = '';
     child.stdout.on('data', (c) => (out += c.toString()));
     child.on('error', () => {

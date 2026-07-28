@@ -256,7 +256,7 @@ export default function PerformanceTab() {
             min={1}
             max={100}
             value={variations}
-            onChange={(e) => setVariations(Number(e.target.value))}
+            onChange={(e) => setVariations(Math.max(1, Math.min(100, Math.floor(Number(e.target.value) || 1))))}
             style={{ width: 80, background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 4, padding: '4px 8px', fontSize: 13, textAlign: 'center' }}
           />
         </div>

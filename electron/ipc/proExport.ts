@@ -108,6 +108,8 @@ export function registerProExportHandlers() {
     await new Promise<void>((resolve) => {
       // -pix_fmt yuv420p обязателен: 10-bit/log-исходники иначе дают High10, который Chromium не декодирует.
       const ch = spawn(ffmpegBin, ['-y', '-i', src, '-vf', 'scale=-2:720:flags=fast_bilinear,format=yuv420p', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-crf', '30', '-preset', 'veryfast', '-g', '30', '-an', '-movflags', '+faststart', out], { windowsHide: true });
+      // Сливаем stderr — иначе на длинном транскоде буфер pipe (~64КБ) переполняется и ffmpeg виснет.
+      ch.stderr?.on('data', () => {});
       ch.on('close', () => resolve());
       ch.on('error', () => resolve());
     });

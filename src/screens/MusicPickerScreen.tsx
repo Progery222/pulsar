@@ -75,6 +75,7 @@ export default function MusicPickerScreen() {
     fetch(mediaUrl(track.file))
       .then((r) => r.blob())
       .then((b) => {
+        if (audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src); // не копим blob-URL
         audio.src = URL.createObjectURL(b);
         audio.currentTime = 0;
         audio.onended = () => setPlayingId(null);

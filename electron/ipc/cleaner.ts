@@ -375,6 +375,8 @@ async function processOne(
   if (cover.complex) {
     const complex = assFilter ? `${cover.complex};[outv]${assFilter}[v]` : cover.complex;
     cmd.complexFilter(complex, [assFilter ? 'v' : 'outv']);
+    // complexFilter мапит только видео — иначе при blur пропадал звук. Пробрасываем исходное аудио.
+    cmd.outputOptions('-map', '0:a?');
   } else {
     const vf = [cover.vf, coverAssFilter, assFilter].filter(Boolean).join(',');
     if (vf) cmd.videoFilters(vf);
@@ -388,6 +390,7 @@ async function processOne(
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 20 });
   cmd
     .outputOptions(venc)
+    .outputOptions('-c:a', 'aac', '-b:a', '160k')
     .outputOptions('-movflags', '+faststart')
     .output(out);
 

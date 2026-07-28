@@ -89,7 +89,9 @@ function translateBatch(texts: string[], src: string, tgt: string): Promise<stri
   return new Promise((resolve) => {
     const tmp = path.join(os.tmpdir(), `pulsar_tr_${Date.now()}.json`);
     fs.writeFileSync(tmp, JSON.stringify(texts), 'utf-8');
-    const child = spawn(py(), [scriptPath('translate.py'), '--in', tmp, '--src', src, '--tgt', tgt]);
+    const child = spawn(py(), [scriptPath('translate.py'), '--in', tmp, '--src', src, '--tgt', tgt], {
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    });
     let out = '';
     let err = '';
     child.stdout.on('data', (c) => (out += c.toString()));

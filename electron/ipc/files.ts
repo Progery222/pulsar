@@ -196,6 +196,7 @@ export function registerFileHandlers() {
     const CAP = SR * 2 * 3600; // ≤1 час PCM — защита от OOM на аномально длинных файлах
     await new Promise<void>((resolve) => {
       const ch = spawn(ffmpegBin, ['-i', src, '-ac', '1', '-ar', String(SR), '-f', 's16le', '-'], { windowsHide: true });
+      ch.stderr?.on('data', () => {}); // сливаем stderr, иначе pipe переполняется и ffmpeg виснет
       ch.stdout.on('data', (d: Buffer) => {
         chunks.push(d);
         bytes += d.length;
@@ -238,6 +239,7 @@ export function registerFileHandlers() {
     const CAP = SR * 2 * 3600; // ≤1 час PCM — защита от OOM
     await new Promise<void>((resolve) => {
       const ch = spawn(ffmpegBin, ['-i', src, '-ac', '1', '-ar', String(SR), '-f', 's16le', '-'], { windowsHide: true });
+      ch.stderr?.on('data', () => {}); // сливаем stderr, иначе pipe переполняется и ffmpeg виснет
       ch.stdout.on('data', (d: Buffer) => {
         chunks.push(d);
         bytes += d.length;

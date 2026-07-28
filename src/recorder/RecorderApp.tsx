@@ -199,6 +199,11 @@ export default function RecorderApp() {
       await beginCapture();
     } catch (e) {
       cleanupStreams();
+      // Если курсор-трекер/поллер кликов уже стартовали — обязательно остановить,
+      // иначе в main остаётся 60Гц-таймер и запущенный PowerShell-поллер.
+      window.electronAPI.recorderCursorStop().catch(() => {});
+      window.electronAPI.recorderCloseControl().catch(() => {});
+      window.electronAPI.recorderRestoreMain().catch(() => {});
       setPhase('setup');
       showToast('Не удалось начать запись: ' + (e as Error).message);
     }
@@ -210,7 +215,9 @@ export default function RecorderApp() {
       rec.pause();
       webcamRecRef.current?.state === 'recording' && webcamRecRef.current.pause();
       pauseStartRef.current = Date.now();
-      window.electronAPI.recorderPushState({ elapsed, paused: true });
+      // Живое время из ref (не из state — обработчик подписан один раз и держал бы stale elapsed=0).
+      const secs = Math.floor((Date.now() - startRef.current - pausedMsRef.current) / 1000);
+      window.electronAPI.recorderPushState({ elapsed: secs, paused: true });
     }
   }
 

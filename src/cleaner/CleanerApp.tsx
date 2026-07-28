@@ -32,10 +32,15 @@ export default function CleanerApp() {
   async function autoZones() {
     if (!videos.length) return;
     setDetecting(true);
-    const r = await window.electronAPI.detectCleanerOne({ videoPath: videos[0].path, detectTitles, detectWatermarks, dynamicTextOnly });
-    setDetecting(false);
-    if (r.error) { setZones([]); return; }
-    setZones((r.boxes || []).filter((b) => (b.conf ?? 1) >= minConf).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })));
+    try {
+      const r = await window.electronAPI.detectCleanerOne({ videoPath: videos[0].path, detectTitles, detectWatermarks, dynamicTextOnly });
+      if (r.error) { setZones([]); return; }
+      setZones((r.boxes || []).filter((b) => (b.conf ?? 1) >= minConf).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })));
+    } catch {
+      setZones([]);
+    } finally {
+      setDetecting(false);
+    }
   }
 
   useEffect(() => {

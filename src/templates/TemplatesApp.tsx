@@ -491,25 +491,31 @@ export default function TemplatesApp() {
     setProgress(0);
     setRenderErr(null);
     const { w, h } = FORMATS[format];
-    const res = await window.electronAPI.renderTemplate({
-      templateId: 'scenes',
-      data: engineData(true),
-      width: w,
-      height: h,
-      fps: 30,
-      durationSec: totalDur,
-      outputPath: out,
-      musicPath: musicPath || undefined,
-      musicStart: musicStart > 0 ? musicStart : undefined,
-      clipAudio,
-      sfx: sfxOn,
-    });
-    if ('error' in res) {
-      setRenderErr(res.error);
+    try {
+      const res = await window.electronAPI.renderTemplate({
+        templateId: 'scenes',
+        data: engineData(true),
+        width: w,
+        height: h,
+        fps: 30,
+        durationSec: totalDur,
+        outputPath: out,
+        musicPath: musicPath || undefined,
+        musicStart: musicStart > 0 ? musicStart : undefined,
+        clipAudio,
+        sfx: sfxOn,
+      });
+      if ('error' in res) {
+        setRenderErr(res.error);
+        setPhase('edit');
+      } else {
+        setOutput(res.path);
+        setPhase('done');
+      }
+    } catch (e) {
+      // Иначе при reject IPC оверлей «рендеринг» блокировал бы окно навсегда.
+      setRenderErr((e as Error).message || 'Ошибка рендера');
       setPhase('edit');
-    } else {
-      setOutput(res.path);
-      setPhase('done');
     }
   }
 
