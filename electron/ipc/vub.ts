@@ -170,7 +170,7 @@ async function normalizeClip(src: string, dest: string, W: number, H: number): P
   const info = await probe(src);
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
   const cmd = ffmpeg(src).addInputOption('-nostdin');
-  const fc = [`[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[v]`];
+  const fc = [`[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,format=yuv420p[v]`];
   if (info.hasAudio) {
     fc.push(`[0:a]${A_NORM}[a]`);
   } else {
@@ -199,7 +199,7 @@ async function prependHook(hookFile: string, body: string, dest: string): Promis
     const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
     const cmd = ffmpeg(hookN).addInputOption('-nostdin').input(body);
     const vnorm = (idx: number, label: string) =>
-      `[${idx}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[${label}]`;
+      `[${idx}:v]scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,format=yuv420p[${label}]`;
     const fc: string[] = [vnorm(0, 'hv'), vnorm(1, 'bv'), '[hv][bv]concat=n=2:v=1:a=0[v]'];
     const aLabels: string[] = ['[a0]'];
     fc.push(`[0:a]${A_NORM}[a0]`); // hookN гарантированно имеет аудио
@@ -243,7 +243,7 @@ async function applyTemplate(body: string, clips: string[], dest: string): Promi
 
   const venc = await videoEncoderOptions({ preset: 'veryfast', crf: 22 });
   const vNorm = (label: string) =>
-    `scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p[${label}]`;
+    `scale=${W}:${H}:force_original_aspect_ratio=increase,crop=${W}:${H},setsar=1,fps=30,format=yuv420p[${label}]`;
 
   await new Promise<void>((resolve, reject) => {
     const cmd = ffmpeg(body).addInputOption('-nostdin');
@@ -349,7 +349,13 @@ async function processOne(
   if (req.upscale?.enabled) {
     const dims = upscaleDims(width, height, req.upscale.target);
     if (dims) {
-      plan.videoFilters.unshift(`scale=${dims[0]}:${dims[1]}:flags=lanczos`);
+      const T = Math.round(req.upscale.target);
+      // Ориентация-агностичный масштаб по РЕАЛЬНОМУ кадру (iw/ih), не по probe-размерам:
+      // длинная сторона = T, короткая считается с сохранением пропорций (чётная). Так апскейл
+      // не сплющивает даже при неопределённом повороте/нестандартном SAR.
+      plan.videoFilters.unshift(
+        `scale='if(gte(iw,ih),${T},trunc(iw*${T}/ih/2)*2)':'if(gte(iw,ih),trunc(ih*${T}/iw/2)*2,${T})':flags=lanczos`
+      );
       baseW = dims[0];
     }
   }
