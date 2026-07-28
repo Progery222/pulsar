@@ -84,6 +84,17 @@ interface ProbeResult {
   sampleRate: number;
 }
 
+// Поворот из метаданных (tags.rotate или side_data Display Matrix). ±90/270 -> кадр
+// декодируется авто-повёрнутым, поэтому реальные (display) размеры = swap(width,height).
+function streamRotation(v: unknown): number {
+  const s = v as { tags?: { rotate?: string | number }; side_data_list?: { rotation?: number; side_data_type?: string }[] };
+  let rot = 0;
+  if (s?.tags?.rotate != null) rot = Number(s.tags.rotate) || 0;
+  const sd = (s?.side_data_list ?? []).find((x) => x.rotation != null);
+  if (sd?.rotation != null) rot = Number(sd.rotation) || 0;
+  return ((Math.round(rot) % 360) + 360) % 360;
+}
+
 function probe(file: string): Promise<ProbeResult> {
   return new Promise((resolve) => {
     ffmpeg.ffprobe(file, (err, data) => {
@@ -94,11 +105,18 @@ function probe(file: string): Promise<ProbeResult> {
       const streams = data.streams ?? [];
       const v = streams.find((s) => s.codec_type === 'video');
       const a = streams.find((s) => s.codec_type === 'audio');
+      let width = v?.width ?? 0;
+      let height = v?.height ?? 0;
+      // Учитываем поворот: при ±90° реальные (отображаемые) размеры повёрнуты.
+      if (v) {
+        const rot = streamRotation(v);
+        if (rot === 90 || rot === 270) [width, height] = [height, width];
+      }
       resolve({
         duration: data.format?.duration ?? 0,
         hasAudio: streams.some((s) => s.codec_type === 'audio'),
-        width: v?.width ?? 0,
-        height: v?.height ?? 0,
+        width,
+        height,
         sampleRate: Number(a?.sample_rate) || 44100,
       });
     });
