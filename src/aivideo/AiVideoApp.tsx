@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { showToast } from '../store/toastStore';
+import tracksData from '../data/tracks.json';
+
+const TRACKS = tracksData as { id: string; title: string; artist: string; file: string }[];
 
 type Scene = { text: string; keywords: string[]; clipUrl?: string; clipPreview?: string };
 type Clip = { source: string; previewUrl: string; downloadUrl: string; width: number; height: number; duration: number };
@@ -31,6 +34,7 @@ export default function AiVideoApp() {
   const [sceneCount, setSceneCount] = useState(5);
   const [voice, setVoice] = useState('ru-RU-DmitryNeural');
   const [subtitles, setSubtitles] = useState(true);
+  const [musicFile, setMusicFile] = useState('');
   const [title, setTitle] = useState('');
   const [scenes, setScenes] = useState<Scene[]>([]);
   const [busy, setBusy] = useState(false);
@@ -104,7 +108,7 @@ export default function AiVideoApp() {
     try {
       const res = await window.electronAPI.aiVideoGenerate({
         scenes: scenes.map((s) => ({ text: s.text, keywords: s.keywords, clipUrl: s.clipUrl })),
-        lang, voice, format, outputPath: out, subtitles,
+        lang, voice, format, outputPath: out, subtitles, bgmPath: musicFile || undefined,
       });
       if ('error' in res) { showToast('Сборка: ' + res.error); setPhase('script'); return; }
       setPhase('done');
@@ -235,6 +239,12 @@ export default function AiVideoApp() {
         </label>
         <label style={fieldLbl}>Сцен
           <input type="number" min={3} max={12} value={sceneCount} onChange={(e) => setSceneCount(Math.max(3, Math.min(12, Math.floor(Number(e.target.value) || 5))))} style={{ ...sel, width: 70 }} />
+        </label>
+        <label style={fieldLbl}>Музыка
+          <select value={musicFile} onChange={(e) => setMusicFile(e.target.value)} style={sel}>
+            <option value="">Без музыки</option>
+            {TRACKS.slice(0, 60).map((t) => <option key={t.id} value={t.file}>{t.title} — {t.artist}</option>)}
+          </select>
         </label>
         <label style={{ ...fieldLbl, flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-end' }}>
           <input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)} /> Субтитры

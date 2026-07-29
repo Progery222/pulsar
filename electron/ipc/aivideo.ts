@@ -15,6 +15,16 @@ import { runSynth } from './tts';
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 const ffprobeBin = (ffprobeStatic as unknown as { path: string })?.path?.replace('app.asar', 'app.asar.unpacked');
 
+function assetsBase(): string {
+  return app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd());
+}
+function fontsDir(): string {
+  return path.join(assetsBase(), 'assets', 'fonts');
+}
+function resolveAsset(p: string): string {
+  return path.isAbsolute(p) ? p : path.join(assetsBase(), p);
+}
+
 interface Scene {
   text: string;
   keywords: string[];
@@ -69,9 +79,14 @@ function ff(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     let err = '';
     const ch = spawn(ffmpegBin, args, { windowsHide: true });
-    ch.stderr.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-1200); });
+    ch.stderr.on('data', (d: Buffer) => { err = (err + d.toString()).slice(-2000); });
     ch.on('error', reject);
-    ch.on('close', (code) => (code === 0 ? resolve() : reject(new Error(err.split('\n').filter(Boolean).pop() || `ffmpeg ${code}`))));
+    ch.on('close', (code) => {
+      if (code === 0) return resolve();
+      const last = err.split('\n').filter(Boolean).slice(-3).join(' | ');
+      console.error('[aivideo] ffmpeg failed:', ffmpegBin, args.join(' '), '\n', err.slice(-600));
+      reject(new Error(last || `ffmpeg ${code}`));
+    });
   });
 }
 function probeDur(file: string): Promise<number> {
@@ -139,22 +154,54 @@ function assTime(sec: number): string {
   const s = (sec % 60).toFixed(2).padStart(5, '0');
   return `${h}:${String(m).padStart(2, '0')}:${s}`;
 }
+// Разбивка текста сцены на короткие «чанки» (2-4 слова) для читаемых титров.
+function chunkText(text: string, maxChars: number): string[] {
+  const words = text.replace(/\s+/g, ' ').trim().split(' ').filter(Boolean);
+  const chunks: string[] = [];
+  let cur = '';
+  for (const w of words) {
+    const t = cur ? `${cur} ${w}` : w;
+    if (t.length > maxChars && cur) { chunks.push(cur); cur = w; } else cur = t;
+  }
+  if (cur) chunks.push(cur);
+  return chunks;
+}
+
 function buildAss(spans: { start: number; end: number; text: string }[], W: number, H: number): string {
-  const fs = Math.round(H * 0.045);
+  const fs = Math.round(H * 0.044);
+  const outline = Math.max(2, Math.round(fs * 0.13));
+  const shadow = Math.max(1, Math.round(fs * 0.05));
+  const marginV = Math.round(H * 0.17);
+  const marginLR = Math.round(W * 0.08);
+  const maxChars = Math.max(14, Math.round(W / (fs * 0.62))); // ~одна строка
   const head = `[Script Info]
 ScriptType: v4.00+
 PlayResX: ${W}
 PlayResY: ${H}
+WrapStyle: 2
+ScaledBorderAndShadow: yes
 
 [V4+ Styles]
-Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
-Style: Def,Arial,${fs},&H00FFFFFF,&H00000000,&H80000000,1,1,3,1,2,60,60,${Math.round(H * 0.12)},1
+Format: Name,Fontname,Fontsize,PrimaryColour,OutlineColour,BackColour,Bold,Italic,BorderStyle,Outline,Shadow,Alignment,MarginL,MarginR,MarginV,Encoding
+Style: Def,Montserrat,${fs},&H00FFFFFF,&HE6000000,&H00000000,1,0,1,${outline},${shadow},2,${marginLR},${marginLR},${marginV},1
 
 [Events]
 Format: Layer,Start,End,Style,Name,MarginL,MarginR,MarginV,Effect,Text
 `;
-  const lines = spans.map((s) => `Dialogue: 0,${assTime(s.start)},${assTime(s.end)},Def,,0,0,0,,${s.text.replace(/\n/g, ' ').replace(/\{/g, '(').replace(/\}/g, ')')}`).join('\n');
-  return head + lines + '\n';
+  const lines: string[] = [];
+  for (const s of spans) {
+    const chunks = chunkText(s.text, maxChars);
+    const totalLen = chunks.reduce((a, c) => a + c.length, 0) || 1;
+    let t = s.start;
+    const span = Math.max(0.4, s.end - s.start - 0.05);
+    for (const c of chunks) {
+      const d = (c.length / totalLen) * span;
+      const txt = c.replace(/\{/g, '(').replace(/\}/g, ')');
+      lines.push(`Dialogue: 0,${assTime(t)},${assTime(t + d)},Def,,0,0,0,,${txt}`);
+      t += d;
+    }
+  }
+  return head + lines.join('\n') + '\n';
 }
 function escFilterPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/:/g, '\\:');
@@ -215,10 +262,12 @@ export function registerAiVideoHandlers() {
         if (cancelled) throw new Error('отменено');
         const sc = req.scenes[i];
         emit(`Озвучка сцены ${i + 1}/${N}`, Math.round((i / N) * 60));
-        // 1) Озвучка сцены.
-        const wav = path.join(dir, `v${i}.wav`);
-        const ttsRes = await runSynth(sc.text, wav, req.lang, 'edge', 1, req.voice || '');
+        // 1) Озвучка сцены + пауза 0.3с в конце (чтобы стыки сцен не звучали рвано).
+        const rawWav = path.join(dir, `vr${i}.wav`);
+        const ttsRes = await runSynth(sc.text, rawWav, req.lang, 'edge', 1, req.voice || '');
         if ('error' in ttsRes) throw new Error(`озвучка: ${ttsRes.error}`);
+        const wav = path.join(dir, `v${i}.wav`);
+        await ff(['-y', '-i', rawWav, '-af', 'apad=pad_dur=0.3', '-ar', '44100', '-ac', '2', '-c:a', 'pcm_s16le', wav]).catch(() => fs.promises.copyFile(rawWav, wav));
         const d = Math.max(1.2, await probeDur(wav));
         sceneWavs.push(wav);
         spans.push({ start: cursor, end: cursor + d, text: sc.text });
@@ -255,7 +304,8 @@ export function registerAiVideoHandlers() {
       const listFile = path.join(dir, 'list.txt');
       fs.writeFileSync(listFile, sceneVids.map((v) => `file '${v.replace(/\\/g, '/')}'`).join('\n'), 'utf8');
       const videoCat = path.join(dir, 'video.mp4');
-      await ff(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c', 'copy', videoCat]);
+      // Ре-энкод (а не -c copy): клипы кодировались отдельно, copy-конкат хрупок к разнице SPS/таймбейса.
+      await ff(['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '20', '-pix_fmt', 'yuv420p', '-r', '30', '-an', videoCat]);
 
       emit('Сборка озвучки', 72);
       const voiceCat = path.join(dir, 'voice.m4a');
@@ -274,11 +324,13 @@ export function registerAiVideoHandlers() {
       }
       const fin: string[] = ['-y', '-i', videoCat, '-i', voiceCat];
       const filters: string[] = [];
-      filters.push(`[0:v]${assPath ? `ass='${escFilterPath(assPath)}'` : 'null'}[v]`);
-      let amap = '[1:a]';
-      if (req.bgmPath && fs.existsSync(req.bgmPath)) {
-        fin.push('-stream_loop', '-1', '-i', req.bgmPath);
-        filters.push(`[2:a]volume=0.12[bg]`);
+      filters.push(`[0:v]${assPath ? `ass='${escFilterPath(assPath)}':fontsdir='${escFilterPath(fontsDir())}'` : 'null'}[v]`);
+      // Без скобок — это входной поток (input 1 = озвучка). Скобки только у меток фильтра ([a] с музыкой).
+      let amap = '1:a';
+      const bgm = req.bgmPath ? resolveAsset(req.bgmPath) : '';
+      if (bgm && fs.existsSync(bgm)) {
+        fin.push('-stream_loop', '-1', '-i', bgm);
+        filters.push(`[2:a]volume=0.14[bg]`);
         filters.push(`[1:a][bg]amix=inputs=2:normalize=0:duration=first[a]`);
         amap = '[a]';
       }
@@ -287,6 +339,7 @@ export function registerAiVideoHandlers() {
       emit('Готово', 100);
       return { ok: true as const, path: req.outputPath, durationSec: cursor };
     } catch (err) {
+      console.error('[aivideo] generate failed:', err);
       return { error: (err as Error).message };
     } finally {
       fs.promises.rm(dir, { recursive: true, force: true }).catch(() => {});
