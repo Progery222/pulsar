@@ -319,6 +319,22 @@ const electronAPI = {
     ipcRenderer.on('cleaner-progress', listener);
     return () => ipcRenderer.removeListener('cleaner-progress', listener);
   },
+
+  // --- Модуль «AI-ролик по теме» ---
+  aiVideoGetKeys: (): Promise<{ pexels: string; pixabay: string; openrouter: string }> => ipcRenderer.invoke('aivideo:getKeys'),
+  aiVideoSetKeys: (keys: { pexels?: string; pixabay?: string }): Promise<{ ok: true }> => ipcRenderer.invoke('aivideo:setKeys', keys),
+  aiVideoScript: (topic: string, opts: { lang: string; seconds: number; scenes: number }): Promise<{ ok: true; title: string; scenes: { text: string; keywords: string[] }[] } | { error: string }> =>
+    ipcRenderer.invoke('aivideo:script', topic, opts),
+  aiVideoSearchClips: (query: string, format: string): Promise<{ ok: true; clips: { source: string; previewUrl: string; downloadUrl: string; width: number; height: number; duration: number }[] } | { error: string; clips: [] }> =>
+    ipcRenderer.invoke('aivideo:searchClips', query, format),
+  aiVideoGenerate: (req: { scenes: { text: string; keywords: string[]; clipUrl?: string }[]; lang: string; voice: string; format: string; outputPath: string; bgmPath?: string; subtitles: boolean }): Promise<{ ok: true; path: string; durationSec: number } | { error: string }> =>
+    ipcRenderer.invoke('aivideo:generate', req),
+  aiVideoCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('aivideo:cancel'),
+  onAiVideoProgress: (cb: (ev: { stage: string; percent: number }) => void): (() => void) => {
+    const listener = (_e: unknown, ev: { stage: string; percent: number }) => cb(ev);
+    ipcRenderer.on('aivideo:progress', listener);
+    return () => ipcRenderer.removeListener('aivideo:progress', listener);
+  },
 };
 
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);

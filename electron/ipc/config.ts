@@ -76,6 +76,14 @@ export function getOpenRouterKey(): string {
   return decode(readRaw().openrouter);
 }
 
+// Ключи сток-видео для модуля «AI-ролик по теме».
+export function getPexelsKey(): string {
+  return decode(readRaw().pexels);
+}
+export function getPixabayKey(): string {
+  return decode(readRaw().pixabay);
+}
+
 export function registerConfigHandlers() {
   ipcMain.handle('vub:getKey', () => getAssemblyKey());
   ipcMain.handle('vub:setKey', (_e, key: string) => {
@@ -91,6 +99,15 @@ export function registerConfigHandlers() {
     const data = readRaw();
     if (key) data.openrouter = encode(key);
     else delete data.openrouter;
+    writeRaw(data);
+    return { ok: true };
+  });
+  // Ключи сток-видео (Pexels/Pixabay) для модуля «AI-ролик».
+  ipcMain.handle('aivideo:getKeys', () => ({ pexels: getPexelsKey(), pixabay: getPixabayKey(), openrouter: getOpenRouterKey() }));
+  ipcMain.handle('aivideo:setKeys', (_e, keys: { pexels?: string; pixabay?: string }) => {
+    const data = readRaw();
+    if (keys.pexels !== undefined) { if (keys.pexels) data.pexels = encode(keys.pexels); else delete data.pexels; }
+    if (keys.pixabay !== undefined) { if (keys.pixabay) data.pixabay = encode(keys.pixabay); else delete data.pixabay; }
     writeRaw(data);
     return { ok: true };
   });

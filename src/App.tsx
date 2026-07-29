@@ -26,6 +26,7 @@ import DownloadApp from './download/DownloadApp';
 import RecorderApp from './recorder/RecorderApp';
 import ImgOptApp from './imgopt/ImgOptApp';
 import TranscribeApp from './transcribe/TranscribeApp';
+import AiVideoApp from './aivideo/AiVideoApp';
 import SettingsScreen from './screens/SettingsScreen';
 import Chrome from './components/Chrome';
 import Overlays from './components/Overlays';
@@ -282,6 +283,18 @@ function App() {
       <>
         <Chrome>
           <ImgOptApp />
+        </Chrome>
+        <Overlays />
+      </>
+    );
+  }
+
+  // AI-ролик по теме (сценарий → сток → озвучка → субтитры → сборка).
+  if (appMode === 'aivideo') {
+    return (
+      <>
+        <Chrome>
+          <AiVideoApp />
         </Chrome>
         <Overlays />
       </>

@@ -98,6 +98,16 @@ const CATEGORIES: { name: string; items: ModeDef[] }[] = [
         ),
       },
       {
+        title: 'AI-ролик по теме',
+        description: 'Тема → сценарий, сток-видео, озвучка, субтитры → готовый ролик',
+        mode: 'aivideo',
+        icon: (
+          <svg {...I(24)}>
+            <path d="M12 2l2.4 5 5.6.8-4 4 1 5.6L12 20l-5 2.4 1-5.6-4-4 5.6-.8z" />
+          </svg>
+        ),
+      },
+      {
         title: 'Монтаж',
         description: 'Автоматический монтаж видео в ритм музыки',
         onClick: ({ setMontageChoose }) => setMontageChoose(true),
