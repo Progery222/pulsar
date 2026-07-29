@@ -120,10 +120,11 @@ async function searchPixabay(query: string, perPage: number): Promise<Clip[]> {
   const key = getPixabayKey();
   if (!key) return [];
   const url = `https://pixabay.com/api/videos/?key=${key}&q=${encodeURIComponent(query)}&per_page=${Math.max(3, perPage)}`;
-  const j = (await getJson(url)) as { hits?: { duration: number; videos: Record<string, { url: string; width: number; height: number }> }[] };
+  const j = (await getJson(url)) as { hits?: { duration: number; videos: Record<string, { url: string; width: number; height: number; thumbnail?: string }> }[] };
   return (j.hits ?? []).map((h) => {
     const v = h.videos?.large || h.videos?.medium || h.videos?.small;
-    return v ? { source: 'pixabay' as const, previewUrl: v.url, downloadUrl: v.url, width: v.width, height: v.height, duration: h.duration } : null;
+    // previewUrl — jpg-миниатюра (mp4-URL в <img> не покажется).
+    return v ? { source: 'pixabay' as const, previewUrl: v.thumbnail || v.url, downloadUrl: v.url, width: v.width, height: v.height, duration: h.duration } : null;
   }).filter(Boolean) as Clip[];
 }
 
