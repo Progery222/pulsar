@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import type { Track } from '../types';
 import { fileName, formatTime, mediaUrl } from '../utils/media';
+import { showToast } from '../store/toastStore';
 import { analyzeBeat } from '../utils/beatDetection';
 import tracksData from '../data/tracks.json';
 
@@ -57,6 +58,7 @@ export default function MusicPickerScreen() {
   const [source, setSource] = useState<'beatleap' | 'files'>('beatleap');
   const [fileTracks, setFileTracks] = useState<Track[]>([]);
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const [importing, setImporting] = useState(false);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -117,6 +119,25 @@ export default function MusicPickerScreen() {
       prev.some((t) => t.id === track.id) ? prev : [...prev, track]
     );
     setSelectedTrack(track);
+  }
+
+  // Импорт аудио из видеофайла(ов): ffmpeg вытаскивает звук в mp3 → трек в библиотеке.
+  async function importFromVideo() {
+    setSource('files');
+    const paths = await window.electronAPI.selectVideos();
+    if (!paths.length) return;
+    setImporting(true);
+    try {
+      for (const vp of paths) {
+        const r = await window.electronAPI.audioFromVideo(vp);
+        if ('error' in r) { showToast('Импорт из видео: ' + r.error); continue; }
+        const track: Track = { id: `vid:${r.path}`, title: r.name.replace(/\.mp3$/i, ''), artist: 'Из видео', duration: 0, category: 'FILES', file: r.path };
+        setFileTracks((prev) => (prev.some((t) => t.id === track.id) ? prev : [...prev, track]));
+        setSelectedTrack(track);
+      }
+    } finally {
+      setImporting(false);
+    }
   }
 
   // Предварительный анализ выбранного трека в фоне — к моменту «Далее» бит уже
@@ -189,6 +210,16 @@ export default function MusicPickerScreen() {
               </button>
             );
           })}
+        </div>
+      )}
+
+      {/* Тулбар раздела «Файлы»: импорт аудио и извлечение из видео */}
+      {source === 'files' && (
+        <div className="flex shrink-0 gap-8 border-b border-border px-4 py-3" style={{ background: 'var(--bg-secondary)' }}>
+          <button onClick={openFilesDialog} disabled={importing} style={{ fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer' }}>🎵 Аудиофайл</button>
+          <button onClick={importFromVideo} disabled={importing} style={{ fontSize: 13, color: importing ? 'var(--text-secondary)' : 'var(--accent-green)', cursor: 'pointer', fontWeight: 600 }}>
+            {importing ? 'Извлекаю звук…' : '🎬 Импорт аудио из видео'}
+          </button>
         </div>
       )}
 

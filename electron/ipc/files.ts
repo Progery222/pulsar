@@ -169,6 +169,33 @@ export function registerFileHandlers() {
     }
   });
 
+  // Извлечь аудиодорожку из видео → mp3 (кэш в userData). Для «Импорт аудио из видео».
+  ipcMain.handle('audio:fromVideo', async (_event, videoPath: string) => {
+    if (!ffmpegBin || !videoPath) return { error: 'нет файла' };
+    const dir = path.join(app.getPath('userData'), 'extracted-audio');
+    fs.mkdirSync(dir, { recursive: true });
+    let mtime = 0;
+    try {
+      mtime = fs.statSync(videoPath).mtimeMs;
+    } catch {
+      /* noop */
+    }
+    const key = crypto.createHash('md5').update(`${videoPath}:${mtime}`).digest('hex');
+    const out = path.join(dir, `${key}.mp3`);
+    const name = path.basename(videoPath).replace(/\.[^.]+$/, '') + '.mp3';
+    if (fs.existsSync(out)) return { ok: true as const, path: out, name };
+    return await new Promise<{ ok: true; path: string; name: string } | { error: string }>((resolve) => {
+      let err = '';
+      const ch = spawn(ffmpegBin, ['-y', '-i', videoPath, '-vn', '-acodec', 'libmp3lame', '-q:a', '2', out], { windowsHide: true });
+      ch.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-600)));
+      ch.on('error', (e) => resolve({ error: e.message }));
+      ch.on('close', (code) => {
+        if (code === 0 && fs.existsSync(out)) resolve({ ok: true, path: out, name });
+        else resolve({ error: err.split(/\r?\n/).filter(Boolean).pop() || 'в видео нет аудиодорожки?' });
+      });
+    });
+  });
+
   // Показать файл в проводнике (с выделением).
   ipcMain.handle('shell:showItem', async (_event, filePath: string) => {
     shell.showItemInFolder(filePath);

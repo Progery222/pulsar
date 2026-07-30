@@ -52,6 +52,10 @@ const electronAPI = {
   openFolder: (folderPath: string): Promise<string> =>
     ipcRenderer.invoke('shell:openPath', folderPath),
 
+  // Извлечь аудио из видеофайла → mp3 (для «Импорт аудио из видео»).
+  audioFromVideo: (videoPath: string): Promise<{ ok: true; path: string; name: string } | { error: string }> =>
+    ipcRenderer.invoke('audio:fromVideo', videoPath),
+
   // Сохранить текстовый файл (SRT/TXT/VTT) через диалог.
   saveTextFile: (defaultName: string, content: string): Promise<{ ok: true; path: string } | { cancelled: true } | { error: string }> =>
     ipcRenderer.invoke('dialog:saveText', defaultName, content),
