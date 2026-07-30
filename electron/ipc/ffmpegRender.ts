@@ -165,6 +165,7 @@ function runCommand(cmd: ffmpeg.FfmpegCommand, hooks: RenderHooks): Promise<void
     cmd.inputOptions(['-nostdin']);
 
     let stderrTail = '';
+    let startedCmd = '';
     let lastActivity = Date.now();
     const beat = () => {
       lastActivity = Date.now();
@@ -189,6 +190,7 @@ function runCommand(cmd: ffmpeg.FfmpegCommand, hooks: RenderHooks): Promise<void
 
     const cleanupTimers = () => clearInterval(watchdog);
 
+    cmd.on('start', (cmdLine: string) => { startedCmd = cmdLine; });
     cmd.on('progress', beat);
     cmd.on('stderr', (line: string) => {
       beat();
@@ -203,7 +205,10 @@ function runCommand(cmd: ffmpeg.FfmpegCommand, hooks: RenderHooks): Promise<void
     cmd.on('error', (err) => {
       cleanupTimers();
       hooks.setCommand?.(null);
-      reject(err);
+      // Полная команда + хвост stderr в терминал — для диагностики «Invalid argument» и т.п.
+      console.error('[montage] ffmpeg failed:\n', startedCmd, '\n--- stderr ---\n', stderrTail.slice(-1500));
+      const detail = stderrTail.trim().split(/\r?\n/).filter(Boolean).slice(-2).join(' | ');
+      reject(new Error(`${err.message}${detail ? `\n${detail}` : ''}`));
     });
     cmd.run();
   });
@@ -407,7 +412,8 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     }
     progress(68);
 
-    const fadeOutStart = Math.max(0, req.duration - 0.5);
+    const safeDur = Number.isFinite(req.duration) && req.duration > 0 ? req.duration : 15;
+    const fadeOutStart = Math.max(0, safeDur - 0.5);
     const audioFades: string[] = [];
     if (req.fade === 'in' || req.fade === 'all') audioFades.push('afade=t=in:st=0:d=0.5');
     if (req.fade === 'out' || req.fade === 'all') audioFades.push(`afade=t=out:st=${fadeOutStart}:d=0.5`);
@@ -421,14 +427,16 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       const acmd = ffmpeg();
       const graph: string[] = [];
       let n = 0;
+      // Защита от NaN в значениях фильтра (иначе ffmpeg: Invalid argument при инициализации).
+      const num = (x: unknown, def: number) => (Number.isFinite(Number(x)) ? Number(x) : def);
       if (useOriginal) {
         acmd.input(concatPath);
-        graph.push(`[${n}:a]volume=${req.volumeOriginal.toFixed(2)}[ao]`);
+        graph.push(`[${n}:a]volume=${num(req.volumeOriginal, 1).toFixed(2)}[ao]`);
         n++;
       }
       if (useMusic) {
-        acmd.input(req.audioFile as string).inputOptions(['-ss', String(req.segmentStart)]);
-        graph.push(`[${n}:a]volume=${req.volumeMusic.toFixed(2)}[am]`);
+        acmd.input(req.audioFile as string).inputOptions(['-ss', String(Math.max(0, num(req.segmentStart, 0)))]);
+        graph.push(`[${n}:a]volume=${num(req.volumeMusic, 1).toFixed(2)}[am]`);
         n++;
       }
       let label: string;
@@ -445,7 +453,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
       await runCommand(
         acmd
           .complexFilter(graph, [label])
-          .outputOptions(['-c:a', 'aac', '-b:a', '192k', '-t', String(req.duration)])
+          .outputOptions(['-c:a', 'aac', '-b:a', '192k', '-t', String(safeDur)])
           .output(audioTrack)
           .on('progress', (p) => {
             const pct = Number.isFinite(p.percent) ? (p.percent as number) : 0;
@@ -474,7 +482,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     const baseVenc = await videoEncoderOptions({ preset: 'slow', crf: 18 });
     const baseOut = [
       '-map', '0:v:0', ...baseVenc,
-      '-t', String(req.duration), '-pix_fmt', 'yuv420p',
+      '-t', String(safeDur), '-pix_fmt', 'yuv420p',
     ];
     if (audioTrack) {
       baseCmd.input(audioTrack);
@@ -486,7 +494,7 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     }
     const baseVf = [...videoFades];
     if (req.title) {
-      const tf = buildTitleFilter(req.title, h, req.duration);
+      const tf = buildTitleFilter(req.title, h, safeDur);
       if (tf) baseVf.push(tf);
     }
     if (baseVf.length) baseCmd.videoFilters(baseVf);
