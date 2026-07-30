@@ -15,6 +15,17 @@ export default function DownloadApp() {
   const [folder, setFolder] = useState<string | null>(null);
   const [items, setItems] = useState<Item[]>([]);
   const [busy, setBusy] = useState(false);
+  const [updating, setUpdating] = useState(false);
+
+  async function updateEngine() {
+    setUpdating(true);
+    try {
+      const r = await window.electronAPI.downloadUpdateEngine();
+      showToast('error' in r ? 'Не удалось обновить: ' + r.error : `Загрузчик обновлён${r.version ? ` (yt-dlp ${r.version})` : ''}`);
+    } finally {
+      setUpdating(false);
+    }
+  }
   const curRef = useRef(0);
 
   useEffect(() => {
@@ -101,6 +112,14 @@ export default function DownloadApp() {
           <span style={{ fontSize: 13, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, minWidth: 0 }}>
             {folder || 'по умолчанию: Загрузки\\Pulsar'}
           </span>
+          <button
+            onClick={updateEngine}
+            disabled={updating || busy}
+            title="Обновить yt-dlp, если сайты (TikTok/YouTube) поменяли защиту"
+            style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '10px 14px', fontSize: 13.5, cursor: 'pointer', opacity: updating ? 0.6 : 1 }}
+          >
+            {updating ? 'Обновляю…' : '↻ Обновить загрузчик'}
+          </button>
           <button
             onClick={start}
             disabled={busy || !text.trim()}

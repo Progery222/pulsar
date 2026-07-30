@@ -215,6 +215,8 @@ const electronAPI = {
     ipcRenderer.invoke('download:url', url, baseDir),
   downloadAudio: (url: string): Promise<{ ok: true; path: string } | { error: string }> =>
     ipcRenderer.invoke('download:audio', url),
+  downloadUpdateEngine: (): Promise<{ ok: true; version: string } | { error: string }> =>
+    ipcRenderer.invoke('download:updateEngine'),
   tiktokUses: (url: string): Promise<{ uses: number | null; title: string | null }> =>
     ipcRenderer.invoke('tiktok:uses', url),
   onDownloadProgress: (

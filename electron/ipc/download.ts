@@ -60,6 +60,35 @@ function installYtdlp(): Promise<{ ok: true } | { error: string }> {
   });
 }
 
+// Версия установленного yt-dlp (для сообщения после обновления).
+function ytdlpVersion(): Promise<string> {
+  return new Promise((resolve) => {
+    const child = spawn(pyCmd(), ['-m', 'yt_dlp', '--version']);
+    let out = '';
+    child.stdout.on('data', (c: Buffer) => (out += c.toString()));
+    child.on('error', () => resolve(''));
+    child.on('close', () => resolve(out.trim()));
+  });
+}
+
+// Ошибка похожа на «yt-dlp устарел» (TikTok/YouTube поменяли защиту).
+function looksOutdated(err: string): boolean {
+  return /rehydration|Unable to extract|unable to extract|Confirm you are on the latest version|update to the latest|nsig|Failed to extract|Signature extraction failed|player response|not available on this app/i.test(err);
+}
+
+// Раз за сессию авто-обновляем yt-dlp при такой ошибке и повторяем скачивание.
+let sessionUpdated = false;
+async function autoUpdateRetry<T extends { error: string } | { ok: true; path: string }>(fn: () => Promise<T>): Promise<T> {
+  const r = await fn();
+  if ('error' in r && looksOutdated(r.error) && !sessionUpdated) {
+    sessionUpdated = true;
+    sendProgress({ stage: 'install', line: 'Обновляю загрузчик (yt-dlp) — сайт поменял защиту…' });
+    await installYtdlp();
+    return fn();
+  }
+  return r;
+}
+
 // Самый большой видеофайл в каталоге (без .part-огрызков).
 function pickVideo(dir: string): string | null {
   let best: { p: string; size: number } | null = null;
@@ -202,6 +231,14 @@ async function tiktokUses(url: string): Promise<{ uses: number | null; title: st
 }
 
 export function registerDownloadHandlers() {
+  // Ручное обновление движка загрузки (yt-dlp) — если сайты обновили защиту.
+  ipcMain.handle('download:updateEngine', async () => {
+    const inst = await installYtdlp();
+    if ('error' in inst) return inst;
+    sessionUpdated = true;
+    const ver = await ytdlpVersion();
+    return { ok: true as const, version: ver };
+  });
   ipcMain.handle('tiktok:uses', async (_e, url: string) => {
     if (!url || !/^https?:\/\//i.test(url.trim())) return { uses: null, title: null };
     return tiktokUses(url.trim());
@@ -217,7 +254,7 @@ export function registerDownloadHandlers() {
     const outDir = path.join(app.getPath('downloads'), 'Pulsar', 'audio', String(Date.now()));
     fs.mkdirSync(outDir, { recursive: true });
     try {
-      let r = await runAudioDownload(url.trim(), outDir);
+      let r = await autoUpdateRetry(() => runAudioDownload(url.trim(), outDir));
       if ('error' in r && NEEDS_COOKIES.test(r.error)) {
         for (const b of COOKIE_BROWSERS) {
           sendProgress({ stage: 'download', line: `Требуется вход — пробую куки из ${b}…` });
@@ -247,7 +284,7 @@ export function registerDownloadHandlers() {
     const outDir = path.join(root, String(Date.now()));
     fs.mkdirSync(outDir, { recursive: true });
     try {
-      let r = await runDownload(url.trim(), outDir);
+      let r = await autoUpdateRetry(() => runDownload(url.trim(), outDir));
       // Instagram/приватное: если нужна авторизация — пробуем куки из браузеров.
       if ('error' in r && NEEDS_COOKIES.test(r.error)) {
         for (const b of COOKIE_BROWSERS) {
