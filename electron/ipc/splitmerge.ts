@@ -199,12 +199,20 @@ export function registerSplitMergeHandlers() {
     const isAscii = (s: string) => /^[\x00-\x7F]*$/.test(s);
     const made: string[] = [];
 
+    // Эмоции берём по кругу без повторов: сначала все по разу, потом заново перемешиваем.
+    let emoBag: string[] = [];
+    const nextEmotion = (): string => {
+      if (req.bottomFile) return req.bottomFile;
+      if (!emoBag.length) emoBag = shuffle(botFiles);
+      return emoBag.pop()!;
+    };
+
     try {
       const N = Math.max(1, Math.min(200, Number(req.variations) || 1));
       for (let v = 0; v < N; v++) {
         if (cancelled) break;
         emit(`Вариация ${v + 1}/${N}`, Math.round((v / N) * 100));
-        const bottom = botFiles[Math.floor(Math.random() * botFiles.length)];
+        const bottom = nextEmotion();
         // Длина ролика = длине выбранного клипа эмоции (авто) или фикс. значению.
         const D = auto ? Math.min(120, Math.max(2, (await probeDur(bottom)) || fixedD)) : fixedD;
         const hooks = await pickHooksToFill(topFiles, D, cut);
@@ -224,11 +232,14 @@ export function registerSplitMergeHandlers() {
 
         // Аудио: канал эмоции (низ) + канал хука (верх), микс по громкостям.
         const mix: string[] = [];
-        if (vBot > 0 && (await hasAudio(bottom))) {
+        const botHas = vBot > 0 && (await hasAudio(bottom));
+        if (botHas) {
           fc.push(`[0:a]volume=${vBot.toFixed(3)},atrim=0:${D},asetpts=N/SR/TB[abot]`);
           mix.push('[abot]');
         }
-        if (vTop > 0) {
+        // Фолбэк: у эмоции нет звука и хук выключен → всё равно берём звук хука, чтобы не было тишины.
+        const vTopEff = vTop > 0 ? vTop : (botHas ? 0 : 1);
+        if (vTopEff > 0) {
           // Аудио хуков: где нет звука — тишина (anullsrc) нужной длины, чтобы concat не падал.
           const hookA: string[] = [];
           let lav = 0;
@@ -246,7 +257,7 @@ export function registerSplitMergeHandlers() {
             }
           }
           fc.push(`${hookA.join('')}concat=n=${hooks.length}:v=0:a=1[topaRaw]`);
-          fc.push(`[topaRaw]volume=${vTop.toFixed(3)},atrim=0:${D},asetpts=N/SR/TB[atop]`);
+          fc.push(`[topaRaw]volume=${vTopEff.toFixed(3)},atrim=0:${D},asetpts=N/SR/TB[atop]`);
           mix.push('[atop]');
         }
         let amap: string | null = null;

@@ -223,6 +223,7 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
   const [prev, setPrev] = useState<string | null>(null);
   const [poster, setPoster] = useState<string | null>(null);
   const [segIdx, setSegIdx] = useState(0);
+  const [muted, setMuted] = useState(true);
   const vidRef = useRef<HTMLVideoElement>(null);
 
   const seq = sequence && sequence.length > 1 ? sequence : null;
@@ -256,6 +257,14 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
   }, [nativeFailed, active, prev]);
 
   const transcoding = nativeFailed && !prev;
+
+  // Звук превью (по кнопке 🔊): громкость = слайдеру ячейки. Автоплей требует старта в mute.
+  useEffect(() => {
+    const el = vidRef.current;
+    if (!el) return;
+    el.muted = muted;
+    if (!muted) el.volume = Math.min(1, Math.max(0, fx.volume));
+  }, [muted, fx.volume, active, prev]);
 
   // Продвижение ленты хуков: по таймеру нарезки (или ~3.5с для «целиком»); если завис транскод — тоже идём дальше.
   useEffect(() => {
@@ -291,7 +300,7 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
               ref={vidRef}
               src={src}
               poster={poster ? mediaUrl(poster) : undefined}
-              autoPlay muted playsInline
+              autoPlay playsInline
               loop={loop}
               onEnded={onEnded}
               onError={() => setNativeFailed(true)}
@@ -303,6 +312,7 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
               {label}: {title}{prev ? ' · превью' : ''}
             </span>
             <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={() => setMuted((m) => !m)} title={muted ? 'Включить звук превью' : 'Выключить звук'} style={miniBtn}>{muted ? '🔇' : '🔊'}</button>
               {cell.mode === 'folder' && cell.files.length > 1 && <button onClick={onReshuffle} title="Другой рандомный клип" style={miniBtn}>🔀</button>}
               <button onClick={onPickFolder} title="Вся папка (рандом)" style={{ ...miniBtn, ...(cell.mode === 'folder' ? miniActive : null) }}>📁</button>
               <button onClick={onPickFile} title="Конкретный файл" style={{ ...miniBtn, ...(cell.mode === 'file' ? miniActive : null) }}>🎬</button>
