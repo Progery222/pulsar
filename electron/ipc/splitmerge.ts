@@ -154,8 +154,10 @@ function previewClip(src: string): Promise<string | null> {
       const out = path.join(os.tmpdir(), `splitprev_${key}.mp4`);
       if (fs.existsSync(out) && (await fs.promises.stat(out)).size > 0) return out;
       const tmp = path.join(os.tmpdir(), `splitprev_${key}_${Date.now()}.mp4`);
-      await ff(['-y', '-i', src, '-an', '-t', '8', '-vf', 'scale=-2:480:flags=fast_bilinear,fps=30',
-        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', tmp]);
+      // Со звуком (нужен для прослушивания/микса в превью); если аудио нет — ffmpeg просто не создаст дорожку.
+      await ff(['-y', '-i', src, '-t', '8', '-vf', 'scale=-2:480:flags=fast_bilinear,fps=30',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p',
+        '-c:a', 'aac', '-b:a', '128k', '-ar', '44100', '-movflags', '+faststart', tmp]);
       await fs.promises.rename(tmp, out).catch(() => {});
       return fs.existsSync(out) ? out : tmp;
     } catch (e) {

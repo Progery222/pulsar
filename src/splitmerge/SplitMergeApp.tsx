@@ -47,22 +47,23 @@ export default function SplitMergeApp() {
   const [bottom, setBottom] = useState<Cell>(EMPTY);
   const [topFx, setTopFx] = useState<Fx>(DEF_TOP);
   const [botFx, setBotFx] = useState<Fx>(DEF_BOT);
+  const [topMuted, setTopMuted] = useState(true);
+  const [botMuted, setBotMuted] = useState(true);
+  const [fxTab, setFxTab] = useState<'top' | 'bottom'>('top');
   const [duration, setDuration] = useState(10);
   const [durMode, setDurMode] = useState<'auto' | 'fixed'>('auto');
-  const [hookCut, setHookCut] = useState(0); // 0 = целиком
+  const [hookCut, setHookCut] = useState(0);
   const [format, setFormat] = useState('9:16');
   const [count, setCount] = useState(10);
   const [exporting, setExporting] = useState(false);
   const [stage, setStage] = useState('');
   const [pct, setPct] = useState(0);
-
   const [botDur, setBotDur] = useState(0);
   const [topSeq, setTopSeq] = useState<string[]>([]);
 
   const setCell = (which: 'top' | 'bottom', c: Cell) => (which === 'top' ? setTop(c) : setBottom(c));
   const randomCurrent = (files: string[]) => (files.length ? files[Math.floor(Math.random() * files.length)] : null);
 
-  // Реальная длина выбранного клипа эмоции (для авто-длительности и подбора числа хуков).
   useEffect(() => {
     if (!bottom.current) { setBotDur(0); return; }
     let alive = true;
@@ -70,14 +71,14 @@ export default function SplitMergeApp() {
     return () => { alive = false; };
   }, [bottom.current]);
 
-  // Последовательность хуков для превью (как в итоговом ролике: N штук под длину эмоции / нарезку).
+  // Лента хуков для превью (как в итоговом ролике: N штук под длину эмоции / нарезку).
   useEffect(() => {
     let alive = true;
     (async () => {
       const pool = top.mode === 'file' ? (top.current ? [top.current] : []) : top.files;
       if (!pool.length) { if (alive) setTopSeq([]); return; }
       const D = durMode === 'fixed' ? duration : (botDur || duration || 10);
-      let seq: string[] = [];
+      const seq: string[] = [];
       if (hookCut > 0) {
         const n = Math.max(1, Math.min(20, Math.ceil(D / hookCut)));
         const sh = shuffle(pool);
@@ -144,21 +145,32 @@ export default function SplitMergeApp() {
   }
 
   const aspect = format === '9:16' ? 9 / 16 : format === '1:1' ? 1 : 16 / 9;
+  const fx = fxTab === 'top' ? topFx : botFx;
+  const setFx = fxTab === 'top' ? setTopFx : setBotFx;
+  const hasAny = !!(top.current || bottom.current);
 
   return (
     <div style={{ height: '100%', display: 'flex', background: 'var(--bg-primary)' }}>
-      {/* Живое превью вертикали (2 ячейки) — WYSIWYG: эффекты + кадр применяются сразу */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, minWidth: 0 }}>
-        <div style={{ height: '100%', maxHeight: 680, aspectRatio: String(aspect), display: 'flex', flexDirection: 'column', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
-          <CellView cell={top} fx={topFx} which="top" label="Хук" sequence={topSeq} segDur={hookCut} onReshuffle={() => reshuffle('top')} onPickFolder={() => pickFolder('top')} onPickFile={() => pickFile('top')} />
-          <CellView cell={bottom} fx={botFx} which="bottom" label="Эмоция" onReshuffle={() => reshuffle('bottom')} onPickFolder={() => pickFolder('bottom')} onPickFile={() => pickFile('bottom')} />
+      {/* Превью + звук-микс прямо под видео */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20, gap: 12, minWidth: 0 }}>
+        <div style={{ height: '100%', maxHeight: 620, aspectRatio: String(aspect), display: 'flex', flexDirection: 'column', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
+          <CellView cell={top} fx={topFx} muted={topMuted} which="top" label="Хук" sequence={topSeq} segDur={hookCut} onReshuffle={() => reshuffle('top')} onPickFolder={() => pickFolder('top')} onPickFile={() => pickFile('top')} />
+          <CellView cell={bottom} fx={botFx} muted={botMuted} which="bottom" label="Эмоция" onReshuffle={() => reshuffle('bottom')} onPickFolder={() => pickFolder('bottom')} onPickFile={() => pickFile('bottom')} />
         </div>
+
+        {hasAny && (
+          <div style={{ width: '100%', maxWidth: 460, background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px' }}>
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>Звук — микс (нажми 🔊 чтобы слышать)</div>
+            <MixRow label="Хук" muted={topMuted} onMute={() => setTopMuted((m) => !m)} volume={topFx.volume} onVol={(v) => setTopFx({ ...topFx, volume: v })} />
+            <MixRow label="Эмоция" muted={botMuted} onMute={() => setBotMuted((m) => !m)} volume={botFx.volume} onVol={(v) => setBotFx({ ...botFx, volume: v })} />
+            <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 4, lineHeight: 1.3 }}>Громкость влияет и на превью, и на экспорт. Если у эмоции нет звука — на экспорте автоматически берётся звук хука.</div>
+          </div>
+        )}
       </div>
 
-      {/* Настройки */}
-      <div style={{ width: 330, borderLeft: '1px solid var(--border)', padding: 18, overflowY: 'auto', background: 'var(--bg-secondary)' }}>
-        <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>Сплит-монтаж</h2>
-        <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.4 }}>У каждой ячейки — 📁 вся папка (рандом) или 🎬 конкретный файл. Превью WYSIWYG.</p>
+      {/* Настройки — компактно */}
+      <div style={{ width: 320, borderLeft: '1px solid var(--border)', padding: 18, overflowY: 'auto', background: 'var(--bg-secondary)' }}>
+        <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 12px' }}>Сплит-монтаж</h2>
 
         <Sec title="Общее">
           <Row label="Длительность ролика">
@@ -167,9 +179,7 @@ export default function SplitMergeApp() {
               <option value="fixed">Фиксированная</option>
             </select>
           </Row>
-          {durMode === 'fixed'
-            ? <Row label={`Длительность ${duration}с`}><input type="range" min={4} max={60} step={1} value={duration} onChange={(e) => setDuration(+e.target.value)} style={{ width: '100%' }} /></Row>
-            : <div style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '-4px 0 9px', lineHeight: 1.35 }}>Длина ролика = длине клипа эмоции; хуки заполняют её.</div>}
+          {durMode === 'fixed' && <Row label={`Длительность ${duration}с`}><input type="range" min={4} max={60} step={1} value={duration} onChange={(e) => setDuration(+e.target.value)} style={{ width: '100%' }} /></Row>}
           <Row label="Длина хука сверху">
             <select value={hookCut} onChange={(e) => setHookCut(+e.target.value)} style={sel}>
               <option value={0}>Целиком (как в файле)</option>
@@ -188,8 +198,13 @@ export default function SplitMergeApp() {
           </Row>
         </Sec>
 
-        <FxPanel title="Эффекты — Хук (верх)" fx={topFx} set={setTopFx} />
-        <FxPanel title="Эффекты — Эмоция (низ)" fx={botFx} set={setBotFx} />
+        <Sec title="Эффекты">
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <button onClick={() => setFxTab('top')} style={{ ...seg, ...(fxTab === 'top' ? segActive : null) }}>Хук (верх)</button>
+            <button onClick={() => setFxTab('bottom')} style={{ ...seg, ...(fxTab === 'bottom' ? segActive : null) }}>Эмоция (низ)</button>
+          </div>
+          <FxRows fx={fx} set={setFx} />
+        </Sec>
 
         <Sec title="Экспорт">
           <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 6 }}>Количество уникальных роликов</div>
@@ -201,7 +216,6 @@ export default function SplitMergeApp() {
           <input type="number" min={1} max={200} value={count} onChange={(e) => setCount(Math.max(1, Math.min(200, +e.target.value || 1)))} style={sel} />
         </Sec>
 
-        <div style={{ height: 6 }} />
         <button onClick={exportVariations} disabled={exporting || !top.current || !bottom.current} style={{ ...btnPrimary, width: '100%' }}>
           {exporting ? `${stage || 'Рендер'}… ${pct}%` : `Экспорт · ${count} шт`}
         </button>
@@ -212,28 +226,35 @@ export default function SplitMergeApp() {
   );
 }
 
-// Ячейка превью: live-video; если кодек не проигрывается в Chromium (HEVC) — ffmpeg делает
-// лёгкое H.264-превью (кэш в temp) и оно играет. До готовности — стоп-кадр из ffmpeg.
+function MixRow({ label, muted, onMute, volume, onVol }: { label: string; muted: boolean; onMute: () => void; volume: number; onVol: (v: number) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+      <button onClick={onMute} title={muted ? 'Включить звук' : 'Выключить'} style={{ ...miniBtn, background: muted ? 'var(--bg-tertiary)' : 'var(--accent-green)', color: muted ? 'var(--text-primary)' : '#04120c', minWidth: 30 }}>{muted ? '🔇' : '🔊'}</button>
+      <span style={{ width: 58, fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
+      <input type="range" min={0} max={2} step={0.05} value={volume} onChange={(e) => onVol(+e.target.value)} style={{ flex: 1 }} />
+      <span style={{ width: 42, textAlign: 'right', fontSize: 11.5, color: 'var(--text-secondary)' }}>{Math.round(volume * 100)}%</span>
+    </div>
+  );
+}
+
+// Ячейка превью: live-video; HEVC-кодек не тянет Chromium → ffmpeg делает H.264-превью (со звуком).
 // sequence — лента хуков (верхняя ячейка): проигрывается по очереди, как в итоговом ролике.
-function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPickFolder, onPickFile }: {
-  cell: Cell; fx: Fx; which: 'top' | 'bottom'; label: string; sequence?: string[]; segDur?: number;
+function CellView({ cell, fx, muted, which, label, sequence, segDur, onReshuffle, onPickFolder, onPickFile }: {
+  cell: Cell; fx: Fx; muted: boolean; which: 'top' | 'bottom'; label: string; sequence?: string[]; segDur?: number;
   onReshuffle: () => void; onPickFolder: () => void; onPickFile: () => void;
 }) {
   const [nativeFailed, setNativeFailed] = useState(false);
   const [prev, setPrev] = useState<string | null>(null);
   const [poster, setPoster] = useState<string | null>(null);
   const [segIdx, setSegIdx] = useState(0);
-  const [muted, setMuted] = useState(true);
   const vidRef = useRef<HTMLVideoElement>(null);
 
   const seq = sequence && sequence.length > 1 ? sequence : null;
   const seqKey = seq ? seq.join('|') : '';
   const active = seq ? seq[segIdx % seq.length] : cell.current;
 
-  // Сброс индекса ленты при смене набора хуков / клипа.
   useEffect(() => { setSegIdx(0); }, [seqKey, cell.current]);
 
-  // Постер + попытка нативного проигрывания активного клипа.
   useEffect(() => {
     setNativeFailed(false);
     setPrev(null);
@@ -248,7 +269,6 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
     return () => { alive = false; clearTimeout(t); };
   }, [active]);
 
-  // Нативно не завелось → H.264-превью через ffmpeg.
   useEffect(() => {
     if (!nativeFailed || !active || prev) return;
     let alive = true;
@@ -258,15 +278,14 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
 
   const transcoding = nativeFailed && !prev;
 
-  // Звук превью (по кнопке 🔊): громкость = слайдеру ячейки. Автоплей требует старта в mute.
+  // Громкость превью = слайдеру ячейки (mute управляется извне).
   useEffect(() => {
     const el = vidRef.current;
     if (!el) return;
-    el.muted = muted;
-    if (!muted) el.volume = Math.min(1, Math.max(0, fx.volume));
-  }, [muted, fx.volume, active, prev]);
+    el.volume = Math.min(1, Math.max(0, fx.volume));
+  }, [fx.volume, active, prev, muted]);
 
-  // Продвижение ленты хуков: по таймеру нарезки (или ~3.5с для «целиком»); если завис транскод — тоже идём дальше.
+  // Продвижение ленты хуков.
   useEffect(() => {
     if (!seq) return;
     const base = segDur && segDur > 0 ? segDur * 1000 : 3500;
@@ -277,7 +296,7 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
 
   const fxStyle: React.CSSProperties = { width: '100%', height: '100%', display: 'block', filter: cssFor(fx), ...frameStyle(fx) };
   const src = prev ? mediaUrl(prev) : mediaUrl(active || '');
-  const loop = seq ? (segDur ?? 0) > 0 : true; // «целиком» в ленте — не зациклено, ждём onEnded
+  const loop = seq ? (segDur ?? 0) > 0 : true;
   const onEnded = () => { if (seq && !((segDur ?? 0) > 0)) setSegIdx((i) => (i + 1) % seq.length); };
   const title = cell.current
     ? (cell.mode === 'file' ? '🎬 ' + fileName(cell.current) : fileName(cell.folder || '') + ' · ' + cell.files.length + (seq ? ` · лента ${seq.length}` : ''))
@@ -301,8 +320,10 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
               src={src}
               poster={poster ? mediaUrl(poster) : undefined}
               autoPlay playsInline
+              muted={muted}
               loop={loop}
               onEnded={onEnded}
+              onCanPlay={(e) => { const el = e.currentTarget; el.volume = Math.min(1, Math.max(0, fx.volume)); if (el.paused) el.play().catch(() => {}); }}
               onError={() => setNativeFailed(true)}
               style={fxStyle}
             />
@@ -312,7 +333,6 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
               {label}: {title}{prev ? ' · превью' : ''}
             </span>
             <div style={{ display: 'flex', gap: 4 }}>
-              <button onClick={() => setMuted((m) => !m)} title={muted ? 'Включить звук превью' : 'Выключить звук'} style={miniBtn}>{muted ? '🔇' : '🔊'}</button>
               {cell.mode === 'folder' && cell.files.length > 1 && <button onClick={onReshuffle} title="Другой рандомный клип" style={miniBtn}>🔀</button>}
               <button onClick={onPickFolder} title="Вся папка (рандом)" style={{ ...miniBtn, ...(cell.mode === 'folder' ? miniActive : null) }}>📁</button>
               <button onClick={onPickFile} title="Конкретный файл" style={{ ...miniBtn, ...(cell.mode === 'file' ? miniActive : null) }}>🎬</button>
@@ -321,7 +341,7 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
         </>
       ) : (
         <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--text-secondary)' }}>
-          <div style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, lineHeight: 1 }}>+</div>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', border: '2px solid var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 26, lineHeight: 1 }}>+</div>
           <div style={{ fontSize: 12.5 }}>{label}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={onPickFolder} style={pickBtn}>📁 Папка</button>
@@ -333,14 +353,13 @@ function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPic
   );
 }
 
-function FxPanel({ title, fx, set }: { title: string; fx: Fx; set: (f: Fx) => void }) {
+function FxRows({ fx, set }: { fx: Fx; set: (f: Fx) => void }) {
   const u = (patch: Partial<Fx>) => set({ ...fx, ...patch });
   return (
-    <Sec title={title}>
+    <>
       <Row label={`Кадр — зум ${fx.zoom.toFixed(2)}×`}><input type="range" min={1} max={2.5} step={0.05} value={fx.zoom} onChange={(e) => u({ zoom: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Кадр — сдвиг ↔ ${fx.offX.toFixed(2)}`}><input type="range" min={-1} max={1} step={0.05} value={fx.offX} onChange={(e) => u({ offX: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Кадр — сдвиг ↕ ${fx.offY.toFixed(2)}`}><input type="range" min={-1} max={1} step={0.05} value={fx.offY} onChange={(e) => u({ offY: +e.target.value })} style={{ width: '100%' }} /></Row>
-      <Row label={`Громкость ${Math.round(fx.volume * 100)}%`}><input type="range" min={0} max={2} step={0.05} value={fx.volume} onChange={(e) => u({ volume: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Резкость ${fx.sharpen.toFixed(1)}`}><input type="range" min={0} max={2} step={0.1} value={fx.sharpen} onChange={(e) => u({ sharpen: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Шум ${fx.noise}`}><input type="range" min={0} max={40} step={1} value={fx.noise} onChange={(e) => u({ noise: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Яркость ${fx.brightness.toFixed(2)}`}><input type="range" min={-0.3} max={0.3} step={0.02} value={fx.brightness} onChange={(e) => u({ brightness: +e.target.value })} style={{ width: '100%' }} /></Row>
@@ -352,13 +371,13 @@ function FxPanel({ title, fx, set }: { title: string; fx: Fx; set: (f: Fx) => vo
           {FILTERS.filter((f) => f.key !== 'none').map((f) => <option key={f.key} value={f.key}>{f.label}</option>)}
         </select>
       </Row>
-    </Sec>
+    </>
   );
 }
 
 function Sec({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div style={{ marginBottom: 14 }}>
+    <div style={{ marginBottom: 16 }}>
       <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 8 }}>{title}</div>
       {children}
     </div>
@@ -374,10 +393,12 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 const sel: React.CSSProperties = { width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5 };
-const miniBtn: React.CSSProperties = { fontSize: 12, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' };
+const miniBtn: React.CSSProperties = { fontSize: 12, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: 6, padding: '3px 7px', cursor: 'pointer' };
 const miniActive: React.CSSProperties = { background: 'var(--accent-green)', color: '#04120c' };
 const pickBtn: React.CSSProperties = { padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
 const chip: React.CSSProperties = { padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
 const chipActive: React.CSSProperties = { background: 'var(--accent-green)', color: '#04120c', borderColor: 'var(--accent-green)', fontWeight: 600 };
+const seg: React.CSSProperties = { flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
+const segActive: React.CSSProperties = { background: 'var(--accent-green)', color: '#04120c', borderColor: 'var(--accent-green)', fontWeight: 600 };
 const btnPrimary: React.CSSProperties = { padding: '10px 16px', borderRadius: 10, border: 'none', background: 'var(--accent-green)', color: '#04120c', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer' };
