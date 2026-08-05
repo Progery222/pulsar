@@ -17,6 +17,11 @@ const EMPTY: Cell = { folder: null, files: [], current: null, mode: 'folder' };
 
 const COUNT_PRESETS = [5, 10, 15, 20, 25, 30, 50];
 const dirOf = (p: string) => p.replace(/[\\/][^\\/]*$/, '');
+function shuffle<T>(a: T[]): T[] {
+  const r = [...a];
+  for (let i = r.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [r[i], r[j]] = [r[j], r[i]]; }
+  return r;
+}
 
 function cssFor(fx: Fx): string {
   const p = [
@@ -51,8 +56,45 @@ export default function SplitMergeApp() {
   const [stage, setStage] = useState('');
   const [pct, setPct] = useState(0);
 
+  const [botDur, setBotDur] = useState(0);
+  const [topSeq, setTopSeq] = useState<string[]>([]);
+
   const setCell = (which: 'top' | 'bottom', c: Cell) => (which === 'top' ? setTop(c) : setBottom(c));
   const randomCurrent = (files: string[]) => (files.length ? files[Math.floor(Math.random() * files.length)] : null);
+
+  // Реальная длина выбранного клипа эмоции (для авто-длительности и подбора числа хуков).
+  useEffect(() => {
+    if (!bottom.current) { setBotDur(0); return; }
+    let alive = true;
+    window.electronAPI.splitProbeDur(bottom.current).then((d) => { if (alive) setBotDur(d || 0); });
+    return () => { alive = false; };
+  }, [bottom.current]);
+
+  // Последовательность хуков для превью (как в итоговом ролике: N штук под длину эмоции / нарезку).
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const pool = top.mode === 'file' ? (top.current ? [top.current] : []) : top.files;
+      if (!pool.length) { if (alive) setTopSeq([]); return; }
+      const D = durMode === 'fixed' ? duration : (botDur || duration || 10);
+      let seq: string[] = [];
+      if (hookCut > 0) {
+        const n = Math.max(1, Math.min(20, Math.ceil(D / hookCut)));
+        const sh = shuffle(pool);
+        for (let i = 0; i < n; i++) seq.push(sh[i % sh.length]);
+      } else {
+        const sh = shuffle(pool);
+        let sum = 0, i = 0, guard = 0;
+        while (sum < D && guard < 40 && seq.length < 20) {
+          const f = sh[i % sh.length]; i++; guard++;
+          const d = (await window.electronAPI.splitProbeDur(f).catch(() => 0)) || 3;
+          seq.push(f); sum += d;
+        }
+      }
+      if (alive) setTopSeq(seq.length ? seq : (top.current ? [top.current] : []));
+    })();
+    return () => { alive = false; };
+  }, [top.files, top.mode, top.current, hookCut, durMode, duration, botDur]);
 
   async function pickFolder(which: 'top' | 'bottom') {
     const folder = await window.electronAPI.selectDirectory();
@@ -108,7 +150,7 @@ export default function SplitMergeApp() {
       {/* Живое превью вертикали (2 ячейки) — WYSIWYG: эффекты + кадр применяются сразу */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, minWidth: 0 }}>
         <div style={{ height: '100%', maxHeight: 680, aspectRatio: String(aspect), display: 'flex', flexDirection: 'column', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
-          <CellView cell={top} fx={topFx} which="top" label="Хук" onReshuffle={() => reshuffle('top')} onPickFolder={() => pickFolder('top')} onPickFile={() => pickFile('top')} />
+          <CellView cell={top} fx={topFx} which="top" label="Хук" sequence={topSeq} segDur={hookCut} onReshuffle={() => reshuffle('top')} onPickFolder={() => pickFolder('top')} onPickFile={() => pickFile('top')} />
           <CellView cell={bottom} fx={botFx} which="bottom" label="Эмоция" onReshuffle={() => reshuffle('bottom')} onPickFolder={() => pickFolder('bottom')} onPickFile={() => pickFile('bottom')} />
         </div>
       </div>
@@ -172,40 +214,65 @@ export default function SplitMergeApp() {
 
 // Ячейка превью: live-video; если кодек не проигрывается в Chromium (HEVC) — ffmpeg делает
 // лёгкое H.264-превью (кэш в temp) и оно играет. До готовности — стоп-кадр из ffmpeg.
-function CellView({ cell, fx, which, label, onReshuffle, onPickFolder, onPickFile }: {
-  cell: Cell; fx: Fx; which: 'top' | 'bottom'; label: string;
+// sequence — лента хуков (верхняя ячейка): проигрывается по очереди, как в итоговом ролике.
+function CellView({ cell, fx, which, label, sequence, segDur, onReshuffle, onPickFolder, onPickFile }: {
+  cell: Cell; fx: Fx; which: 'top' | 'bottom'; label: string; sequence?: string[]; segDur?: number;
   onReshuffle: () => void; onPickFolder: () => void; onPickFile: () => void;
 }) {
   const [nativeFailed, setNativeFailed] = useState(false);
   const [prev, setPrev] = useState<string | null>(null);
   const [poster, setPoster] = useState<string | null>(null);
+  const [segIdx, setSegIdx] = useState(0);
   const vidRef = useRef<HTMLVideoElement>(null);
 
+  const seq = sequence && sequence.length > 1 ? sequence : null;
+  const seqKey = seq ? seq.join('|') : '';
+  const active = seq ? seq[segIdx % seq.length] : cell.current;
+
+  // Сброс индекса ленты при смене набора хуков / клипа.
+  useEffect(() => { setSegIdx(0); }, [seqKey, cell.current]);
+
+  // Постер + попытка нативного проигрывания активного клипа.
   useEffect(() => {
     setNativeFailed(false);
     setPrev(null);
     setPoster(null);
-    if (!cell.current) return;
+    if (!active) return;
     let alive = true;
-    window.electronAPI.thumb(cell.current, 0.5).then((p) => { if (alive) setPoster(p); });
+    window.electronAPI.thumb(active, 0.5).then((p) => { if (alive) setPoster(p); });
     const t = setTimeout(() => {
       const el = vidRef.current;
       if (alive && el && (el.readyState < 2 || el.videoWidth === 0)) setNativeFailed(true);
     }, 1600);
     return () => { alive = false; clearTimeout(t); };
-  }, [cell.current]);
+  }, [active]);
 
+  // Нативно не завелось → H.264-превью через ffmpeg.
   useEffect(() => {
-    if (!nativeFailed || !cell.current || prev) return;
+    if (!nativeFailed || !active || prev) return;
     let alive = true;
-    window.electronAPI.splitPreviewClip(cell.current).then((p) => { if (alive && p) setPrev(p); });
+    window.electronAPI.splitPreviewClip(active).then((p) => { if (alive && p) setPrev(p); });
     return () => { alive = false; };
-  }, [nativeFailed, cell.current, prev]);
+  }, [nativeFailed, active, prev]);
+
+  const transcoding = nativeFailed && !prev;
+
+  // Продвижение ленты хуков: по таймеру нарезки (или ~3.5с для «целиком»); если завис транскод — тоже идём дальше.
+  useEffect(() => {
+    if (!seq) return;
+    const base = segDur && segDur > 0 ? segDur * 1000 : 3500;
+    const wait = transcoding ? Math.max(base, 2600) : base;
+    const t = setTimeout(() => setSegIdx((i) => (i + 1) % seq.length), wait);
+    return () => clearTimeout(t);
+  }, [seq, seqKey, segIdx, segDur, transcoding, prev]);
 
   const fxStyle: React.CSSProperties = { width: '100%', height: '100%', display: 'block', filter: cssFor(fx), ...frameStyle(fx) };
-  const transcoding = nativeFailed && !prev;
-  const src = prev ? mediaUrl(prev) : mediaUrl(cell.current || '');
-  const title = cell.current ? (cell.mode === 'file' ? '🎬 ' + fileName(cell.current) : fileName(cell.folder || '') + ' · ' + cell.files.length) : '';
+  const src = prev ? mediaUrl(prev) : mediaUrl(active || '');
+  const loop = seq ? (segDur ?? 0) > 0 : true; // «целиком» в ленте — не зациклено, ждём onEnded
+  const onEnded = () => { if (seq && !((segDur ?? 0) > 0)) setSegIdx((i) => (i + 1) % seq.length); };
+  const title = cell.current
+    ? (cell.mode === 'file' ? '🎬 ' + fileName(cell.current) : fileName(cell.folder || '') + ' · ' + cell.files.length + (seq ? ` · лента ${seq.length}` : ''))
+    : '';
 
   return (
     <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#000', overflow: 'hidden', borderBottom: which === 'top' ? '1px solid rgba(255,255,255,0.25)' : 'none' }}>
@@ -224,7 +291,9 @@ function CellView({ cell, fx, which, label, onReshuffle, onPickFolder, onPickFil
               ref={vidRef}
               src={src}
               poster={poster ? mediaUrl(poster) : undefined}
-              autoPlay muted loop playsInline
+              autoPlay muted playsInline
+              loop={loop}
+              onEnded={onEnded}
               onError={() => setNativeFailed(true)}
               style={fxStyle}
             />

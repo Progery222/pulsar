@@ -340,6 +340,7 @@ const electronAPI = {
   // --- Модуль «Сплит-монтаж» (хук+эмоция) ---
   splitScanFolder: (folder: string): Promise<string[]> => ipcRenderer.invoke('split:scanFolder', folder),
   splitPreviewClip: (src: string): Promise<string | null> => ipcRenderer.invoke('split:previewClip', src),
+  splitProbeDur: (file: string): Promise<number> => ipcRenderer.invoke('split:probeDur', file),
   splitGenerate: (req: {
     topFolder: string; bottomFolder: string; topFile?: string | null; bottomFile?: string | null;
     hookCut?: number; duration: number; durationMode: 'auto' | 'fixed'; format: string;

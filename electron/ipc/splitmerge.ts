@@ -169,6 +169,7 @@ function previewClip(src: string): Promise<string | null> {
 
 export function registerSplitMergeHandlers() {
   ipcMain.handle('split:scanFolder', (_e, folder: string) => scan(folder));
+  ipcMain.handle('split:probeDur', (_e, file: string) => probeDur(file));
   ipcMain.handle('split:previewClip', (_e, src: string) => previewClip(src));
   ipcMain.handle('split:cancel', () => { cancelled = true; return { ok: true }; });
 
