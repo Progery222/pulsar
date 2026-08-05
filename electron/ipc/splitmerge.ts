@@ -113,7 +113,9 @@ function fxChain(fx: CellFx | undefined): string {
 }
 
 // Набор хуков, чья суммарная длина ≥ D (заполняют всю ячейку сверху). Возвращает файл+длительность.
-async function pickHooksToFill(files: string[], D: number): Promise<{ file: string; dur: number }[]> {
+// cut>0 — каждый хук вносит не больше cut секунд (режется), поэтому под ту же длину влезает больше разных хуков.
+async function pickHooksToFill(files: string[], D: number, cut: number): Promise<{ file: string; dur: number }[]> {
+  const eff = (d: number) => (cut > 0 ? Math.min(cut, d) : d);
   const shuffled = shuffle(files);
   const picked: { file: string; dur: number }[] = [];
   let sum = 0;
@@ -121,18 +123,18 @@ async function pickHooksToFill(files: string[], D: number): Promise<{ file: stri
     const d = await probeDur(f);
     if (d <= 0.2) continue;
     picked.push({ file: f, dur: d });
-    sum += d;
+    sum += eff(d);
     if (sum >= D) break;
   }
   // Хуков не хватило перекрыть D — доливаем разными файлами (каждый круг новый порядок).
   let guard = 0;
-  while (sum < D && picked.length && guard < 400) {
+  while (sum < D && picked.length && guard < 600) {
     for (const f of shuffle(files)) {
       if (sum >= D) break;
       const d = (await probeDur(f)) || 3;
       if (d <= 0.2) continue;
       picked.push({ file: f, dur: d });
-      sum += d;
+      sum += eff(d);
       guard++;
     }
     guard++;
@@ -171,17 +173,19 @@ export function registerSplitMergeHandlers() {
   ipcMain.handle('split:cancel', () => { cancelled = true; return { ok: true }; });
 
   ipcMain.handle('split:generate', async (e, req: {
-    topFolder: string; bottomFolder: string; duration: number; durationMode: 'auto' | 'fixed'; format: string;
+    topFolder: string; bottomFolder: string; topFile?: string | null; bottomFile?: string | null;
+    hookCut?: number; duration: number; durationMode: 'auto' | 'fixed'; format: string;
     variations: number; topFx: CellFx; bottomFx: CellFx; outputDir: string;
   }) => {
     cancelled = false;
     if (!ffmpegBin) return { error: 'ffmpeg не найден' };
     const [W, H] = FORMATS[req.format] ?? FORMATS['9:16'];
     const Hc = Math.round(H / 4) * 2; // половина высоты, чётная
-    const topFiles = scan(req.topFolder);
-    const botFiles = scan(req.bottomFolder);
+    const topFiles = req.topFile ? [req.topFile] : scan(req.topFolder);
+    const botFiles = req.bottomFile ? [req.bottomFile] : scan(req.bottomFolder);
     if (!topFiles.length) return { error: 'В верхней папке (хуки) нет видео' };
     if (!botFiles.length) return { error: 'В нижней папке (эмоции) нет видео' };
+    const cut = Math.max(0, Number(req.hookCut) || 0);
     const auto = req.durationMode !== 'fixed';
     const fixedD = Math.max(2, Number(req.duration) || 10);
     const emit = (stage: string, percent: number) => e.sender.send('split:progress', { stage, percent });
@@ -202,7 +206,7 @@ export function registerSplitMergeHandlers() {
         const bottom = botFiles[Math.floor(Math.random() * botFiles.length)];
         // Длина ролика = длине выбранного клипа эмоции (авто) или фикс. значению.
         const D = auto ? Math.min(120, Math.max(2, (await probeDur(bottom)) || fixedD)) : fixedD;
-        const hooks = await pickHooksToFill(topFiles, D);
+        const hooks = await pickHooksToFill(topFiles, D, cut);
         if (!hooks.length) continue;
 
         const inputs: string[] = ['-stream_loop', '-1', '-i', bottom];
@@ -211,7 +215,8 @@ export function registerSplitMergeHandlers() {
         const fc: string[] = [];
         // Видео.
         fc.push(`[0:v]${coverBot}${botFx ? ',' + botFx : ''},trim=0:${D},setpts=PTS-STARTPTS[bot]`);
-        hooks.forEach((_, i) => fc.push(`[${i + 1}:v]${coverTop}[h${i}]`));
+        const hcut = cut > 0 ? `,trim=0:${cut},setpts=PTS-STARTPTS` : '';
+        hooks.forEach((_, i) => fc.push(`[${i + 1}:v]${coverTop}${hcut}[h${i}]`));
         fc.push(`${hooks.map((_, i) => `[h${i}]`).join('')}concat=n=${hooks.length}:v=1:a=0[tcat]`);
         fc.push(`[tcat]${topFx ? topFx + ',' : ''}trim=0:${D},setpts=PTS-STARTPTS[top]`);
         fc.push(`[top][bot]vstack=inputs=2[v]`);
@@ -226,13 +231,15 @@ export function registerSplitMergeHandlers() {
           // Аудио хуков: где нет звука — тишина (anullsrc) нужной длины, чтобы concat не падал.
           const hookA: string[] = [];
           let lav = 0;
+          const acut = cut > 0 ? `,atrim=0:${cut},asetpts=N/SR/TB` : '';
           for (let i = 0; i < hooks.length; i++) {
             if (await hasAudio(hooks[i].file)) {
-              fc.push(`[${i + 1}:a]aresample=44100[hka${i}]`);
+              fc.push(`[${i + 1}:a]aresample=44100${acut}[hka${i}]`);
               hookA.push(`[hka${i}]`);
             } else {
               const idx = 1 + hooks.length + lav;
-              inputs.push('-f', 'lavfi', '-t', Math.max(0.1, hooks[i].dur || 3).toFixed(2), '-i', 'anullsrc=r=44100:cl=stereo');
+              const silDur = cut > 0 ? Math.min(cut, hooks[i].dur || cut) : (hooks[i].dur || 3);
+              inputs.push('-f', 'lavfi', '-t', Math.max(0.1, silDur).toFixed(2), '-i', 'anullsrc=r=44100:cl=stereo');
               hookA.push(`[${idx}:a]`);
               lav++;
             }
