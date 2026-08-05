@@ -157,45 +157,63 @@ export default function SplitMergeApp() {
 function CellView({ cell, fx, which, label, onReshuffle, onPick }: {
   cell: Cell; fx: Fx; which: 'top' | 'bottom'; label: string; onReshuffle: () => void; onPick: () => void;
 }) {
-  const [err, setErr] = useState(false);
+  const [nativeFailed, setNativeFailed] = useState(false);
+  const [prev, setPrev] = useState<string | null>(null); // перекодированное H.264-превью
   const [poster, setPoster] = useState<string | null>(null);
   const vidRef = useRef<HTMLVideoElement>(null);
 
+  // Сброс + попытка нативного проигрывания; если за 1.6с нет кадра — помечаем как неигрибельное.
   useEffect(() => {
-    setErr(false);
+    setNativeFailed(false);
+    setPrev(null);
     setPoster(null);
     if (!cell.current) return;
     let alive = true;
     window.electronAPI.thumb(cell.current, 0.5).then((p) => { if (alive) setPoster(p); });
     const t = setTimeout(() => {
       const el = vidRef.current;
-      if (el && (el.readyState < 2 || el.videoWidth === 0)) setErr(true);
+      if (alive && el && (el.readyState < 2 || el.videoWidth === 0)) setNativeFailed(true);
     }, 1600);
     return () => { alive = false; clearTimeout(t); };
   }, [cell.current]);
 
+  // Нативно не завелось → просим ffmpeg сделать лёгкое H.264-превью и играем его.
+  useEffect(() => {
+    if (!nativeFailed || !cell.current || prev) return;
+    let alive = true;
+    window.electronAPI.splitPreviewClip(cell.current).then((p) => { if (alive && p) setPrev(p); });
+    return () => { alive = false; };
+  }, [nativeFailed, cell.current, prev]);
+
   const fxStyle: React.CSSProperties = { width: '100%', height: '100%', display: 'block', filter: cssFor(fx), ...frameStyle(fx) };
+  const transcoding = nativeFailed && !prev;
+  const src = prev ? mediaUrl(prev) : mediaUrl(cell.current || '');
 
   return (
     <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#000', overflow: 'hidden', borderBottom: which === 'top' ? '1px solid rgba(255,255,255,0.25)' : 'none' }}>
       {cell.current ? (
         <>
-          {err && poster ? (
-            <img src={mediaUrl(poster)} alt="" style={fxStyle} />
+          {transcoding ? (
+            <>
+              {poster && <img src={mediaUrl(poster)} alt="" style={fxStyle} />}
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <span style={{ fontSize: 11.5, color: '#fff', background: 'rgba(0,0,0,0.6)', borderRadius: 6, padding: '4px 10px' }}>готовим превью…</span>
+              </div>
+            </>
           ) : (
             <video
-              key={cell.current}
+              key={src}
               ref={vidRef}
-              src={mediaUrl(cell.current)}
+              src={src}
               poster={poster ? mediaUrl(poster) : undefined}
               autoPlay muted loop playsInline
-              onError={() => setErr(true)}
+              onError={() => setNativeFailed(true)}
               style={fxStyle}
             />
           )}
           <div style={{ position: 'absolute', top: 6, left: 6, right: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
             <span style={{ fontSize: 10.5, color: '#fff', background: 'rgba(0,0,0,0.6)', borderRadius: 6, padding: '2px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-              {label}: {fileName(cell.folder || '')} · {cell.files.length}{err ? ' · кадр' : ''}
+              {label}: {fileName(cell.folder || '')} · {cell.files.length}{prev ? ' · превью' : ''}
             </span>
             <div style={{ display: 'flex', gap: 4 }}>
               <button onClick={onReshuffle} title="Другой рандомный клип" style={miniBtn}>🔀</button>

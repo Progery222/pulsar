@@ -2,6 +2,7 @@ import { ipcMain } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
 import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -139,8 +140,34 @@ async function pickHooksToFill(files: string[], D: number): Promise<{ file: stri
   return picked;
 }
 
+// Лёгкое H.264-превью клипа (для кодеков, что не тянет Chromium — HEVC и т.п.). Кэш в temp.
+const previewing = new Map<string, Promise<string | null>>();
+function previewClip(src: string): Promise<string | null> {
+  if (previewing.has(src)) return previewing.get(src)!;
+  const p = (async () => {
+    try {
+      if (!ffmpegBin) return null;
+      const st = await fs.promises.stat(src);
+      const key = crypto.createHash('md5').update(src + st.mtimeMs + st.size).digest('hex').slice(0, 16);
+      const out = path.join(os.tmpdir(), `splitprev_${key}.mp4`);
+      if (fs.existsSync(out) && (await fs.promises.stat(out)).size > 0) return out;
+      const tmp = path.join(os.tmpdir(), `splitprev_${key}_${Date.now()}.mp4`);
+      await ff(['-y', '-i', src, '-an', '-t', '8', '-vf', 'scale=-2:480:flags=fast_bilinear,fps=30',
+        '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '28', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', tmp]);
+      await fs.promises.rename(tmp, out).catch(() => {});
+      return fs.existsSync(out) ? out : tmp;
+    } catch (e) {
+      console.error('[split] previewClip failed:', (e as Error).message);
+      return null;
+    }
+  })();
+  previewing.set(src, p);
+  return p;
+}
+
 export function registerSplitMergeHandlers() {
   ipcMain.handle('split:scanFolder', (_e, folder: string) => scan(folder));
+  ipcMain.handle('split:previewClip', (_e, src: string) => previewClip(src));
   ipcMain.handle('split:cancel', () => { cancelled = true; return { ok: true }; });
 
   ipcMain.handle('split:generate', async (e, req: {
