@@ -4,31 +4,52 @@ import { showToast } from '../store/toastStore';
 import { mediaUrl, fileName } from '../utils/media';
 import { FILTERS } from '../data/filters';
 
-type Fx = { sharpen: number; noise: number; brightness: number; contrast: number; saturation: number; filter: string | null };
-const DEF_FX: Fx = { sharpen: 0, noise: 0, brightness: 0, contrast: 0, saturation: 0, filter: null };
+type Fx = {
+  sharpen: number; noise: number; brightness: number; contrast: number; saturation: number;
+  filter: string | null; zoom: number; offX: number; offY: number; volume: number;
+};
+const DEF_TOP: Fx = { sharpen: 0, noise: 0, brightness: 0, contrast: 0, saturation: 0, filter: null, zoom: 1, offX: 0, offY: 0, volume: 0 };
+const DEF_BOT: Fx = { ...DEF_TOP, volume: 1 };
 
-type Cell = { folder: string | null; files: string[]; preview: string | null; current: string | null };
-const EMPTY: Cell = { folder: null, files: [], preview: null, current: null };
+type Cell = { folder: string | null; files: string[]; current: string | null };
+const EMPTY: Cell = { folder: null, files: [], current: null };
+
+const COUNT_PRESETS = [5, 10, 15, 20, 25, 30, 50];
+
+// CSS-превью эффектов (приближённо к ffmpeg).
+function cssFor(fx: Fx): string {
+  const p = [
+    `brightness(${(1 + fx.brightness).toFixed(3)})`,
+    `contrast(${(1 + fx.contrast).toFixed(3)})`,
+    `saturate(${(1 + fx.saturation).toFixed(3)})`,
+  ];
+  if (fx.filter) {
+    const m = FILTERS.find((f) => f.key === fx.filter);
+    if (m && m.css !== 'none') p.push(m.css);
+  }
+  return p.join(' ');
+}
+function frameStyle(fx: Fx): React.CSSProperties {
+  const px = ((fx.offX + 1) / 2 * 100).toFixed(1) + '%';
+  const py = ((fx.offY + 1) / 2 * 100).toFixed(1) + '%';
+  return { objectFit: 'cover', objectPosition: `${px} ${py}`, transform: `scale(${fx.zoom})`, transformOrigin: `${px} ${py}` };
+}
 
 export default function SplitMergeApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
   const [top, setTop] = useState<Cell>(EMPTY);
   const [bottom, setBottom] = useState<Cell>(EMPTY);
-  const [topFx, setTopFx] = useState<Fx>(DEF_FX);
-  const [botFx, setBotFx] = useState<Fx>(DEF_FX);
+  const [topFx, setTopFx] = useState<Fx>(DEF_TOP);
+  const [botFx, setBotFx] = useState<Fx>(DEF_BOT);
   const [duration, setDuration] = useState(10);
   const [format, setFormat] = useState('9:16');
-  const [variations, setVariations] = useState(3);
-  const [audio, setAudio] = useState<'bottom' | 'none'>('bottom');
+  const [count, setCount] = useState(10);
   const [exporting, setExporting] = useState(false);
   const [stage, setStage] = useState('');
   const [pct, setPct] = useState(0);
 
-  async function pickPreview(files: string[]): Promise<{ current: string | null; preview: string | null }> {
-    if (!files.length) return { current: null, preview: null };
-    const current = files[Math.floor(Math.random() * files.length)];
-    const thumb = await window.electronAPI.thumb(current, 0.5);
-    return { current, preview: thumb };
+  function randomCurrent(files: string[]): string | null {
+    return files.length ? files[Math.floor(Math.random() * files.length)] : null;
   }
 
   async function pickFolder(which: 'top' | 'bottom') {
@@ -36,16 +57,15 @@ export default function SplitMergeApp() {
     if (!folder) return;
     const files = await window.electronAPI.splitScanFolder(folder);
     if (!files.length) { showToast('В папке нет видео (mp4/mov/…)'); return; }
-    const { current, preview } = await pickPreview(files);
-    const cell: Cell = { folder, files, preview, current };
+    const cell: Cell = { folder, files, current: randomCurrent(files) };
     if (which === 'top') setTop(cell); else setBottom(cell);
   }
 
-  async function reshuffle(which: 'top' | 'bottom') {
+  function reshuffle(which: 'top' | 'bottom') {
     const cell = which === 'top' ? top : bottom;
     if (!cell.files.length) return;
-    const { current, preview } = await pickPreview(cell.files);
-    if (which === 'top') setTop({ ...cell, current, preview }); else setBottom({ ...cell, current, preview });
+    const current = randomCurrent(cell.files);
+    if (which === 'top') setTop({ ...cell, current }); else setBottom({ ...cell, current });
   }
 
   async function exportVariations() {
@@ -57,10 +77,11 @@ export default function SplitMergeApp() {
     const off = window.electronAPI.onSplitProgress((ev) => { setStage(ev.stage); setPct(ev.percent); });
     try {
       const res = await window.electronAPI.splitGenerate({
-        topFolder: top.folder, bottomFolder: bottom.folder, duration, format, variations, audio, topFx, bottomFx: botFx, outputDir,
+        topFolder: top.folder, bottomFolder: bottom.folder, duration, format,
+        variations: count, topFx, bottomFx: botFx, outputDir,
       });
       if ('error' in res) { showToast('Ошибка: ' + res.error); return; }
-      showToast(`Готово: ${res.count} вариаций`);
+      showToast(`Готово: ${res.count} роликов`);
       window.electronAPI.openFolder(res.dir);
     } catch (e) {
       showToast('Ошибка: ' + (e as Error).message);
@@ -72,19 +93,26 @@ export default function SplitMergeApp() {
 
   const aspect = format === '9:16' ? 9 / 16 : format === '1:1' ? 1 : 16 / 9;
 
-  function CellView({ cell, which, label }: { cell: Cell; which: 'top' | 'bottom'; label: string }) {
+  function CellView({ cell, fx, which, label }: { cell: Cell; fx: Fx; which: 'top' | 'bottom'; label: string }) {
     return (
       <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#000', overflow: 'hidden', borderBottom: which === 'top' ? '1px solid rgba(255,255,255,0.25)' : 'none' }}>
-        {cell.preview ? (
+        {cell.current ? (
           <>
-            <img src={mediaUrl(cell.preview)} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <video
+              key={cell.current}
+              src={mediaUrl(cell.current)}
+              autoPlay muted loop playsInline
+              style={{ width: '100%', height: '100%', display: 'block', filter: cssFor(fx), ...frameStyle(fx) }}
+            />
             <div style={{ position: 'absolute', top: 6, left: 6, right: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10.5, color: '#fff', background: 'rgba(0,0,0,0.55)', borderRadius: 6, padding: '2px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <span style={{ fontSize: 10.5, color: '#fff', background: 'rgba(0,0,0,0.6)', borderRadius: 6, padding: '2px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {label}: {fileName(cell.folder || '')} · {cell.files.length}
               </span>
-              <button onClick={() => reshuffle(which)} title="Другой рандомный клип" style={{ fontSize: 12, background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' }}>🔀</button>
+              <div style={{ display: 'flex', gap: 4 }}>
+                <button onClick={() => reshuffle(which)} title="Другой рандомный клип" style={miniBtn}>🔀</button>
+                <button onClick={() => pickFolder(which)} title="Сменить папку" style={miniBtn}>📁</button>
+              </div>
             </div>
-            <button onClick={() => pickFolder(which)} style={{ position: 'absolute', bottom: 6, left: '50%', transform: 'translateX(-50%)', fontSize: 11, background: 'rgba(0,0,0,0.55)', border: 'none', color: '#fff', borderRadius: 6, padding: '3px 9px', cursor: 'pointer' }}>Сменить папку</button>
           </>
         ) : (
           <button onClick={() => pickFolder(which)} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
@@ -98,18 +126,18 @@ export default function SplitMergeApp() {
 
   return (
     <div style={{ height: '100%', display: 'flex', background: 'var(--bg-primary)' }}>
-      {/* Превью вертикали, поделённой на 2 ячейки */}
+      {/* Живое превью вертикали (2 ячейки) — то, что выйдет: эффекты + кадр применяются сразу */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, minWidth: 0 }}>
-        <div style={{ height: '100%', maxHeight: 640, aspectRatio: String(aspect), display: 'flex', flexDirection: 'column', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
-          <CellView cell={top} which="top" label="Хук" />
-          <CellView cell={bottom} which="bottom" label="Эмоция" />
+        <div style={{ height: '100%', maxHeight: 680, aspectRatio: String(aspect), display: 'flex', flexDirection: 'column', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
+          <CellView cell={top} fx={topFx} which="top" label="Хук" />
+          <CellView cell={bottom} fx={botFx} which="bottom" label="Эмоция" />
         </div>
       </div>
 
       {/* Настройки */}
-      <div style={{ width: 320, borderLeft: '1px solid var(--border)', padding: 18, overflowY: 'auto', background: 'var(--bg-secondary)' }}>
+      <div style={{ width: 330, borderLeft: '1px solid var(--border)', padding: 18, overflowY: 'auto', background: 'var(--bg-secondary)' }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: '0 0 4px' }}>Сплит-монтаж</h2>
-        <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.4 }}>Верх — папка с хуками (2–4с, склеятся на всю длину). Низ — папка с эмоциями (по {duration}с).</p>
+        <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.4 }}>Превью показывает реальный результат: эффекты, кадр и фильтр применяются на лету.</p>
 
         <Sec title="Общее">
           <Row label={`Длительность ${duration}с`}><input type="range" min={4} max={60} step={1} value={duration} onChange={(e) => setDuration(+e.target.value)} style={{ width: '100%' }} /></Row>
@@ -120,21 +148,24 @@ export default function SplitMergeApp() {
               <option value="16:9">16:9</option>
             </select>
           </Row>
-          <Row label="Звук">
-            <select value={audio} onChange={(e) => setAudio(e.target.value as 'bottom' | 'none')} style={sel}>
-              <option value="bottom">Из эмоции (низ)</option>
-              <option value="none">Без звука</option>
-            </select>
-          </Row>
-          <Row label={`Вариаций: ${variations}`}><input type="range" min={1} max={50} step={1} value={variations} onChange={(e) => setVariations(+e.target.value)} style={{ width: '100%' }} /></Row>
         </Sec>
 
         <FxPanel title="Эффекты — Хук (верх)" fx={topFx} set={setTopFx} />
         <FxPanel title="Эффекты — Эмоция (низ)" fx={botFx} set={setBotFx} />
 
-        <div style={{ height: 14 }} />
+        <Sec title="Экспорт">
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginBottom: 6 }}>Количество уникальных роликов</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+            {COUNT_PRESETS.map((n) => (
+              <button key={n} onClick={() => setCount(n)} style={{ ...chip, ...(count === n ? chipActive : null) }}>{n}</button>
+            ))}
+          </div>
+          <input type="number" min={1} max={200} value={count} onChange={(e) => setCount(Math.max(1, Math.min(200, +e.target.value || 1)))} style={sel} />
+        </Sec>
+
+        <div style={{ height: 6 }} />
         <button onClick={exportVariations} disabled={exporting || !top.folder || !bottom.folder} style={{ ...btnPrimary, width: '100%' }}>
-          {exporting ? `${stage || 'Рендер'}… ${pct}%` : `Сделать ${variations} вариаций`}
+          {exporting ? `${stage || 'Рендер'}… ${pct}%` : `Экспорт · ${count} шт`}
         </button>
         {exporting && <button onClick={() => window.electronAPI.splitCancel()} style={{ ...btnSecondary, width: '100%', marginTop: 8 }}>Отмена</button>}
         <button onClick={() => setAppMode('select')} disabled={exporting} style={{ ...btnSecondary, width: '100%', marginTop: 8 }}>На главную</button>
@@ -147,6 +178,10 @@ function FxPanel({ title, fx, set }: { title: string; fx: Fx; set: (f: Fx) => vo
   const u = (patch: Partial<Fx>) => set({ ...fx, ...patch });
   return (
     <Sec title={title}>
+      <Row label={`Кадр — зум ${fx.zoom.toFixed(2)}×`}><input type="range" min={1} max={2.5} step={0.05} value={fx.zoom} onChange={(e) => u({ zoom: +e.target.value })} style={{ width: '100%' }} /></Row>
+      <Row label={`Кадр — сдвиг ↔ ${fx.offX.toFixed(2)}`}><input type="range" min={-1} max={1} step={0.05} value={fx.offX} onChange={(e) => u({ offX: +e.target.value })} style={{ width: '100%' }} /></Row>
+      <Row label={`Кадр — сдвиг ↕ ${fx.offY.toFixed(2)}`}><input type="range" min={-1} max={1} step={0.05} value={fx.offY} onChange={(e) => u({ offY: +e.target.value })} style={{ width: '100%' }} /></Row>
+      <Row label={`Громкость ${Math.round(fx.volume * 100)}%`}><input type="range" min={0} max={2} step={0.05} value={fx.volume} onChange={(e) => u({ volume: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Резкость ${fx.sharpen.toFixed(1)}`}><input type="range" min={0} max={2} step={0.1} value={fx.sharpen} onChange={(e) => u({ sharpen: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Шум ${fx.noise}`}><input type="range" min={0} max={40} step={1} value={fx.noise} onChange={(e) => u({ noise: +e.target.value })} style={{ width: '100%' }} /></Row>
       <Row label={`Яркость ${fx.brightness.toFixed(2)}`}><input type="range" min={-0.3} max={0.3} step={0.02} value={fx.brightness} onChange={(e) => u({ brightness: +e.target.value })} style={{ width: '100%' }} /></Row>
@@ -180,5 +215,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 }
 
 const sel: React.CSSProperties = { width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5 };
+const miniBtn: React.CSSProperties = { fontSize: 12, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: 6, padding: '2px 7px', cursor: 'pointer' };
+const chip: React.CSSProperties = { padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
+const chipActive: React.CSSProperties = { background: 'var(--accent-green)', color: '#04120c', borderColor: 'var(--accent-green)', fontWeight: 600 };
 const btnPrimary: React.CSSProperties = { padding: '10px 16px', borderRadius: 10, border: 'none', background: 'var(--accent-green)', color: '#04120c', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer' };

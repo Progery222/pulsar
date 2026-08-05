@@ -8,8 +8,8 @@ import path from 'node:path';
 import { FILTERS } from '../../src/data/filters';
 
 // Модуль «Сплит-монтаж»: вертикальный кадр из 2 ячеек — сверху хуки (короткие 2-4с,
-// склеиваются на всю длину), снизу эмоция (N секунд). Пер-ячейка эффекты. Экспорт N
-// уникальных вариаций (рандомные исходники из папок). Собирается ffmpeg (vstack).
+// склеиваются на всю длину), снизу эмоция (N секунд). Пер-ячейка эффекты + кадрирование
+// (зум/смещение) + громкость. Экспорт N уникальных вариаций (рандомные исходники). ffmpeg (vstack).
 
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 const ffprobeBin = (ffprobeStatic as unknown as { path: string })?.path?.replace('app.asar', 'app.asar.unpacked');
@@ -24,6 +24,10 @@ export interface CellFx {
   contrast: number; // -0.5..0.5 (0 = нейтрально)
   saturation: number; // -1..1 (0 = нейтрально)
   filter: string | null; // ключ пресета из FILTERS
+  zoom: number; // 1..2.5 (кадрирование — приближение)
+  offX: number; // -1..1 (сдвиг кадра по X)
+  offY: number; // -1..1 (сдвиг кадра по Y)
+  volume: number; // 0..2 (громкость канала)
 }
 
 let cancelled = false;
@@ -39,11 +43,11 @@ function ff(args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     let err = '';
     const ch = spawn(ffmpegBin, args, { windowsHide: true });
-    ch.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-1500)));
+    ch.stderr.on('data', (d: Buffer) => (err = (err + d.toString()).slice(-2000)));
     ch.on('error', reject);
     ch.on('close', (code) => {
       if (code === 0) return resolve();
-      console.error('[split] ffmpeg failed:', args.join(' '), '\n', err.slice(-600));
+      console.error('[split] ffmpeg failed:', args.join(' '), '\n', err.slice(-800));
       reject(new Error(err.split(/\r?\n/).filter(Boolean).slice(-2).join(' | ') || `ffmpeg ${code}`));
     });
   });
@@ -58,13 +62,15 @@ function probeDur(file: string): Promise<number> {
     ch.on('error', () => resolve(0));
   });
 }
+const audioCache = new Map<string, boolean>();
 function hasAudio(file: string): Promise<boolean> {
+  if (audioCache.has(file)) return Promise.resolve(audioCache.get(file)!);
   return new Promise((resolve) => {
     if (!ffprobeBin) return resolve(true);
     const ch = spawn(ffprobeBin, ['-v', 'error', '-select_streams', 'a', '-show_entries', 'stream=index', '-of', 'csv=p=0', file], { windowsHide: true });
     let out = '';
     ch.stdout.on('data', (d: Buffer) => (out += d.toString()));
-    ch.on('close', () => resolve(out.trim().length > 0));
+    ch.on('close', () => { const has = out.trim().length > 0; audioCache.set(file, has); resolve(has); });
     ch.on('error', () => resolve(true));
   });
 }
@@ -76,6 +82,18 @@ function shuffle<T>(a: T[]): T[] {
   }
   return r;
 }
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, Number(x) || 0));
+
+// Кадрирование (зум/смещение) + cover-crop под ячейку W×Hc.
+function coverChain(W: number, Hc: number, fx: CellFx | undefined): string {
+  const z = clamp(fx?.zoom ?? 1, 1, 2.5);
+  const fxx = (clamp(fx?.offX ?? 0, -1, 1) + 1) / 2; // 0..1 доля слэка по X
+  const fyy = (clamp(fx?.offY ?? 0, -1, 1) + 1) / 2;
+  const sw = Math.ceil((W * z) / 2) * 2;
+  const sh = Math.ceil((Hc * z) / 2) * 2;
+  return `scale=${sw}:${sh}:force_original_aspect_ratio=increase,crop=${W}:${Hc}:(iw-${W})*${fxx.toFixed(4)}:(ih-${Hc})*${fyy.toFixed(4)},setsar=1,fps=30`;
+}
+
 function fxChain(fx: CellFx | undefined): string {
   if (!fx) return '';
   const p: string[] = [];
@@ -93,24 +111,23 @@ function fxChain(fx: CellFx | undefined): string {
   return p.join(',');
 }
 
-// Набор хуков, чья суммарная длина ≥ D (заполняют всю ячейку сверху).
-async function pickHooksToFill(files: string[], D: number): Promise<string[]> {
+// Набор хуков, чья суммарная длина ≥ D (заполняют всю ячейку сверху). Возвращает файл+длительность.
+async function pickHooksToFill(files: string[], D: number): Promise<{ file: string; dur: number }[]> {
   const shuffled = shuffle(files);
-  const picked: string[] = [];
+  const picked: { file: string; dur: number }[] = [];
   let sum = 0;
   for (const f of shuffled) {
     const d = await probeDur(f);
     if (d <= 0.2) continue;
-    picked.push(f);
+    picked.push({ file: f, dur: d });
     sum += d;
     if (sum >= D) break;
   }
-  // Хуков мало — повторяем по кругу, пока не заполнится.
   let i = 0;
   while (sum < D && picked.length && i < 400) {
-    const f = shuffled[i % shuffled.length] || picked[0];
+    const f = shuffled[i % shuffled.length] || picked[0].file;
     const d = (await probeDur(f)) || 3;
-    picked.push(f);
+    picked.push({ file: f, dur: d });
     sum += d;
     i++;
   }
@@ -123,7 +140,7 @@ export function registerSplitMergeHandlers() {
 
   ipcMain.handle('split:generate', async (e, req: {
     topFolder: string; bottomFolder: string; duration: number; format: string;
-    variations: number; audio: 'bottom' | 'none'; topFx: CellFx; bottomFx: CellFx; outputDir: string;
+    variations: number; topFx: CellFx; bottomFx: CellFx; outputDir: string;
   }) => {
     cancelled = false;
     if (!ffmpegBin) return { error: 'ffmpeg не найден' };
@@ -135,14 +152,17 @@ export function registerSplitMergeHandlers() {
     if (!botFiles.length) return { error: 'В нижней папке (эмоции) нет видео' };
     const D = Math.max(2, Number(req.duration) || 10);
     const emit = (stage: string, percent: number) => e.sender.send('split:progress', { stage, percent });
-    const cover = `scale=${W}:${Hc}:force_original_aspect_ratio=increase,crop=${W}:${Hc},setsar=1,fps=30`;
+    const coverBot = coverChain(W, Hc, req.bottomFx);
+    const coverTop = coverChain(W, Hc, req.topFx);
     const botFx = fxChain(req.bottomFx);
     const topFx = fxChain(req.topFx);
+    const vBot = clamp(req.bottomFx?.volume ?? 1, 0, 2);
+    const vTop = clamp(req.topFx?.volume ?? 0, 0, 2);
     const isAscii = (s: string) => /^[\x00-\x7F]*$/.test(s);
     const made: string[] = [];
 
     try {
-      const N = Math.max(1, Math.min(100, Number(req.variations) || 1));
+      const N = Math.max(1, Math.min(200, Number(req.variations) || 1));
       for (let v = 0; v < N; v++) {
         if (cancelled) break;
         emit(`Вариация ${v + 1}/${N}`, Math.round((v / N) * 100));
@@ -151,17 +171,47 @@ export function registerSplitMergeHandlers() {
         if (!hooks.length) continue;
 
         const inputs: string[] = ['-stream_loop', '-1', '-i', bottom];
-        hooks.forEach((h) => inputs.push('-i', h));
+        hooks.forEach((h) => inputs.push('-i', h.file));
+
         const fc: string[] = [];
-        fc.push(`[0:v]${cover}${botFx ? ',' + botFx : ''},trim=0:${D},setpts=PTS-STARTPTS[bot]`);
-        hooks.forEach((_, i) => fc.push(`[${i + 1}:v]${cover}[h${i}]`));
+        // Видео.
+        fc.push(`[0:v]${coverBot}${botFx ? ',' + botFx : ''},trim=0:${D},setpts=PTS-STARTPTS[bot]`);
+        hooks.forEach((_, i) => fc.push(`[${i + 1}:v]${coverTop}[h${i}]`));
         fc.push(`${hooks.map((_, i) => `[h${i}]`).join('')}concat=n=${hooks.length}:v=1:a=0[tcat]`);
         fc.push(`[tcat]${topFx ? topFx + ',' : ''}trim=0:${D},setpts=PTS-STARTPTS[top]`);
         fc.push(`[top][bot]vstack=inputs=2[v]`);
+
+        // Аудио: канал эмоции (низ) + канал хука (верх), микс по громкостям.
+        const mix: string[] = [];
+        if (vBot > 0 && (await hasAudio(bottom))) {
+          fc.push(`[0:a]volume=${vBot.toFixed(3)},atrim=0:${D},asetpts=N/SR/TB[abot]`);
+          mix.push('[abot]');
+        }
+        if (vTop > 0) {
+          // Аудио хуков: где нет звука — тишина (anullsrc) нужной длины, чтобы concat не падал.
+          const hookA: string[] = [];
+          let lav = 0;
+          for (let i = 0; i < hooks.length; i++) {
+            if (await hasAudio(hooks[i].file)) {
+              fc.push(`[${i + 1}:a]aresample=44100[hka${i}]`);
+              hookA.push(`[hka${i}]`);
+            } else {
+              const idx = 1 + hooks.length + lav;
+              inputs.push('-f', 'lavfi', '-t', Math.max(0.1, hooks[i].dur || 3).toFixed(2), '-i', 'anullsrc=r=44100:cl=stereo');
+              hookA.push(`[${idx}:a]`);
+              lav++;
+            }
+          }
+          fc.push(`${hookA.join('')}concat=n=${hooks.length}:v=0:a=1[topaRaw]`);
+          fc.push(`[topaRaw]volume=${vTop.toFixed(3)},atrim=0:${D},asetpts=N/SR/TB[atop]`);
+          mix.push('[atop]');
+        }
         let amap: string | null = null;
-        if (req.audio === 'bottom' && (await hasAudio(bottom))) {
-          fc.push(`[0:a]atrim=0:${D},asetpts=PTS-STARTPTS[a]`);
-          amap = '[a]';
+        if (mix.length === 1) {
+          amap = mix[0];
+        } else if (mix.length === 2) {
+          fc.push(`${mix.join('')}amix=inputs=2:duration=first:dropout_transition=0,alimiter=limit=0.95[amixed]`);
+          amap = '[amixed]';
         }
 
         const finalOut = path.join(req.outputDir, `split_${Date.now()}_${v + 1}.mp4`);

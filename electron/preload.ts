@@ -341,9 +341,9 @@ const electronAPI = {
   splitScanFolder: (folder: string): Promise<string[]> => ipcRenderer.invoke('split:scanFolder', folder),
   splitGenerate: (req: {
     topFolder: string; bottomFolder: string; duration: number; format: string;
-    variations: number; audio: 'bottom' | 'none';
-    topFx: { sharpen: number; noise: number; brightness: number; contrast: number; saturation: number; filter: string | null };
-    bottomFx: { sharpen: number; noise: number; brightness: number; contrast: number; saturation: number; filter: string | null };
+    variations: number;
+    topFx: { sharpen: number; noise: number; brightness: number; contrast: number; saturation: number; filter: string | null; zoom: number; offX: number; offY: number; volume: number };
+    bottomFx: { sharpen: number; noise: number; brightness: number; contrast: number; saturation: number; filter: string | null; zoom: number; offX: number; offY: number; volume: number };
     outputDir: string;
   }): Promise<{ ok: true; count: number; dir: string } | { error: string }> => ipcRenderer.invoke('split:generate', req),
   splitCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('split:cancel'),
