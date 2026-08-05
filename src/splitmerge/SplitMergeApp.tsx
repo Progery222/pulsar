@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { showToast } from '../store/toastStore';
 import { mediaUrl, fileName } from '../utils/media';
@@ -94,44 +94,13 @@ export default function SplitMergeApp() {
 
   const aspect = format === '9:16' ? 9 / 16 : format === '1:1' ? 1 : 16 / 9;
 
-  function CellView({ cell, fx, which, label }: { cell: Cell; fx: Fx; which: 'top' | 'bottom'; label: string }) {
-    return (
-      <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#000', overflow: 'hidden', borderBottom: which === 'top' ? '1px solid rgba(255,255,255,0.25)' : 'none' }}>
-        {cell.current ? (
-          <>
-            <video
-              key={cell.current}
-              src={mediaUrl(cell.current)}
-              autoPlay muted loop playsInline
-              style={{ width: '100%', height: '100%', display: 'block', filter: cssFor(fx), ...frameStyle(fx) }}
-            />
-            <div style={{ position: 'absolute', top: 6, left: 6, right: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
-              <span style={{ fontSize: 10.5, color: '#fff', background: 'rgba(0,0,0,0.6)', borderRadius: 6, padding: '2px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {label}: {fileName(cell.folder || '')} · {cell.files.length}
-              </span>
-              <div style={{ display: 'flex', gap: 4 }}>
-                <button onClick={() => reshuffle(which)} title="Другой рандомный клип" style={miniBtn}>🔀</button>
-                <button onClick={() => pickFolder(which)} title="Сменить папку" style={miniBtn}>📁</button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <button onClick={() => pickFolder(which)} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
-            <div style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, lineHeight: 1 }}>+</div>
-            <div style={{ fontSize: 12.5 }}>{label} — выбрать папку</div>
-          </button>
-        )}
-      </div>
-    );
-  }
-
   return (
     <div style={{ height: '100%', display: 'flex', background: 'var(--bg-primary)' }}>
       {/* Живое превью вертикали (2 ячейки) — то, что выйдет: эффекты + кадр применяются сразу */}
       <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20, minWidth: 0 }}>
         <div style={{ height: '100%', maxHeight: 680, aspectRatio: String(aspect), display: 'flex', flexDirection: 'column', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', boxShadow: '0 4px 24px rgba(0,0,0,0.4)' }}>
-          <CellView cell={top} fx={topFx} which="top" label="Хук" />
-          <CellView cell={bottom} fx={botFx} which="bottom" label="Эмоция" />
+          <CellView cell={top} fx={topFx} which="top" label="Хук" onReshuffle={() => reshuffle('top')} onPick={() => pickFolder('top')} />
+          <CellView cell={bottom} fx={botFx} which="bottom" label="Эмоция" onReshuffle={() => reshuffle('bottom')} onPick={() => pickFolder('bottom')} />
         </div>
       </div>
 
@@ -179,6 +148,67 @@ export default function SplitMergeApp() {
         {exporting && <button onClick={() => window.electronAPI.splitCancel()} style={{ ...btnSecondary, width: '100%', marginTop: 8 }}>Отмена</button>}
         <button onClick={() => setAppMode('select')} disabled={exporting} style={{ ...btnSecondary, width: '100%', marginTop: 8 }}>На главную</button>
       </div>
+    </div>
+  );
+}
+
+// Ячейка превью: live-video, а если кодек не проигрывается в Chromium (напр. HEVC) —
+// фолбэк на кадр из ffmpeg (декодирует любой кодек), чтобы не было чёрного экрана.
+function CellView({ cell, fx, which, label, onReshuffle, onPick }: {
+  cell: Cell; fx: Fx; which: 'top' | 'bottom'; label: string; onReshuffle: () => void; onPick: () => void;
+}) {
+  const [err, setErr] = useState(false);
+  const [poster, setPoster] = useState<string | null>(null);
+  const vidRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    setErr(false);
+    setPoster(null);
+    if (!cell.current) return;
+    let alive = true;
+    window.electronAPI.thumb(cell.current, 0.5).then((p) => { if (alive) setPoster(p); });
+    const t = setTimeout(() => {
+      const el = vidRef.current;
+      if (el && (el.readyState < 2 || el.videoWidth === 0)) setErr(true);
+    }, 1600);
+    return () => { alive = false; clearTimeout(t); };
+  }, [cell.current]);
+
+  const fxStyle: React.CSSProperties = { width: '100%', height: '100%', display: 'block', filter: cssFor(fx), ...frameStyle(fx) };
+
+  return (
+    <div style={{ position: 'relative', flex: 1, minHeight: 0, background: '#000', overflow: 'hidden', borderBottom: which === 'top' ? '1px solid rgba(255,255,255,0.25)' : 'none' }}>
+      {cell.current ? (
+        <>
+          {err && poster ? (
+            <img src={mediaUrl(poster)} alt="" style={fxStyle} />
+          ) : (
+            <video
+              key={cell.current}
+              ref={vidRef}
+              src={mediaUrl(cell.current)}
+              poster={poster ? mediaUrl(poster) : undefined}
+              autoPlay muted loop playsInline
+              onError={() => setErr(true)}
+              style={fxStyle}
+            />
+          )}
+          <div style={{ position: 'absolute', top: 6, left: 6, right: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 10.5, color: '#fff', background: 'rgba(0,0,0,0.6)', borderRadius: 6, padding: '2px 6px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {label}: {fileName(cell.folder || '')} · {cell.files.length}{err ? ' · кадр' : ''}
+            </span>
+            <div style={{ display: 'flex', gap: 4 }}>
+              <button onClick={onReshuffle} title="Другой рандомный клип" style={miniBtn}>🔀</button>
+              <button onClick={onPick} title="Сменить папку" style={miniBtn}>📁</button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <button onClick={onPick} style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 8, background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-secondary)' }}>
+          <div style={{ width: 48, height: 48, borderRadius: '50%', border: '2px solid var(--text-secondary)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, lineHeight: 1 }}>+</div>
+          <div style={{ fontSize: 12.5 }}>{label} — выбрать папку</div>
+        </button>
+      )}
     </div>
   );
 }
