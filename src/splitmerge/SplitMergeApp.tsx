@@ -42,6 +42,7 @@ export default function SplitMergeApp() {
   const [topFx, setTopFx] = useState<Fx>(DEF_TOP);
   const [botFx, setBotFx] = useState<Fx>(DEF_BOT);
   const [duration, setDuration] = useState(10);
+  const [durMode, setDurMode] = useState<'auto' | 'fixed'>('auto');
   const [format, setFormat] = useState('9:16');
   const [count, setCount] = useState(10);
   const [exporting, setExporting] = useState(false);
@@ -77,7 +78,7 @@ export default function SplitMergeApp() {
     const off = window.electronAPI.onSplitProgress((ev) => { setStage(ev.stage); setPct(ev.percent); });
     try {
       const res = await window.electronAPI.splitGenerate({
-        topFolder: top.folder, bottomFolder: bottom.folder, duration, format,
+        topFolder: top.folder, bottomFolder: bottom.folder, duration, durationMode: durMode, format,
         variations: count, topFx, bottomFx: botFx, outputDir,
       });
       if ('error' in res) { showToast('Ошибка: ' + res.error); return; }
@@ -140,7 +141,15 @@ export default function SplitMergeApp() {
         <p style={{ fontSize: 11.5, color: 'var(--text-secondary)', margin: '0 0 14px', lineHeight: 1.4 }}>Превью показывает реальный результат: эффекты, кадр и фильтр применяются на лету.</p>
 
         <Sec title="Общее">
-          <Row label={`Длительность ${duration}с`}><input type="range" min={4} max={60} step={1} value={duration} onChange={(e) => setDuration(+e.target.value)} style={{ width: '100%' }} /></Row>
+          <Row label="Длительность ролика">
+            <select value={durMode} onChange={(e) => setDurMode(e.target.value as 'auto' | 'fixed')} style={sel}>
+              <option value="auto">По видео эмоции (авто)</option>
+              <option value="fixed">Фиксированная</option>
+            </select>
+          </Row>
+          {durMode === 'fixed'
+            ? <Row label={`Длительность ${duration}с`}><input type="range" min={4} max={60} step={1} value={duration} onChange={(e) => setDuration(+e.target.value)} style={{ width: '100%' }} /></Row>
+            : <div style={{ fontSize: 11, color: 'var(--text-secondary)', margin: '-4px 0 9px', lineHeight: 1.35 }}>Длина каждого ролика = длине выбранного клипа эмоции; хуки подбираются разными штуками ровно под неё.</div>}
           <Row label="Формат">
             <select value={format} onChange={(e) => setFormat(e.target.value)} style={sel}>
               <option value="9:16">9:16 (Reels/Shorts)</option>

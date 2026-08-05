@@ -123,13 +123,18 @@ async function pickHooksToFill(files: string[], D: number): Promise<{ file: stri
     sum += d;
     if (sum >= D) break;
   }
-  let i = 0;
-  while (sum < D && picked.length && i < 400) {
-    const f = shuffled[i % shuffled.length] || picked[0].file;
-    const d = (await probeDur(f)) || 3;
-    picked.push({ file: f, dur: d });
-    sum += d;
-    i++;
+  // Хуков не хватило перекрыть D — доливаем разными файлами (каждый круг новый порядок).
+  let guard = 0;
+  while (sum < D && picked.length && guard < 400) {
+    for (const f of shuffle(files)) {
+      if (sum >= D) break;
+      const d = (await probeDur(f)) || 3;
+      if (d <= 0.2) continue;
+      picked.push({ file: f, dur: d });
+      sum += d;
+      guard++;
+    }
+    guard++;
   }
   return picked;
 }
@@ -139,7 +144,7 @@ export function registerSplitMergeHandlers() {
   ipcMain.handle('split:cancel', () => { cancelled = true; return { ok: true }; });
 
   ipcMain.handle('split:generate', async (e, req: {
-    topFolder: string; bottomFolder: string; duration: number; format: string;
+    topFolder: string; bottomFolder: string; duration: number; durationMode: 'auto' | 'fixed'; format: string;
     variations: number; topFx: CellFx; bottomFx: CellFx; outputDir: string;
   }) => {
     cancelled = false;
@@ -150,7 +155,8 @@ export function registerSplitMergeHandlers() {
     const botFiles = scan(req.bottomFolder);
     if (!topFiles.length) return { error: 'В верхней папке (хуки) нет видео' };
     if (!botFiles.length) return { error: 'В нижней папке (эмоции) нет видео' };
-    const D = Math.max(2, Number(req.duration) || 10);
+    const auto = req.durationMode !== 'fixed';
+    const fixedD = Math.max(2, Number(req.duration) || 10);
     const emit = (stage: string, percent: number) => e.sender.send('split:progress', { stage, percent });
     const coverBot = coverChain(W, Hc, req.bottomFx);
     const coverTop = coverChain(W, Hc, req.topFx);
@@ -167,6 +173,8 @@ export function registerSplitMergeHandlers() {
         if (cancelled) break;
         emit(`Вариация ${v + 1}/${N}`, Math.round((v / N) * 100));
         const bottom = botFiles[Math.floor(Math.random() * botFiles.length)];
+        // Длина ролика = длине выбранного клипа эмоции (авто) или фикс. значению.
+        const D = auto ? Math.min(120, Math.max(2, (await probeDur(bottom)) || fixedD)) : fixedD;
         const hooks = await pickHooksToFill(topFiles, D);
         if (!hooks.length) continue;
 
