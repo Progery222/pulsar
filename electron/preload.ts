@@ -336,6 +336,22 @@ const electronAPI = {
   aiVideoGenerate: (req: { scenes: { text: string; keywords: string[]; clipUrl?: string }[]; lang: string; voice: string; format: string; outputPath: string; bgmPath?: string; subtitles: boolean }): Promise<{ ok: true; path: string; durationSec: number } | { error: string }> =>
     ipcRenderer.invoke('aivideo:generate', req),
   aiVideoCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('aivideo:cancel'),
+
+  // --- Модуль «Сплит-монтаж» (хук+эмоция) ---
+  splitScanFolder: (folder: string): Promise<string[]> => ipcRenderer.invoke('split:scanFolder', folder),
+  splitGenerate: (req: {
+    topFolder: string; bottomFolder: string; duration: number; format: string;
+    variations: number; audio: 'bottom' | 'none';
+    topFx: { sharpen: number; noise: number; brightness: number; contrast: number; saturation: number; filter: string | null };
+    bottomFx: { sharpen: number; noise: number; brightness: number; contrast: number; saturation: number; filter: string | null };
+    outputDir: string;
+  }): Promise<{ ok: true; count: number; dir: string } | { error: string }> => ipcRenderer.invoke('split:generate', req),
+  splitCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('split:cancel'),
+  onSplitProgress: (cb: (ev: { stage: string; percent: number }) => void): (() => void) => {
+    const listener = (_e: unknown, ev: { stage: string; percent: number }) => cb(ev);
+    ipcRenderer.on('split:progress', listener);
+    return () => ipcRenderer.removeListener('split:progress', listener);
+  },
   onAiVideoProgress: (cb: (ev: { stage: string; percent: number }) => void): (() => void) => {
     const listener = (_e: unknown, ev: { stage: string; percent: number }) => cb(ev);
     ipcRenderer.on('aivideo:progress', listener);

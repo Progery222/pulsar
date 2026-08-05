@@ -27,6 +27,7 @@ import RecorderApp from './recorder/RecorderApp';
 import ImgOptApp from './imgopt/ImgOptApp';
 import TranscribeApp from './transcribe/TranscribeApp';
 import AiVideoApp from './aivideo/AiVideoApp';
+import SplitMergeApp from './splitmerge/SplitMergeApp';
 import SettingsScreen from './screens/SettingsScreen';
 import Chrome from './components/Chrome';
 import Overlays from './components/Overlays';
@@ -283,6 +284,18 @@ function App() {
       <>
         <Chrome>
           <ImgOptApp />
+        </Chrome>
+        <Overlays />
+      </>
+    );
+  }
+
+  // Сплит-монтаж (хук сверху + эмоция снизу, N уникальных вариаций).
+  if (appMode === 'splitmerge') {
+    return (
+      <>
+        <Chrome>
+          <SplitMergeApp />
         </Chrome>
         <Overlays />
       </>

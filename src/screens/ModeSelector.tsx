@@ -98,6 +98,17 @@ const CATEGORIES: { name: string; items: ModeDef[] }[] = [
         ),
       },
       {
+        title: 'Сплит-монтаж',
+        description: 'Хук сверху + эмоция снизу, эффекты по ячейкам, N уникальных вариаций',
+        mode: 'splitmerge',
+        icon: (
+          <svg {...I(24)}>
+            <rect x="4" y="3" width="16" height="8" rx="1.5" />
+            <rect x="4" y="13" width="16" height="8" rx="1.5" />
+          </svg>
+        ),
+      },
+      {
         title: 'AI-ролик по теме',
         description: 'Тема → сценарий, сток-видео, озвучка, субтитры → готовый ролик',
         mode: 'aivideo',

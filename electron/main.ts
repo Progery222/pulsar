@@ -44,6 +44,7 @@ import { registerTemplateHandlers } from './ipc/templateRender';
 import { registerFeedbackHandlers } from './ipc/feedback';
 import { registerRecorderHandlers } from './ipc/recorder';
 import { registerAiVideoHandlers } from './ipc/aivideo';
+import { registerSplitMergeHandlers } from './ipc/splitmerge';
 import { registerImgOptHandlers } from './ipc/imgopt';
 
 // dist-electron/main.js  -> __dirname = <root>/dist-electron
@@ -208,6 +209,7 @@ app.whenReady().then(() => {
   registerRecorderHandlers(() => win);
   registerImgOptHandlers();
   registerAiVideoHandlers();
+  registerSplitMergeHandlers();
   createWindow();
 });
 
