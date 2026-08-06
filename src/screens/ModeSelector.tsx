@@ -213,7 +213,7 @@ const CATEGORIES: { name: string; items: ModeDef[] }[] = [
       },
       {
         title: 'Метаданные',
-        description: 'Загрузи фото — увидишь весь EXIF, GPS, C2PA и вердикт: ИИ или реальная съёмка',
+        description: 'Весь EXIF, GPS, C2PA и вердикт ИИ/реал — с правкой любого поля и полной очисткой',
         mode: 'metadata',
         icon: (
           <svg {...I(24)}>

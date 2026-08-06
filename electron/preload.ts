@@ -3,6 +3,14 @@ import type { BeatData } from '../src/types';
 import type { VubProcessRequest, VubProgressEvent } from '../src/vub/types';
 import type { FunnelStartRequest, FunnelProgressEvent } from '../src/funnel/types';
 
+// Модуль «Метаданные»: строка = один тег (tag), редактируемый или нет.
+interface MetaResult {
+  file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
+  summary: { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; stripped: boolean };
+  groups: { title: string; rows: { tag: string; label: string; value: string; editable: boolean }[] }[];
+  gps: { lat: number; lon: number } | null; writable: boolean; error?: string;
+}
+
 // IPC bridge между renderer и main процессами (contextBridge).
 const electronAPI = {
   // Системные диалоги выбора файлов (§5.2, §5.3).
@@ -342,14 +350,14 @@ const electronAPI = {
   splitPreviewClip: (src: string): Promise<string | null> => ipcRenderer.invoke('split:previewClip', src),
   splitProbeDur: (file: string): Promise<number> => ipcRenderer.invoke('split:probeDur', file),
 
-  // --- Модуль «Метаданные» (инспектор, только чтение) ---
+  // --- Модуль «Метаданные» (инспектор + редактор) ---
   metaPick: (): Promise<string | null> => ipcRenderer.invoke('meta:pick'),
-  metaRead: (file: string): Promise<{
-    file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
-    summary: { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; stripped: boolean };
-    groups: { title: string; rows: [string, string][] }[]; gps: { lat: number; lon: number } | null; error?: string;
-  }> => ipcRenderer.invoke('meta:read', file),
+  metaRead: (file: string): Promise<MetaResult> => ipcRenderer.invoke('meta:read', file),
+  metaWrite: (req: {
+    file: string; edits: Record<string, string>; deletes: string[]; stripAll?: boolean; mode: 'overwrite' | 'copy';
+  }): Promise<MetaResult> => ipcRenderer.invoke('meta:write', req),
   metaOpenMap: (lat: number, lon: number): Promise<{ ok: true }> => ipcRenderer.invoke('meta:openMap', lat, lon),
+  metaReveal: (file: string): Promise<{ ok: true }> => ipcRenderer.invoke('meta:reveal', file),
   splitGenerate: (req: {
     topFolder: string; bottomFolder: string; topFile?: string | null; bottomFile?: string | null;
     hookCut?: number; duration: number; durationMode: 'auto' | 'fixed'; format: string;
