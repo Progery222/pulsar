@@ -211,6 +211,18 @@ const CATEGORIES: { name: string; items: ModeDef[] }[] = [
           </svg>
         ),
       },
+      {
+        title: 'Метаданные',
+        description: 'Загрузи фото — увидишь весь EXIF, GPS, C2PA и вердикт: ИИ или реальная съёмка',
+        mode: 'metadata',
+        icon: (
+          <svg {...I(24)}>
+            <circle cx="12" cy="12" r="9" />
+            <line x1="12" y1="11" x2="12" y2="16" />
+            <circle cx="12" cy="8" r="0.6" fill="currentColor" stroke="none" />
+          </svg>
+        ),
+      },
     ],
   },
   {

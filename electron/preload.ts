@@ -341,6 +341,14 @@ const electronAPI = {
   splitScanFolder: (folder: string): Promise<string[]> => ipcRenderer.invoke('split:scanFolder', folder),
   splitPreviewClip: (src: string): Promise<string | null> => ipcRenderer.invoke('split:previewClip', src),
   splitProbeDur: (file: string): Promise<number> => ipcRenderer.invoke('split:probeDur', file),
+
+  // --- Модуль «Метаданные» (инспектор, только чтение) ---
+  metaPick: (): Promise<string | null> => ipcRenderer.invoke('meta:pick'),
+  metaRead: (file: string): Promise<{
+    file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
+    groups: { title: string; rows: [string, string][] }[]; gps: { lat: number; lon: number } | null; error?: string;
+  }> => ipcRenderer.invoke('meta:read', file),
+  metaOpenMap: (lat: number, lon: number): Promise<{ ok: true }> => ipcRenderer.invoke('meta:openMap', lat, lon),
   splitGenerate: (req: {
     topFolder: string; bottomFolder: string; topFile?: string | null; bottomFile?: string | null;
     hookCut?: number; duration: number; durationMode: 'auto' | 'fixed'; format: string;

@@ -28,6 +28,7 @@ import ImgOptApp from './imgopt/ImgOptApp';
 import TranscribeApp from './transcribe/TranscribeApp';
 import AiVideoApp from './aivideo/AiVideoApp';
 import SplitMergeApp from './splitmerge/SplitMergeApp';
+import MetadataApp from './metadata/MetadataApp';
 import SettingsScreen from './screens/SettingsScreen';
 import Chrome from './components/Chrome';
 import Overlays from './components/Overlays';
@@ -296,6 +297,18 @@ function App() {
       <>
         <Chrome>
           <SplitMergeApp />
+        </Chrome>
+        <Overlays />
+      </>
+    );
+  }
+
+  // Инспектор метаданных (EXIF/GPS/C2PA, ИИ/реал) — только чтение.
+  if (appMode === 'metadata') {
+    return (
+      <>
+        <Chrome>
+          <MetadataApp />
         </Chrome>
         <Overlays />
       </>
