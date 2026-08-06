@@ -4,21 +4,46 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ExifTool } from 'exiftool-vendored';
 
-// Модуль «Метаданные» — инспектор + редактор: загрузил фото → видишь всё (EXIF, GPS, XMP,
-// C2PA/Content Credentials, вердикт ИИ/реал) и можешь править любое поле, удалять, чистить всё.
+// Модуль «Метаданные» — инспектор + редактор: загрузил фото или видео → видишь всё (EXIF, GPS,
+// XMP, QuickTime, C2PA, вердикт ИИ/реал) и можешь править любое поле, удалять, чистить всё.
+// Фото читаются exifr (быстро, без подпроцесса), видео — exiftool'ом; пишет всегда exiftool.
 
 const IMG_EXT = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tif', 'tiff', 'avif', 'gif'];
+const VID_EXT = ['mp4', 'mov', 'm4v', '3gp', '3g2', 'mkv', 'webm', 'avi', 'mpg', 'mpeg', 'wmv', 'flv', 'm2ts', 'ts'];
+const MEDIA_EXT = [...IMG_EXT, ...VID_EXT];
+
+type Kind = 'image' | 'video';
+const kindOf = (file: string): Kind => (VID_EXT.includes(path.extname(file).slice(1).toLowerCase()) ? 'video' : 'image');
 
 const exiftoolBin = (require('exiftool-vendored.exe') as string).replace('app.asar', 'app.asar.unpacked');
 let et: ExifTool | null = null;
-const tool = (): ExifTool => (et ??= new ExifTool({ exiftoolPath: exiftoolBin, taskTimeoutMillis: 20000 }));
+const tool = (): ExifTool => (et ??= new ExifTool({ exiftoolPath: exiftoolBin, taskTimeoutMillis: 300000 }));
 
 // Ключ псевдо-поля координат: правится одной строкой «широта, долгота».
 const GPS_KEY = '__gps';
 const GPS_TAGS = ['GPSLatitude', 'GPSLongitude', 'GPSLatitudeRef', 'GPSLongitudeRef', 'GPSAltitude', 'GPSAltitudeRef', 'GPSPosition', 'GPSDateStamp', 'GPSTimeStamp', 'GPSDateTime'];
 
-// Поля, которые описывают сам пиксельный буфер — править их бессмысленно (файл от этого не изменится).
-const READONLY_TAGS = new Set(['ImageWidth', 'ImageHeight', 'ImageSize', 'Megapixels', 'FileSize', 'FileType', 'MIMEType', 'Compression', 'BitsPerSample', 'SamplesPerPixel', 'PhotometricInterpretation', 'StripOffsets', 'StripByteCounts', 'RowsPerStrip', 'PlanarConfiguration', 'YCbCrSubSampling', 'ThumbnailOffset', 'ThumbnailLength']);
+// Поля, которые описывают сам пиксельный буфер / контейнер — править их бессмысленно
+// (файл от этого не изменится, а у видео exiftool такие теги и не пишет).
+const READONLY_TAGS = new Set([
+  'ImageWidth', 'ImageHeight', 'ImageSize', 'Megapixels', 'FileSize', 'FileType', 'FileTypeExtension', 'MIMEType',
+  'Compression', 'BitsPerSample', 'SamplesPerPixel', 'PhotometricInterpretation', 'StripOffsets', 'StripByteCounts',
+  'RowsPerStrip', 'PlanarConfiguration', 'YCbCrSubSampling', 'ThumbnailOffset', 'ThumbnailLength',
+  // Видео/контейнер.
+  'Duration', 'MediaDuration', 'TrackDuration', 'PreviewDuration', 'SelectionDuration', 'VideoFrameRate', 'AvgBitrate',
+  'CompressorName', 'CompressorID', 'SourceImageWidth', 'SourceImageHeight', 'AudioFormat', 'AudioChannels',
+  'AudioSampleRate', 'AudioBitsPerSample', 'MajorBrand', 'MinorVersion', 'CompatibleBrands', 'MovieHeaderVersion',
+  'TrackHeaderVersion', 'MediaHeaderVersion', 'HandlerType', 'HandlerClass', 'HandlerVendorID', 'TimeScale',
+  'MediaTimeScale', 'TrackID', 'NextTrackID', 'MediaDataSize', 'MediaDataOffset', 'GraphicsMode', 'OpColor',
+  'BitDepth', 'VideoFullRangeFlag', 'ColorProfiles', 'ColorRepresentation', 'MatrixStructure', 'Balance',
+  'ImageSizeRatio', 'Rotation', 'MaxBitrate', 'BufferSize',
+]);
+
+// Системные/служебные ключи из exiftool — в списке полей им делать нечего.
+const SKIP_TAGS = new Set([
+  'SourceFile', 'errors', 'warnings', 'zone', 'tz', 'tzSource', 'Directory', 'FileName', 'FilePermissions',
+  'FileAccessDate', 'FileInodeChangeDate', 'FileCreateDate', 'FileModifyDate', 'ExifToolVersion',
+]);
 
 interface MetaRow { tag: string; label: string; value: string; editable: boolean }
 interface MetaGroup { title: string; rows: MetaRow[]; }
@@ -38,23 +63,39 @@ interface MetaResult {
   summary: MetaSummary;
   groups: MetaGroup[];
   gps: { lat: number; lon: number } | null;
+  kind: Kind;
   writable: boolean; // формат, в который exiftool умеет писать
   error?: string;
 }
 
-// В какие форматы exiftool умеет писать метаданные (у AVIF/GIF поддержка неполная).
-const WRITABLE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.heic', '.heif', '.avif']);
+// В какие форматы exiftool умеет писать метаданные.
+// Фото: у AVIF/GIF поддержка неполная. Видео: только семейство QuickTime — MKV/WEBM/AVI читаются, но не пишутся.
+const WRITABLE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.heic', '.heif', '.avif', '.mp4', '.mov', '.m4v', '.3gp', '.3g2']);
+
+// QuickTime хранит время в UTC. С этим флагом exiftool помечает его зоной, а мы показываем и
+// принимаем локальное время — что ввёл, то и увидишь обратно.
+const QT_ARGS = ['-api', 'QuickTimeUTC=1'];
 
 const two = (n: number) => String(n).padStart(2, '0');
 // Даты показываем в EXIF-формате «2024:05:01 13:45:07» — так же их и принимает exiftool при записи.
 const fmtDate = (d: Date) => `${d.getFullYear()}:${two(d.getMonth() + 1)}:${two(d.getDate())} ${two(d.getHours())}:${two(d.getMinutes())}:${two(d.getSeconds())}`;
 
+// Контейнеры от ffmpeg и прочих конвертеров пишут нулевую дату — это «даты нет», а не дата.
+const ZERO_DATE = /^0000[:\-]00[:\-]00([ T]00:00:00)?Z?$/;
+
 const fmt = (v: unknown): string => {
   if (v == null) return '';
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? '' : fmtDate(v);
   if (Array.isArray(v)) return v.map(fmt).join(', ');
-  if (typeof v === 'object') return JSON.stringify(v);
-  return String(v);
+  if (typeof v === 'object') {
+    // exiftool отдаёт даты объектами ExifDateTime/ExifDate — приводим к локальному времени.
+    const o = v as { toDate?: () => Date; rawValue?: string };
+    if (typeof o.toDate === 'function') { const d = o.toDate(); return d instanceof Date && !Number.isNaN(d.getTime()) ? fmtDate(d) : fmt(o.rawValue); }
+    if (typeof o.rawValue === 'string') return fmt(o.rawValue);
+    return JSON.stringify(v);
+  }
+  const s = String(v);
+  return ZERO_DATE.test(s.trim()) ? '' : s;
 };
 
 const row = (tag: string, value: string, editable = !READONLY_TAGS.has(tag), label = tag): MetaRow => ({ tag, label, value, editable });
@@ -82,7 +123,106 @@ function scanC2PA(buf: Buffer): { present: boolean; rows: [string, string][] } {
   return { present, rows };
 }
 
+// Видео целиком в память не тянем (бывают гигабайты) — для C2PA-скана хватает головы файла:
+// в MP4 манифест лежит в uuid-боксе сразу за ftyp.
+const HEAD_BYTES = 4 * 1024 * 1024;
+
+async function readHead(file: string, limit: number): Promise<Buffer> {
+  const fh = await fs.promises.open(file, 'r');
+  try {
+    const { size } = await fh.stat();
+    const len = Math.min(limit, size);
+    const buf = Buffer.alloc(len);
+    await fh.read(buf, 0, len, 0);
+    return buf;
+  } finally {
+    await fh.close();
+  }
+}
+
+// ── Видео: читает exiftool (exifr контейнеры не понимает вообще) ──────────────
+const VIDEO_DEVICE_KEYS = ['Make', 'Model', 'Software', 'LensModel', 'Encoder', 'HandlerDescription', 'AndroidVersion', 'AndroidManufacturer', 'AndroidModel'];
+const VIDEO_SHOT_KEYS = ['CreateDate', 'ModifyDate', 'DateTimeOriginal', 'TrackCreateDate', 'TrackModifyDate', 'MediaCreateDate', 'MediaModifyDate', 'ContentCreateDate'];
+const VIDEO_TECH_KEYS = ['ImageWidth', 'ImageHeight', 'Duration', 'VideoFrameRate', 'AvgBitrate', 'CompressorName', 'Rotation', 'AudioFormat', 'AudioChannels', 'AudioSampleRate', 'MajorBrand', 'FileType'];
+const VIDEO_GPS_EXTRA = ['GPSAltitude', 'GPSAltitudeRef', 'GPSDateTime'];
+// Гео у видео — единый тег GPSCoordinates; GPSLatitude/Longitude exiftool выводит из него.
+const VIDEO_GPS_TAGS = ['GPSCoordinates', 'GPSPosition', 'GPSLatitude', 'GPSLongitude', 'GPSLatitudeRef', 'GPSLongitudeRef', 'GPSAltitude', 'GPSAltitudeRef', 'GPSDateTime'];
+
+async function readVideoMeta(file: string): Promise<MetaResult> {
+  const name = path.basename(file);
+  const sizeKB = Math.round((await fs.promises.stat(file)).size / 1024);
+  const groups: MetaGroup[] = [];
+
+  let tags: Record<string, unknown> = {};
+  try {
+    tags = (await tool().read(file, { readArgs: QT_ARGS })) as unknown as Record<string, unknown>;
+  } catch (err) {
+    return emptyResult(file, (err as Error).message);
+  }
+
+  const lat = Number(tags['GPSLatitude']);
+  const lon = Number(tags['GPSLongitude']);
+  const gps = Number.isFinite(lat) && Number.isFinite(lon) && (lat || lon) ? { lat, lon } : null;
+
+  const used = new Set<string>(SKIP_TAGS);
+  const grp = (title: string, keys: string[]) => {
+    const rows: MetaRow[] = [];
+    for (const k of keys) {
+      if (used.has(k)) continue;
+      const val = fmt(tags[k]);
+      if (val === '') continue;
+      rows.push(row(k, val));
+      used.add(k);
+    }
+    if (rows.length) groups.push({ title, rows });
+  };
+
+  grp('Устройство и софт', VIDEO_DEVICE_KEYS);
+  grp('Съёмка', VIDEO_SHOT_KEYS);
+  grp('Видео и звук', VIDEO_TECH_KEYS);
+
+  {
+    const gpsRows: MetaRow[] = [row(GPS_KEY, gps ? `${gps.lat.toFixed(6)}, ${gps.lon.toFixed(6)}` : '', true, 'Координаты (широта, долгота)')];
+    for (const k of VIDEO_GPS_EXTRA) {
+      const val = fmt(tags[k]);
+      if (val) gpsRows.push(row(k, val));
+    }
+    groups.push({ title: 'GPS', rows: gpsRows });
+  }
+  for (const k of VIDEO_GPS_TAGS) used.add(k);
+
+  const rest: MetaRow[] = [];
+  for (const k of Object.keys(tags)) {
+    if (used.has(k)) continue;
+    const val = fmt(tags[k]);
+    if (val === '' || val.length > 200) continue;
+    rest.push(row(k, val));
+  }
+  if (rest.length) groups.push({ title: 'Прочие поля (QuickTime/XMP)', rows: rest.slice(0, 60) });
+
+  const c2pa = scanC2PA(await readHead(file, HEAD_BYTES));
+  if (c2pa.present) {
+    const src = c2pa.rows.length ? c2pa.rows : ([['Статус', 'манифест присутствует']] as [string, string][]);
+    groups.push({ title: 'C2PA / Content Credentials', rows: src.map(([k, v]) => row(k, v, false, k)) });
+  }
+
+  const camera = [tags['Make'], tags['Model']].filter(Boolean).map(fmt).join(' ').trim() || null;
+  const shotDate = fmt(tags['CreateDate'] || tags['DateTimeOriginal'] || '') || null;
+  const stripped = !camera && !gps && !shotDate && !c2pa.present;
+  const aiSignals = c2pa.present || /(sora|runway|pika|kling|luma|veo|midjourney|stable *video|generative)/i.test(fmt(tags['Software']) + ' ' + fmt(tags['Encoder']) + ' ' + fmt(tags['Make']));
+
+  let verdict: MetaResult['verdict'] = 'unknown';
+  let verdictText = 'Недостаточно данных, чтобы уверенно судить.';
+  if (aiSignals) { verdict = 'ai'; verdictText = 'Похоже на ИИ-генерацию (есть C2PA/AI-пометки).'; }
+  else if (camera && shotDate) { verdict = 'camera'; verdictText = 'Похоже на съёмку с камеры (есть модель устройства + дата).'; }
+  else if (stripped) { verdictText = 'Камера/GPS/дата отсутствуют — метаданные, похоже, вырезаны при перекодировании или пересылке.'; }
+
+  const summary: MetaSummary = { camera, gps: gps ? `${gps.lat.toFixed(6)}, ${gps.lon.toFixed(6)}` : null, shotDate, c2pa: c2pa.present, stripped };
+  return { file, name, sizeKB, verdict, verdictText, summary, groups, gps, kind: 'video', writable: WRITABLE_EXT.has(path.extname(file).toLowerCase()) };
+}
+
 async function readMeta(file: string): Promise<MetaResult> {
+  if (kindOf(file) === 'video') return readVideoMeta(file);
   const name = path.basename(file);
   const buf = await fs.promises.readFile(file);
   const sizeKB = Math.round(buf.length / 1024);
@@ -164,13 +304,13 @@ async function readMeta(file: string): Promise<MetaResult> {
   const summary: MetaSummary = { camera, gps: gps ? `${gps.lat.toFixed(6)}, ${gps.lon.toFixed(6)}` : null, shotDate, c2pa: c2pa.present, stripped };
   const writable = WRITABLE_EXT.has(path.extname(file).toLowerCase());
 
-  return { file, name, sizeKB, verdict, verdictText, summary, groups, gps, writable };
+  return { file, name, sizeKB, verdict, verdictText, summary, groups, gps, kind: 'image', writable };
 }
 
 const emptyResult = (file: string, error: string): MetaResult => ({
   file, name: path.basename(file || ''), sizeKB: 0, verdict: 'unknown', verdictText: '',
   summary: { camera: null, gps: null, shotDate: null, c2pa: false, stripped: false },
-  groups: [], gps: null, writable: false, error,
+  groups: [], gps: null, kind: kindOf(file || ''), writable: false, error,
 });
 
 // Свободное место рядом с оригиналом: photo.jpg → photo_meta.jpg → photo_meta_2.jpg …
@@ -184,44 +324,57 @@ function copyTarget(file: string): string {
 }
 
 // «широта, долгота» → набор GPS-тегов. Пустая строка = стереть гео.
-function gpsTags(raw: string): Record<string, unknown> | string {
+// У фото это пара GPSLatitude/GPSLongitude с полушариями, у видео — единый QuickTime:GPSCoordinates.
+function gpsTags(raw: string, kind: Kind = 'image'): Record<string, unknown> | string {
   const s = raw.trim();
-  if (!s) return Object.fromEntries(GPS_TAGS.map((t) => [t, null]));
+  const all = kind === 'video' ? VIDEO_GPS_TAGS : GPS_TAGS;
+  if (!s) return Object.fromEntries(all.map((t) => [t, null]));
   const m = s.match(/^(-?\d+(?:[.,]\d+)?)\s*[,;\s]\s*(-?\d+(?:[.,]\d+)?)$/);
   if (!m) return 'GPS: нужен формат «широта, долгота», например 55.751244, 37.618423';
   const lat = Number(m[1].replace(',', '.'));
   const lon = Number(m[2].replace(',', '.'));
   if (!Number.isFinite(lat) || !Number.isFinite(lon) || Math.abs(lat) > 90 || Math.abs(lon) > 180) return 'GPS: широта −90…90, долгота −180…180';
+  if (kind === 'video') return { 'QuickTime:GPSCoordinates': `${lat}, ${lon}` };
   return { GPSLatitude: lat, GPSLongitude: lon, GPSLatitudeRef: lat >= 0 ? 'N' : 'S', GPSLongitudeRef: lon >= 0 ? 'E' : 'W' };
 }
 
+// У видео эти поля должны лечь в QuickTime — туда их пишут телефоны. Без префикса
+// exiftool сложил бы их в XMP, и плеер/галерея их бы не увидели.
+const VIDEO_TAG_GROUP: Record<string, string> = {
+  Make: 'QuickTime:Make', Model: 'QuickTime:Model', Software: 'QuickTime:Software',
+  CreateDate: 'QuickTime:CreateDate', ModifyDate: 'QuickTime:ModifyDate',
+};
+
 // edits/deletes из UI → набор тегов для exiftool. Строка в ответе = текст ошибки валидации.
-function buildTags(edits: Record<string, string> = {}, deletes: string[] = []): Record<string, unknown> | string {
+function buildTags(edits: Record<string, string> = {}, deletes: string[] = [], kind: Kind = 'image'): Record<string, unknown> | string {
+  const video = kind === 'video';
+  const name = (t: string) => (video ? VIDEO_TAG_GROUP[t] ?? t : t);
   const tags: Record<string, unknown> = {};
   for (const [tag, raw] of Object.entries(edits)) {
     if (tag === GPS_KEY) {
-      const g = gpsTags(raw);
+      const g = gpsTags(raw, kind);
       if (typeof g === 'string') return g;
       Object.assign(tags, g);
       continue;
     }
     const v = String(raw ?? '').trim();
-    tags[tag] = v === '' ? null : v;
+    tags[name(tag)] = v === '' ? null : v;
   }
   for (const tag of deletes) {
-    if (tag === GPS_KEY) { for (const t of GPS_TAGS) tags[t] = null; continue; }
-    tags[tag] = null;
+    if (tag === GPS_KEY) { for (const t of (video ? VIDEO_GPS_TAGS : GPS_TAGS)) tags[t] = null; continue; }
+    tags[name(tag)] = null;
   }
   return tags;
 }
 
 // Записать теги в конкретный файл. Бросает исключение с текстом от exiftool.
 async function applyTags(target: string, tags: Record<string, unknown>, stripAll?: boolean) {
+  const extra = kindOf(target) === 'video' ? QT_ARGS : [];
   // Сначала полная очистка (отдельным проходом: в одном вызове «-all=» затрёт и новые значения),
   // потом запись правок. «-overwrite_original» — чтобы не плодить файлы *_original рядом.
-  if (stripAll) await tool().write(target, {}, { writeArgs: ['-all=', '-overwrite_original'] });
+  if (stripAll) await tool().write(target, {}, { writeArgs: ['-all=', '-overwrite_original', ...extra] });
   if (Object.keys(tags).length) {
-    const res = await tool().write(target, tags as never, { writeArgs: ['-overwrite_original'] });
+    const res = await tool().write(target, tags as never, { writeArgs: ['-overwrite_original', ...extra] });
     // «Nothing to do» — это не ошибка (например, стёрли уже пустое поле).
     const bad = (res.warnings ?? []).filter((w) => !/nothing to do/i.test(w));
     if (bad.length && !res.created && !res.updated) throw new Error(bad.join('; '));
@@ -242,7 +395,7 @@ async function writeMeta(req: WriteReq): Promise<MetaResult> {
   if (!src || !fs.existsSync(src)) return emptyResult(src, 'Файл не найден');
   if (!WRITABLE_EXT.has(path.extname(src).toLowerCase())) return emptyResult(src, 'В этот формат запись метаданных не поддерживается');
 
-  const tags = buildTags(req.edits, req.deletes);
+  const tags = buildTags(req.edits, req.deletes, kindOf(src));
   if (typeof tags === 'string') return emptyResult(src, tags);
 
   const copy = req.mode !== 'overwrite';
@@ -326,17 +479,19 @@ export interface RandOpts {
 
 const dayMs = 86400000;
 
-function randomTags(o: RandOpts): Record<string, string> {
+function randomTags(o: RandOpts, kind: Kind = 'image'): Record<string, string> {
   const out: Record<string, string> = {};
   const dev = (o.deviceModel && DEVICES.find((d) => `${d.Make} ${d.Model}` === o.deviceModel)) || pick(DEVICES);
+  const video = kind === 'video';
 
   if (o.device) {
     out.Make = dev.Make;
     out.Model = dev.Model;
     out.Software = dev.Software;
-    if (dev.LensModel) out.LensModel = dev.LensModel;
+    if (dev.LensModel && !video) out.LensModel = dev.LensModel;
   }
-  if (o.shot) {
+  // Выдержка/диафрагма/ISO — понятия из фотосъёмки; в контейнере видео таких тегов нет.
+  if (o.shot && !video) {
     out.ExposureTime = pick(EXPOSURES);
     out.FNumber = String(dev.FNumber);
     out.ISO = String(pick(ISOS));
@@ -363,9 +518,10 @@ function randomTags(o: RandOpts): Record<string, string> {
     const d = new Date(lo + Math.random() * (hi - lo));
     d.setHours(8 + Math.floor(Math.random() * 13), Math.floor(Math.random() * 60), Math.floor(Math.random() * 60), 0);
     const s = fmtDate(d);
-    out.DateTimeOriginal = s;
     out.CreateDate = s;
     out.ModifyDate = s;
+    if (video) { out.TrackCreateDate = s; out.TrackModifyDate = s; out.MediaCreateDate = s; out.MediaModifyDate = s; }
+    else out.DateTimeOriginal = s;
   }
   return out;
 }
@@ -398,8 +554,12 @@ function freeName(dir: string, name: string): string {
 
 async function runBatch(req: BatchReq, send: (ev: { done: number; total: number; name: string }) => void): Promise<BatchResult> {
   batchCancel = false;
-  const files = (req.files || []).filter((f) => WRITABLE_EXT.has(path.extname(f).toLowerCase()));
-  const failed: BatchResult['failed'] = [];
+  const all = req.files || [];
+  const files = all.filter((f) => WRITABLE_EXT.has(path.extname(f).toLowerCase()));
+  // Неподдерживаемые не выбрасываем молча — они попадают в отчёт с причиной.
+  const failed: BatchResult['failed'] = all
+    .filter((f) => !WRITABLE_EXT.has(path.extname(f).toLowerCase()))
+    .map((f) => ({ name: path.basename(f), error: 'в этот формат запись не поддерживается' }));
   let ok = 0;
 
   if (req.target === 'folder') {
@@ -414,9 +574,10 @@ async function runBatch(req: BatchReq, send: (ev: { done: number; total: number;
     if (batchCancel) return { ok, failed, dir: outDir, canceled: true };
     send({ done: i, total: files.length, name });
 
-    // Для 'random' значения генерятся заново на каждое фото — метаданные у всех получаются разные.
-    const edits = req.valuesMode === 'random' ? randomTags(req.rand) : req.edits;
-    const tags = buildTags(edits, req.deletes);
+    // Для 'random' значения генерятся заново на каждый файл — метаданные у всех получаются разные.
+    const kind = kindOf(src);
+    const edits = req.valuesMode === 'random' ? randomTags(req.rand, kind) : req.edits;
+    const tags = buildTags(edits, req.deletes, kind);
     if (typeof tags === 'string') { failed.push({ name, error: tags }); continue; }
 
     let target = src;
@@ -439,7 +600,7 @@ export function registerMetadataHandlers() {
   ipcMain.handle('meta:pick', async () => {
     const r = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [{ name: 'Изображения', extensions: IMG_EXT }, { name: 'Все файлы', extensions: ['*'] }],
+      filters: [{ name: 'Фото и видео', extensions: MEDIA_EXT }, { name: 'Фото', extensions: IMG_EXT }, { name: 'Видео', extensions: VID_EXT }, { name: 'Все файлы', extensions: ['*'] }],
     });
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
@@ -447,7 +608,7 @@ export function registerMetadataHandlers() {
   ipcMain.handle('meta:pickMany', async () => {
     const r = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Изображения', extensions: IMG_EXT }],
+      filters: [{ name: 'Фото и видео', extensions: MEDIA_EXT }, { name: 'Фото', extensions: IMG_EXT }, { name: 'Видео', extensions: VID_EXT }],
     });
     return r.canceled ? [] : r.filePaths;
   });
@@ -462,7 +623,7 @@ export function registerMetadataHandlers() {
     try {
       const names = await fs.promises.readdir(dir);
       return names
-        .filter((n) => IMG_EXT.includes(path.extname(n).slice(1).toLowerCase()))
+        .filter((n) => MEDIA_EXT.includes(path.extname(n).slice(1).toLowerCase()))
         .map((n) => path.join(dir, n))
         .sort();
     } catch { return []; }
@@ -478,7 +639,7 @@ export function registerMetadataHandlers() {
     return r.canceled ? null : (r.filePath ?? null);
   });
 
-  ipcMain.handle('meta:random', (_e, opts: RandOpts): Record<string, string> => randomTags(opts));
+  ipcMain.handle('meta:random', (_e, opts: RandOpts, kind: Kind = 'image'): Record<string, string> => randomTags(opts, kind));
 
   ipcMain.handle('meta:catalog', () => ({
     devices: DEVICES.map((d) => `${d.Make} ${d.Model}`),

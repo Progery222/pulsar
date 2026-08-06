@@ -8,7 +8,7 @@ interface MetaResult {
   file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
   summary: { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; stripped: boolean };
   groups: { title: string; rows: { tag: string; label: string; value: string; editable: boolean }[] }[];
-  gps: { lat: number; lon: number } | null; writable: boolean; error?: string;
+  gps: { lat: number; lon: number } | null; kind: 'image' | 'video'; writable: boolean; error?: string;
 }
 // Что именно рандомить при автозаполнении «снято на телефон X, там-то, тогда-то».
 interface MetaRandOpts {
@@ -368,7 +368,7 @@ const electronAPI = {
   metaPickFolder: (): Promise<string | null> => ipcRenderer.invoke('meta:pickFolder'),
   metaScanFolder: (dir: string): Promise<string[]> => ipcRenderer.invoke('meta:scanFolder', dir),
   metaPickSavePath: (src: string): Promise<string | null> => ipcRenderer.invoke('meta:pickSavePath', src),
-  metaRandom: (opts: MetaRandOpts): Promise<Record<string, string>> => ipcRenderer.invoke('meta:random', opts),
+  metaRandom: (opts: MetaRandOpts, kind: 'image' | 'video' = 'image'): Promise<Record<string, string>> => ipcRenderer.invoke('meta:random', opts, kind),
   metaCatalog: (): Promise<{ devices: string[]; cities: string[] }> => ipcRenderer.invoke('meta:catalog'),
   metaBatch: (req: {
     files: string[]; valuesMode: 'same' | 'random'; edits: Record<string, string>; deletes: string[];

@@ -9,6 +9,10 @@ type Pair = { tag: string; value: string };
 
 const GPS_KEY = '__gps';
 const LABEL: Record<string, string> = { [GPS_KEY]: 'Координаты (широта, долгота)' };
+const VID_RE = /\.(mp4|mov|m4v|3gp|3g2|mkv|webm|avi|mpg|mpeg|wmv|flv|m2ts|ts)$/i;
+const isVideo = (f: string) => VID_RE.test(f);
+// В MKV/WEBM/AVI exiftool писать не умеет — предупреждаем до запуска, а не в отчёте.
+const NOT_WRITABLE_RE = /\.(mkv|webm|avi|mpg|mpeg|wmv|flv|m2ts|ts|gif)$/i;
 
 // Пакетный режим: набрал пачку фото → применил ко всем одинаковые или у каждого свои случайные метаданные.
 export default function BatchPanel() {
@@ -44,7 +48,9 @@ export default function BatchPanel() {
   }
 
   async function rollSame() {
-    const gen = await window.electronAPI.metaRandom(rand);
+    // Набор тегов зависит от типа: у видео нет выдержки/ISO, зато даты дублируются в дорожки.
+    const allVideo = files.length > 0 && files.every(isVideo);
+    const gen = await window.electronAPI.metaRandom(rand, allVideo ? 'video' : 'image');
     // Сгенерённое можно править руками перед запуском — это просто заготовка.
     setPairs(Object.entries(gen).map(([tag, value]) => ({ tag, value })));
   }
@@ -81,6 +87,8 @@ export default function BatchPanel() {
   }
 
   const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
+  const videoCount = files.filter(isVideo).length;
+  const skipCount = files.filter((f) => NOT_WRITABLE_RE.test(f)).length;
 
   return (
     <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop} style={{ display: 'flex', gap: 18, alignItems: 'flex-start', flexWrap: 'wrap' }}>
@@ -94,17 +102,35 @@ export default function BatchPanel() {
         <div style={{ border: '1px solid var(--border)', borderRadius: 10, maxHeight: 460, overflowY: 'auto' }}>
           {files.length === 0 ? (
             <div style={{ padding: '40px 16px', textAlign: 'center', color: 'var(--text-secondary)', fontSize: 12 }}>
-              Перетащи сюда фото или папку —<br />или добавь кнопками выше
+              Перетащи сюда фото, видео или папку —<br />или добавь кнопками выше
             </div>
           ) : files.map((f, i) => (
             <div key={f} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '5px 8px', background: i % 2 ? 'var(--bg-secondary)' : 'var(--bg-tertiary)' }}>
-              <img src={mediaUrl(f)} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 5, background: '#000', flexShrink: 0 }} />
+              {isVideo(f) ? (
+                <video src={mediaUrl(f)} muted preload="metadata" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 5, background: '#000', flexShrink: 0 }} />
+              ) : (
+                <img src={mediaUrl(f)} alt="" style={{ width: 34, height: 34, objectFit: 'cover', borderRadius: 5, background: '#000', flexShrink: 0 }} />
+              )}
               <span style={{ flex: 1, fontSize: 11.5, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', direction: 'rtl', textAlign: 'left' }}>{f}</span>
               <button onClick={() => setFiles((x) => x.filter((y) => y !== f))} style={xBtn}>✕</button>
             </div>
           ))}
         </div>
-        {files.length > 0 && <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6 }}>Файлов: {files.length}</div>}
+        {files.length > 0 && (
+          <div style={{ fontSize: 11.5, color: 'var(--text-secondary)', marginTop: 6 }}>
+            Файлов: {files.length}{videoCount ? ` · из них видео: ${videoCount}` : ''}
+          </div>
+        )}
+        {skipCount > 0 && (
+          <div style={{ marginTop: 6, background: 'rgba(250,204,21,0.12)', color: '#facc15', borderRadius: 7, padding: '6px 9px', fontSize: 11 }}>
+            {skipCount} файл(ов) в формате без поддержки записи (MKV/WEBM/AVI/GIF) — их только читать, в отчёте будут отмечены пропущенными.
+          </div>
+        )}
+        {videoCount > 0 && (
+          <div style={{ marginTop: 6, fontSize: 10.5, color: 'var(--text-secondary)' }}>
+            Видео exiftool перезаписывает целиком — на крупных файлах секунды-десятки секунд на штуку.
+          </div>
+        )}
       </div>
 
       {/* Настройки */}

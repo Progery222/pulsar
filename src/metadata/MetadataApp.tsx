@@ -10,7 +10,8 @@ type Group = { title: string; rows: Row[] };
 type Summary = { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; stripped: boolean };
 type Meta = {
   file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
-  summary: Summary; groups: Group[]; gps: { lat: number; lon: number } | null; writable: boolean; error?: string;
+  summary: Summary; groups: Group[]; gps: { lat: number; lon: number } | null;
+  kind: 'image' | 'video'; writable: boolean; error?: string;
 };
 
 const VERDICT: Record<Meta['verdict'], { label: string; bg: string; fg: string }> = {
@@ -124,7 +125,7 @@ export default function MetadataApp() {
   // Случайное автозаполнение: подставляем в поля, но не пишем — можно поправить и только потом сохранить.
   async function fillRandom() {
     if (!meta) return;
-    const gen = await window.electronAPI.metaRandom(rand);
+    const gen = await window.electronAPI.metaRandom(rand, meta.kind);
     const fresh = Object.keys(gen).filter((t) => !original.has(t) && !added.includes(t));
     setAdded((a) => [...a, ...fresh]);
     setDels((d) => d.filter((t) => !(t in gen)));
@@ -189,15 +190,19 @@ export default function MetadataApp() {
             style={{ height: '100%', minHeight: 300, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, border: '2px dashed var(--border)', borderRadius: 12, color: 'var(--text-secondary)', cursor: 'pointer' }}
           >
             <div style={{ fontSize: 40 }}>🖼️</div>
-            <div style={{ fontSize: 14 }}>{loading ? 'Читаю…' : 'Перетащи фото сюда или нажми, чтобы выбрать'}</div>
-            <div style={{ fontSize: 11.5 }}>JPG · PNG · HEIC · WEBP · TIFF…</div>
+            <div style={{ fontSize: 14 }}>{loading ? 'Читаю…' : 'Перетащи фото или видео сюда, или нажми, чтобы выбрать'}</div>
+            <div style={{ fontSize: 11.5 }}>Фото: JPG · PNG · HEIC · WEBP · TIFF · Видео: MP4 · MOV · MKV · AVI</div>
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 14, alignItems: 'flex-start', flexWrap: 'wrap' }}>
             {/* Превью + вердикт */}
             <div style={{ width: 230, flexShrink: 0 }}>
               <div style={{ background: '#000', borderRadius: 10, overflow: 'hidden', border: '1px solid var(--border)', marginBottom: 8 }}>
-                <img src={mediaUrl(meta.file)} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'contain', display: 'block' }} />
+                {meta.kind === 'video' ? (
+                  <video key={meta.file} src={mediaUrl(meta.file)} controls muted style={{ width: '100%', maxHeight: 200, display: 'block' }} />
+                ) : (
+                  <img src={mediaUrl(meta.file)} alt="" style={{ width: '100%', maxHeight: 200, objectFit: 'contain', display: 'block' }} />
+                )}
               </div>
               {v && (
                 <div title={meta.verdictText} style={{ background: v.bg, color: v.fg, borderRadius: 8, padding: '7px 10px', fontSize: 12, fontWeight: 600, marginBottom: 6 }}>
