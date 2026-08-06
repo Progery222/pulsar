@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { showToast } from '../store/toastStore';
 import { mediaUrl, fileName } from '../utils/media';
+import BatchPanel from './BatchPanel';
+import { RandomOptions, DEFAULT_RAND, type RandOpts } from './RandomPanel';
 
 type Row = { tag: string; label: string; value: string; editable: boolean };
 type Group = { title: string; rows: Row[] };
@@ -34,6 +36,7 @@ const PLACEHOLDER: Record<string, string> = {
 
 export default function MetadataApp() {
   const setAppMode = useUIStore((s) => s.setAppMode);
+  const [tab, setTab] = useState<'one' | 'batch'>('one');
   const [meta, setMeta] = useState<Meta | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -41,6 +44,8 @@ export default function MetadataApp() {
   const [dels, setDels] = useState<string[]>([]);
   const [added, setAdded] = useState<string[]>([]);
   const [newTag, setNewTag] = useState('');
+  const [rand, setRand] = useState<RandOpts>(DEFAULT_RAND);
+  const [randOpen, setRandOpen] = useState(false);
 
   const dirty = Object.keys(edits).length > 0 || dels.length > 0;
 
@@ -68,6 +73,7 @@ export default function MetadataApp() {
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    if (tab !== 'one') return; // в пакетном режиме дроп ловит BatchPanel
     const f = e.dataTransfer.files?.[0];
     if (f) load(window.electronAPI.getPathForFile(f));
   }
@@ -97,15 +103,32 @@ export default function MetadataApp() {
     setNewTag('');
   }
 
-  async function save(mode: 'overwrite' | 'copy', stripAll = false) {
+  // Случайное автозаполнение: подставляем в поля, но не пишем — можно поправить и только потом сохранить.
+  async function fillRandom() {
     if (!meta) return;
+    const gen = await window.electronAPI.metaRandom(rand);
+    const fresh = Object.keys(gen).filter((t) => !original.has(t) && !added.includes(t));
+    setAdded((a) => [...a, ...fresh]);
+    setDels((d) => d.filter((t) => !(t in gen)));
+    setEdits((prev) => ({ ...prev, ...gen }));
+    showToast('Заполнено случайными значениями — проверь и сохрани');
+  }
+
+  async function save(mode: 'overwrite' | 'copy' | 'saveAs', stripAll = false) {
+    if (!meta) return;
+    let dest: string | undefined;
+    if (mode === 'saveAs') {
+      const p = await window.electronAPI.metaPickSavePath(meta.file);
+      if (!p) return;
+      dest = p;
+    }
     setSaving(true);
     try {
-      const res = await window.electronAPI.metaWrite({ file: meta.file, edits, deletes: dels, stripAll, mode });
+      const res = await window.electronAPI.metaWrite({ file: meta.file, edits, deletes: dels, stripAll, mode, dest });
       if (res.error) { showToast('Не сохранено: ' + res.error); return; }
       setMeta(res);
       reset();
-      showToast(mode === 'copy' ? 'Сохранена копия: ' + res.name : 'Метаданные записаны в файл');
+      showToast(mode === 'overwrite' ? 'Метаданные записаны в файл' : 'Сохранено: ' + res.name);
     } finally {
       setSaving(false);
     }
@@ -128,14 +151,19 @@ export default function MetadataApp() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
         <h2 style={{ fontSize: 16, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>Метаданные — инспектор и редактор</h2>
-        <span style={{ fontSize: 11.5, color: 'var(--text-secondary)' }}>EXIF · GPS · C2PA · вердикт ИИ/реал · правка любого поля</span>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <Tab active={tab === 'one'} onClick={() => setTab('one')}>Одно фото</Tab>
+          <Tab active={tab === 'batch'} onClick={() => setTab('batch')}>Пакет</Tab>
+        </div>
         <div style={{ flex: 1 }} />
-        <button onClick={() => load()} style={btnPrimary}>Загрузить фото</button>
+        {tab === 'one' && <button onClick={() => load()} style={btnPrimary}>Загрузить фото</button>}
         <button onClick={() => setAppMode('select')} style={btnSecondary}>На главную</button>
       </div>
 
       <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>
-        {!meta ? (
+        {tab === 'batch' ? (
+          <BatchPanel />
+        ) : !meta ? (
           <div
             onDragOver={(e) => e.preventDefault()}
             onDrop={onDrop}
@@ -194,6 +222,21 @@ export default function MetadataApp() {
               {ro && (
                 <div style={{ marginBottom: 16, background: 'rgba(148,163,184,0.12)', color: 'var(--text-secondary)', borderRadius: 8, padding: '9px 12px', fontSize: 11.5 }}>
                   В этот формат запись метаданных не поддерживается — доступен только просмотр.
+                </div>
+              )}
+
+              {!ro && (
+                <div style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <button onClick={fillRandom} style={btnSecondary}>🎲 Заполнить случайно</button>
+                    <span style={{ fontSize: 11, color: 'var(--text-secondary)', flex: 1 }}>
+                      Подставит телефон, параметры съёмки, гео и дату — значения попадут в поля, записи ещё не будет
+                    </span>
+                    <button onClick={() => setRandOpen((o) => !o)} style={{ ...btnSecondary, padding: '5px 10px', fontSize: 11.5 }}>
+                      {randOpen ? 'Свернуть' : 'Настроить'}
+                    </button>
+                  </div>
+                  {randOpen && <div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid var(--border)' }}><RandomOptions value={rand} onChange={setRand} /></div>}
                 </div>
               )}
 
@@ -266,13 +309,14 @@ export default function MetadataApp() {
       </div>
 
       {/* Панель сохранения — появляется, как только что-то изменено */}
-      {meta && dirty && !ro && (
+      {tab === 'one' && meta && dirty && !ro && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '11px 18px', borderTop: '1px solid var(--border)', background: 'var(--bg-secondary)' }}>
           <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             Изменено полей: {Object.keys(edits).length}{dels.length ? ` · удалить: ${dels.length}` : ''}
           </span>
           <div style={{ flex: 1 }} />
           <button disabled={saving} onClick={reset} style={btnSecondary}>Отменить правки</button>
+          <button disabled={saving} onClick={() => save('saveAs')} style={btnSecondary}>💾 Сохранить как…</button>
           <button disabled={saving} onClick={() => save('copy')} style={btnSecondary}>Сохранить копию</button>
           <button disabled={saving} onClick={() => save('overwrite')} style={btnPrimary}>{saving ? 'Пишу…' : 'Записать в файл'}</button>
         </div>
@@ -316,6 +360,22 @@ function FieldRow({ row, i, value, changed, deleted, readOnly, onChange, onDelet
         </button>
       )}
     </div>
+  );
+}
+
+function Tab({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: '5px 12px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+        border: `1px solid ${active ? 'var(--accent-green)' : 'var(--border)'}`,
+        background: active ? 'rgba(74,222,128,0.12)' : 'var(--bg-tertiary)',
+        color: active ? 'var(--accent-green)' : 'var(--text-primary)',
+      }}
+    >
+      {children}
+    </button>
   );
 }
 

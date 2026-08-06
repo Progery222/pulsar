@@ -195,12 +195,46 @@ function gpsTags(raw: string): Record<string, unknown> | string {
   return { GPSLatitude: lat, GPSLongitude: lon, GPSLatitudeRef: lat >= 0 ? 'N' : 'S', GPSLongitudeRef: lon >= 0 ? 'E' : 'W' };
 }
 
+// edits/deletes из UI → набор тегов для exiftool. Строка в ответе = текст ошибки валидации.
+function buildTags(edits: Record<string, string> = {}, deletes: string[] = []): Record<string, unknown> | string {
+  const tags: Record<string, unknown> = {};
+  for (const [tag, raw] of Object.entries(edits)) {
+    if (tag === GPS_KEY) {
+      const g = gpsTags(raw);
+      if (typeof g === 'string') return g;
+      Object.assign(tags, g);
+      continue;
+    }
+    const v = String(raw ?? '').trim();
+    tags[tag] = v === '' ? null : v;
+  }
+  for (const tag of deletes) {
+    if (tag === GPS_KEY) { for (const t of GPS_TAGS) tags[t] = null; continue; }
+    tags[tag] = null;
+  }
+  return tags;
+}
+
+// Записать теги в конкретный файл. Бросает исключение с текстом от exiftool.
+async function applyTags(target: string, tags: Record<string, unknown>, stripAll?: boolean) {
+  // Сначала полная очистка (отдельным проходом: в одном вызове «-all=» затрёт и новые значения),
+  // потом запись правок. «-overwrite_original» — чтобы не плодить файлы *_original рядом.
+  if (stripAll) await tool().write(target, {}, { writeArgs: ['-all=', '-overwrite_original'] });
+  if (Object.keys(tags).length) {
+    const res = await tool().write(target, tags as never, { writeArgs: ['-overwrite_original'] });
+    // «Nothing to do» — это не ошибка (например, стёрли уже пустое поле).
+    const bad = (res.warnings ?? []).filter((w) => !/nothing to do/i.test(w));
+    if (bad.length && !res.created && !res.updated) throw new Error(bad.join('; '));
+  }
+}
+
 interface WriteReq {
   file: string;
   edits: Record<string, string>; // тег → новое значение
   deletes: string[];             // теги на удаление
   stripAll?: boolean;            // сначала снести все метаданные, потом записать edits
-  mode: 'overwrite' | 'copy';
+  mode: 'overwrite' | 'copy' | 'saveAs';
+  dest?: string;                 // для mode='saveAs' — путь, выбранный в диалоге
 }
 
 async function writeMeta(req: WriteReq): Promise<MetaResult> {
@@ -208,41 +242,197 @@ async function writeMeta(req: WriteReq): Promise<MetaResult> {
   if (!src || !fs.existsSync(src)) return emptyResult(src, 'Файл не найден');
   if (!WRITABLE_EXT.has(path.extname(src).toLowerCase())) return emptyResult(src, 'В этот формат запись метаданных не поддерживается');
 
-  const tags: Record<string, unknown> = {};
-  for (const [tag, raw] of Object.entries(req.edits || {})) {
-    if (tag === GPS_KEY) {
-      const g = gpsTags(raw);
-      if (typeof g === 'string') return emptyResult(src, g);
-      Object.assign(tags, g);
-      continue;
-    }
-    const v = String(raw ?? '').trim();
-    tags[tag] = v === '' ? null : v;
-  }
-  for (const tag of req.deletes || []) {
-    if (tag === GPS_KEY) { for (const t of GPS_TAGS) tags[t] = null; continue; }
-    tags[tag] = null;
-  }
+  const tags = buildTags(req.edits, req.deletes);
+  if (typeof tags === 'string') return emptyResult(src, tags);
 
-  const target = req.mode === 'copy' ? copyTarget(src) : src;
-  if (req.mode === 'copy') await fs.promises.copyFile(src, target);
+  const copy = req.mode !== 'overwrite';
+  const target = req.mode === 'saveAs' ? (req.dest || '') : req.mode === 'copy' ? copyTarget(src) : src;
+  if (req.mode === 'saveAs' && !target) return emptyResult(src, 'Не выбран путь для сохранения');
+  if (copy) {
+    await fs.promises.mkdir(path.dirname(target), { recursive: true });
+    await fs.promises.copyFile(src, target);
+  }
 
   try {
-    // Сначала полная очистка (отдельным проходом: в одном вызове «-all=» затрёт и новые значения),
-    // потом запись правок. «-overwrite_original» — чтобы не плодить файлы *_original рядом.
-    if (req.stripAll) await tool().write(target, {}, { writeArgs: ['-all=', '-overwrite_original'] });
-    if (Object.keys(tags).length) {
-      const res = await tool().write(target, tags as never, { writeArgs: ['-overwrite_original'] });
-      // «Nothing to do» — это не ошибка (например, стёрли уже пустое поле).
-      const bad = (res.warnings ?? []).filter((w) => !/nothing to do/i.test(w));
-      if (bad.length && !res.created && !res.updated) throw new Error(bad.join('; '));
-    }
+    await applyTags(target, tags, req.stripAll);
   } catch (err) {
-    if (req.mode === 'copy') await fs.promises.rm(target, { force: true });
+    if (copy) await fs.promises.rm(target, { force: true });
     return emptyResult(src, (err as Error).message.replace(/^Error:\s*/, ''));
   }
 
   return readMeta(target);
+}
+
+// ─── Рандомайзер: «снято на такой-то телефон, там-то, тогда-то» ──────────────
+// Наборы взяты из реальных EXIF: связка Make/Model/Software/объектив/фокусное правдоподобна.
+
+interface Device { Make: string; Model: string; Software: string; LensModel: string; FocalLength: number; FocalLengthIn35mmFormat: number; FNumber: number }
+
+const DEVICES: Device[] = [
+  { Make: 'Apple', Model: 'iPhone 15 Pro', Software: '17.5.1', LensModel: 'iPhone 15 Pro back triple camera 6.765mm f/1.78', FocalLength: 6.765, FocalLengthIn35mmFormat: 24, FNumber: 1.78 },
+  { Make: 'Apple', Model: 'iPhone 14', Software: '16.6', LensModel: 'iPhone 14 back dual wide camera 5.7mm f/1.5', FocalLength: 5.7, FocalLengthIn35mmFormat: 26, FNumber: 1.5 },
+  { Make: 'Apple', Model: 'iPhone 13 Pro Max', Software: '15.4.1', LensModel: 'iPhone 13 Pro Max back triple camera 5.7mm f/1.5', FocalLength: 5.7, FocalLengthIn35mmFormat: 26, FNumber: 1.5 },
+  { Make: 'Apple', Model: 'iPhone 12', Software: '14.8', LensModel: 'iPhone 12 back dual wide camera 4.2mm f/1.6', FocalLength: 4.2, FocalLengthIn35mmFormat: 26, FNumber: 1.6 },
+  { Make: 'Apple', Model: 'iPhone SE (3rd generation)', Software: '16.3.1', LensModel: 'iPhone SE (3rd generation) back camera 3.99mm f/1.8', FocalLength: 3.99, FocalLengthIn35mmFormat: 28, FNumber: 1.8 },
+  { Make: 'samsung', Model: 'SM-S928B', Software: 'S928BXXU3AXK6', LensModel: '', FocalLength: 6.3, FocalLengthIn35mmFormat: 24, FNumber: 1.7 },
+  { Make: 'samsung', Model: 'SM-S911B', Software: 'S911BXXU3BWK4', LensModel: '', FocalLength: 6.3, FocalLengthIn35mmFormat: 24, FNumber: 1.8 },
+  { Make: 'samsung', Model: 'SM-A546B', Software: 'A546BXXU5CWK1', LensModel: '', FocalLength: 5.4, FocalLengthIn35mmFormat: 26, FNumber: 1.8 },
+  { Make: 'samsung', Model: 'SM-A266B', Software: 'A266BXXU4BYI2', LensModel: '', FocalLength: 4.7, FocalLengthIn35mmFormat: 26, FNumber: 1.8 },
+  { Make: 'Xiaomi', Model: '23127PN0CG', Software: 'OS1.0.4.0.UNCCNXM', LensModel: '', FocalLength: 6.71, FocalLengthIn35mmFormat: 23, FNumber: 1.42 },
+  { Make: 'Xiaomi', Model: '2201123G', Software: 'V14.0.3.0.TLCMIXM', LensModel: '', FocalLength: 6.62, FocalLengthIn35mmFormat: 24, FNumber: 1.9 },
+  { Make: 'Xiaomi', Model: '22111317I', Software: 'V14.0.6.0.TMGMIXM', LensModel: '', FocalLength: 5.31, FocalLengthIn35mmFormat: 26, FNumber: 1.8 },
+  { Make: 'Google', Model: 'Pixel 8 Pro', Software: 'HL1.240118.003', LensModel: 'Pixel 8 Pro back camera 6.9mm f/1.68', FocalLength: 6.9, FocalLengthIn35mmFormat: 25, FNumber: 1.68 },
+  { Make: 'Google', Model: 'Pixel 7', Software: 'TQ3A.230805.001', LensModel: 'Pixel 7 back camera 6.81mm f/1.85', FocalLength: 6.81, FocalLengthIn35mmFormat: 25, FNumber: 1.85 },
+  { Make: 'HUAWEI', Model: 'ELS-NX9', Software: 'ELS-NX9 11.0.0.260', LensModel: '', FocalLength: 5.6, FocalLengthIn35mmFormat: 27, FNumber: 1.9 },
+  { Make: 'OnePlus', Model: 'CPH2451', Software: 'CPH2451_13.1.0.581', LensModel: '', FocalLength: 6.06, FocalLengthIn35mmFormat: 23, FNumber: 1.8 },
+  { Make: 'realme', Model: 'RMX3771', Software: 'RMX3771_13.1.0.101', LensModel: '', FocalLength: 5.59, FocalLengthIn35mmFormat: 26, FNumber: 1.75 },
+];
+
+// Города: центр + разброс в градусах (~разумный радиус по городу).
+const CITIES: { name: string; lat: number; lon: number; r: number }[] = [
+  { name: 'Москва', lat: 55.7558, lon: 37.6173, r: 0.12 },
+  { name: 'Санкт-Петербург', lat: 59.9343, lon: 30.3351, r: 0.1 },
+  { name: 'Новосибирск', lat: 55.0084, lon: 82.9357, r: 0.08 },
+  { name: 'Екатеринбург', lat: 56.8389, lon: 60.6057, r: 0.07 },
+  { name: 'Казань', lat: 55.7963, lon: 49.1088, r: 0.07 },
+  { name: 'Краснодар', lat: 45.0355, lon: 38.9753, r: 0.06 },
+  { name: 'Сочи', lat: 43.5855, lon: 39.7231, r: 0.06 },
+  { name: 'Минск', lat: 53.9023, lon: 27.5619, r: 0.08 },
+  { name: 'Алматы', lat: 43.2389, lon: 76.8897, r: 0.08 },
+  { name: 'Ташкент', lat: 41.2995, lon: 69.2401, r: 0.08 },
+  { name: 'Тбилиси', lat: 41.7151, lon: 44.8271, r: 0.06 },
+  { name: 'Ереван', lat: 40.1792, lon: 44.4991, r: 0.05 },
+  { name: 'Стамбул', lat: 41.0082, lon: 28.9784, r: 0.15 },
+  { name: 'Дубай', lat: 25.2048, lon: 55.2708, r: 0.12 },
+  { name: 'Бангкок', lat: 13.7563, lon: 100.5018, r: 0.12 },
+  { name: 'Бали', lat: -8.4095, lon: 115.1889, r: 0.2 },
+];
+
+const pick = <T,>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
+const rnd = (min: number, max: number) => min + Math.random() * (max - min);
+const EXPOSURES = ['1/2000', '1/1250', '1/800', '1/500', '1/320', '1/250', '1/160', '1/120', '1/100', '1/60', '1/50', '1/33', '1/25'];
+const ISOS = [25, 32, 40, 50, 64, 80, 100, 125, 160, 200, 250, 320, 400, 500, 640, 800, 1250, 1600];
+
+export interface RandOpts {
+  device: boolean;              // Make/Model/Software/объектив
+  shot: boolean;                // выдержка/диафрагма/ISO/фокусное/баланс белого
+  gps: boolean;                 // координаты
+  date: boolean;                // дата съёмки
+  city?: string | null;         // конкретный город; null/пусто = случайный
+  deviceModel?: string | null;  // конкретная модель («Make Model»); null = случайная
+  dateFrom?: string;            // 'YYYY-MM-DD'
+  dateTo?: string;
+}
+
+const dayMs = 86400000;
+
+function randomTags(o: RandOpts): Record<string, string> {
+  const out: Record<string, string> = {};
+  const dev = (o.deviceModel && DEVICES.find((d) => `${d.Make} ${d.Model}` === o.deviceModel)) || pick(DEVICES);
+
+  if (o.device) {
+    out.Make = dev.Make;
+    out.Model = dev.Model;
+    out.Software = dev.Software;
+    if (dev.LensModel) out.LensModel = dev.LensModel;
+  }
+  if (o.shot) {
+    out.ExposureTime = pick(EXPOSURES);
+    out.FNumber = String(dev.FNumber);
+    out.ISO = String(pick(ISOS));
+    out.FocalLength = String(dev.FocalLength);
+    out.FocalLengthIn35mmFormat = String(dev.FocalLengthIn35mmFormat);
+    out.WhiteBalance = 'Auto';
+    out.Flash = 'No Flash';
+    out.MeteringMode = 'Multi-segment';
+    out.ExposureProgram = 'Program AE';
+    out.ColorSpace = 'sRGB';
+  }
+  if (o.gps) {
+    const c = (o.city && CITIES.find((x) => x.name === o.city)) || pick(CITIES);
+    const lat = c.lat + rnd(-c.r, c.r);
+    const lon = c.lon + rnd(-c.r, c.r);
+    out[GPS_KEY] = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+  }
+  if (o.date) {
+    const to = o.dateTo ? Date.parse(o.dateTo) : Date.now();
+    const from = o.dateFrom ? Date.parse(o.dateFrom) : (Number.isFinite(to) ? to : Date.now()) - 365 * dayMs;
+    const lo = Number.isFinite(from) ? from : Date.now() - 365 * dayMs;
+    const hi = Number.isFinite(to) && to > lo ? to : lo + 365 * dayMs;
+    // Время суток — дневное, чтобы «съёмка» выглядела естественно.
+    const d = new Date(lo + Math.random() * (hi - lo));
+    d.setHours(8 + Math.floor(Math.random() * 13), Math.floor(Math.random() * 60), Math.floor(Math.random() * 60), 0);
+    const s = fmtDate(d);
+    out.DateTimeOriginal = s;
+    out.CreateDate = s;
+    out.ModifyDate = s;
+  }
+  return out;
+}
+
+// ─── Пакетная обработка ─────────────────────────────────────────────────────
+
+interface BatchReq {
+  files: string[];
+  valuesMode: 'same' | 'random';       // одинаковые значения на все / свои для каждого фото
+  edits: Record<string, string>;       // для valuesMode='same'
+  deletes: string[];
+  stripAll?: boolean;
+  rand: RandOpts;                      // для valuesMode='random'
+  target: 'overwrite' | 'copy' | 'folder';
+  outDir?: string;                     // для target='folder'
+}
+
+interface BatchResult { ok: number; failed: { name: string; error: string }[]; dir: string | null; canceled: boolean }
+
+let batchCancel = false;
+
+// Свободное имя в папке назначения (без затирания уже лежащих файлов).
+function freeName(dir: string, name: string): string {
+  const ext = path.extname(name);
+  const base = path.basename(name, ext);
+  let dest = path.join(dir, name);
+  for (let i = 2; fs.existsSync(dest); i++) dest = path.join(dir, `${base}_${i}${ext}`);
+  return dest;
+}
+
+async function runBatch(req: BatchReq, send: (ev: { done: number; total: number; name: string }) => void): Promise<BatchResult> {
+  batchCancel = false;
+  const files = (req.files || []).filter((f) => WRITABLE_EXT.has(path.extname(f).toLowerCase()));
+  const failed: BatchResult['failed'] = [];
+  let ok = 0;
+
+  if (req.target === 'folder') {
+    if (!req.outDir) return { ok: 0, failed: [{ name: '', error: 'Не выбрана папка назначения' }], dir: null, canceled: false };
+    await fs.promises.mkdir(req.outDir, { recursive: true });
+  }
+  const outDir = req.target === 'folder' ? req.outDir! : null;
+
+  for (let i = 0; i < files.length; i++) {
+    const src = files[i];
+    const name = path.basename(src);
+    if (batchCancel) return { ok, failed, dir: outDir, canceled: true };
+    send({ done: i, total: files.length, name });
+
+    // Для 'random' значения генерятся заново на каждое фото — метаданные у всех получаются разные.
+    const edits = req.valuesMode === 'random' ? randomTags(req.rand) : req.edits;
+    const tags = buildTags(edits, req.deletes);
+    if (typeof tags === 'string') { failed.push({ name, error: tags }); continue; }
+
+    let target = src;
+    try {
+      if (!fs.existsSync(src)) throw new Error('файл не найден');
+      if (req.target === 'copy') { target = copyTarget(src); await fs.promises.copyFile(src, target); }
+      else if (outDir) { target = freeName(outDir, name); await fs.promises.copyFile(src, target); }
+      await applyTags(target, tags, req.stripAll);
+      ok++;
+    } catch (err) {
+      if (target !== src) await fs.promises.rm(target, { force: true }).catch(() => {});
+      failed.push({ name, error: (err as Error).message.replace(/^Error:\s*/, '') });
+    }
+  }
+  send({ done: files.length, total: files.length, name: '' });
+  return { ok, failed, dir: outDir, canceled: false };
 }
 
 export function registerMetadataHandlers() {
@@ -253,6 +443,57 @@ export function registerMetadataHandlers() {
     });
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
+
+  ipcMain.handle('meta:pickMany', async () => {
+    const r = await dialog.showOpenDialog({
+      properties: ['openFile', 'multiSelections'],
+      filters: [{ name: 'Изображения', extensions: IMG_EXT }],
+    });
+    return r.canceled ? [] : r.filePaths;
+  });
+
+  ipcMain.handle('meta:pickFolder', async () => {
+    const r = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
+    return r.canceled ? null : (r.filePaths[0] ?? null);
+  });
+
+  // Все картинки из папки — чтобы не тыкать файлы по одному.
+  ipcMain.handle('meta:scanFolder', async (_e, dir: string): Promise<string[]> => {
+    try {
+      const names = await fs.promises.readdir(dir);
+      return names
+        .filter((n) => IMG_EXT.includes(path.extname(n).slice(1).toLowerCase()))
+        .map((n) => path.join(dir, n))
+        .sort();
+    } catch { return []; }
+  });
+
+  // Путь для «Сохранить как…»: диалог с подставленным именем-копией.
+  ipcMain.handle('meta:pickSavePath', async (_e, src: string) => {
+    const ext = path.extname(src || '.jpg');
+    const r = await dialog.showSaveDialog({
+      defaultPath: src ? path.join(path.dirname(src), `${path.basename(src, ext)}_meta${ext}`) : undefined,
+      filters: [{ name: 'Изображение', extensions: [ext.slice(1) || 'jpg'] }],
+    });
+    return r.canceled ? null : (r.filePath ?? null);
+  });
+
+  ipcMain.handle('meta:random', (_e, opts: RandOpts): Record<string, string> => randomTags(opts));
+
+  ipcMain.handle('meta:catalog', () => ({
+    devices: DEVICES.map((d) => `${d.Make} ${d.Model}`),
+    cities: CITIES.map((c) => c.name),
+  }));
+
+  ipcMain.handle('meta:batch', async (e, req: BatchReq): Promise<BatchResult> => {
+    try {
+      return await runBatch(req, (ev) => e.sender.send('meta:batchProgress', ev));
+    } catch (err) {
+      return { ok: 0, failed: [{ name: '', error: (err as Error).message }], dir: null, canceled: false };
+    }
+  });
+
+  ipcMain.handle('meta:batchCancel', () => { batchCancel = true; return { ok: true }; });
 
   ipcMain.handle('meta:openMap', (_e, lat: number, lon: number) => {
     if (Number.isFinite(lat) && Number.isFinite(lon)) shell.openExternal(`https://www.google.com/maps?q=${lat},${lon}`);

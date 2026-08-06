@@ -10,6 +10,11 @@ interface MetaResult {
   groups: { title: string; rows: { tag: string; label: string; value: string; editable: boolean }[] }[];
   gps: { lat: number; lon: number } | null; writable: boolean; error?: string;
 }
+// Что именно рандомить при автозаполнении «снято на телефон X, там-то, тогда-то».
+interface MetaRandOpts {
+  device: boolean; shot: boolean; gps: boolean; date: boolean;
+  city?: string | null; deviceModel?: string | null; dateFrom?: string; dateTo?: string;
+}
 
 // IPC bridge между renderer и main процессами (contextBridge).
 const electronAPI = {
@@ -354,10 +359,28 @@ const electronAPI = {
   metaPick: (): Promise<string | null> => ipcRenderer.invoke('meta:pick'),
   metaRead: (file: string): Promise<MetaResult> => ipcRenderer.invoke('meta:read', file),
   metaWrite: (req: {
-    file: string; edits: Record<string, string>; deletes: string[]; stripAll?: boolean; mode: 'overwrite' | 'copy';
+    file: string; edits: Record<string, string>; deletes: string[]; stripAll?: boolean;
+    mode: 'overwrite' | 'copy' | 'saveAs'; dest?: string;
   }): Promise<MetaResult> => ipcRenderer.invoke('meta:write', req),
   metaOpenMap: (lat: number, lon: number): Promise<{ ok: true }> => ipcRenderer.invoke('meta:openMap', lat, lon),
   metaReveal: (file: string): Promise<{ ok: true }> => ipcRenderer.invoke('meta:reveal', file),
+  metaPickMany: (): Promise<string[]> => ipcRenderer.invoke('meta:pickMany'),
+  metaPickFolder: (): Promise<string | null> => ipcRenderer.invoke('meta:pickFolder'),
+  metaScanFolder: (dir: string): Promise<string[]> => ipcRenderer.invoke('meta:scanFolder', dir),
+  metaPickSavePath: (src: string): Promise<string | null> => ipcRenderer.invoke('meta:pickSavePath', src),
+  metaRandom: (opts: MetaRandOpts): Promise<Record<string, string>> => ipcRenderer.invoke('meta:random', opts),
+  metaCatalog: (): Promise<{ devices: string[]; cities: string[] }> => ipcRenderer.invoke('meta:catalog'),
+  metaBatch: (req: {
+    files: string[]; valuesMode: 'same' | 'random'; edits: Record<string, string>; deletes: string[];
+    stripAll?: boolean; rand: MetaRandOpts; target: 'overwrite' | 'copy' | 'folder'; outDir?: string;
+  }): Promise<{ ok: number; failed: { name: string; error: string }[]; dir: string | null; canceled: boolean }> =>
+    ipcRenderer.invoke('meta:batch', req),
+  metaBatchCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('meta:batchCancel'),
+  onMetaBatchProgress: (cb: (ev: { done: number; total: number; name: string }) => void): (() => void) => {
+    const listener = (_e: unknown, ev: { done: number; total: number; name: string }) => cb(ev);
+    ipcRenderer.on('meta:batchProgress', listener);
+    return () => ipcRenderer.off('meta:batchProgress', listener);
+  },
   splitGenerate: (req: {
     topFolder: string; bottomFolder: string; topFile?: string | null; bottomFile?: string | null;
     hookCut?: number; duration: number; durationMode: 'auto' | 'fixed'; format: string;
