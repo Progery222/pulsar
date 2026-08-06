@@ -270,7 +270,14 @@ export function registerSplitMergeHandlers() {
           amap = '[amixed]';
         }
 
-        const finalOut = path.join(req.outputDir, `split_${Date.now()}_${v + 1}.mp4`);
+        // Имя = оригинал эмоции + _split (при повторах эмоции добавляем номер).
+        const base = path.parse(bottom).name;
+        let finalOut = path.join(req.outputDir, `${base}_split.mp4`);
+        let dup = 2;
+        while (fs.existsSync(finalOut) || made.includes(finalOut)) {
+          finalOut = path.join(req.outputDir, `${base}_split_${dup}.mp4`);
+          dup++;
+        }
         // ffmpeg на Windows не открывает не-ASCII выходной путь — рендерим в temp ASCII, потом move.
         const staged = !isAscii(finalOut);
         const out = staged ? path.join(os.tmpdir(), `split_${Math.random().toString(36).slice(2, 10)}.mp4`) : finalOut;
