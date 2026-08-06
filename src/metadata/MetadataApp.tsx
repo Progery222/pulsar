@@ -4,9 +4,10 @@ import { showToast } from '../store/toastStore';
 import { mediaUrl, fileName } from '../utils/media';
 
 type Group = { title: string; rows: [string, string][] };
+type Summary = { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; stripped: boolean };
 type Meta = {
   file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
-  groups: Group[]; gps: { lat: number; lon: number } | null; error?: string;
+  summary: Summary; groups: Group[]; gps: { lat: number; lon: number } | null; error?: string;
 };
 
 const VERDICT: Record<Meta['verdict'], { label: string; bg: string; fg: string }> = {
@@ -87,6 +88,18 @@ export default function MetadataApp() {
 
             {/* Метаданные */}
             <div style={{ flex: 1, minWidth: 320 }}>
+              {/* Итог по ключевым полям — сразу видно, что есть, а чего нет */}
+              <div style={{ marginBottom: 16, border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                <Fact label="📱 Камера / телефон" value={meta.summary.camera} />
+                <Fact label="📍 GPS (гео)" value={meta.summary.gps} />
+                <Fact label="🕑 Дата съёмки" value={meta.summary.shotDate} />
+                <Fact label="🔏 C2PA / AI-метки" value={meta.summary.c2pa ? 'есть' : null} okText="есть" />
+              </div>
+              {meta.summary.stripped && (
+                <div style={{ marginBottom: 16, background: 'rgba(250,204,21,0.12)', color: '#facc15', borderRadius: 8, padding: '9px 12px', fontSize: 11.5, lineHeight: 1.4 }}>
+                  Камеры, GPS и даты в файле нет. Скорее всего EXIF <b>вырезан при пересылке</b> (Telegram/WhatsApp/Instagram и т.п. чистят метаданные). Чтобы увидеть телефон и гео — открой оригинал прямо с устройства, без сжатия.
+                </div>
+              )}
               {meta.groups.length === 0 ? (
                 <div style={{ color: 'var(--text-secondary)', fontSize: 13, padding: 20, textAlign: 'center', border: '1px dashed var(--border)', borderRadius: 10 }}>
                   Метаданных нет — файл очищен или формат без EXIF.
@@ -108,6 +121,18 @@ export default function MetadataApp() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+function Fact({ label, value, okText }: { label: string; value: string | null; okText?: string }) {
+  const has = !!value;
+  return (
+    <div style={{ display: 'flex', gap: 10, padding: '8px 12px', alignItems: 'center', borderBottom: '1px solid var(--border)' }}>
+      <span style={{ width: 170, flexShrink: 0, fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
+      <span style={{ flex: 1, fontSize: 12.5, color: has ? (okText ? '#4ade80' : 'var(--text-primary)') : '#f87171', wordBreak: 'break-word' }}>
+        {has ? value : '— нет в файле'}
+      </span>
     </div>
   );
 }

@@ -9,12 +9,20 @@ import path from 'node:path';
 const IMG_EXT = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tif', 'tiff', 'avif', 'gif'];
 
 interface MetaGroup { title: string; rows: [string, string][]; }
+interface MetaSummary {
+  camera: string | null;
+  gps: string | null;
+  shotDate: string | null;
+  c2pa: boolean;
+  stripped: boolean; // EXIF/GPS/дата отсутствуют — похоже, вырезаны (мессенджер/соцсеть)
+}
 interface MetaResult {
   file: string;
   name: string;
   sizeKB: number;
   verdict: 'ai' | 'camera' | 'unknown';
   verdictText: string;
+  summary: MetaSummary;
   groups: MetaGroup[];
   gps: { lat: number; lon: number } | null;
   error?: string;
@@ -116,11 +124,18 @@ async function readMeta(file: string): Promise<MetaResult> {
   const hasCamera = !!(exif['Make'] || exif['Model']) && !!(exif['DateTimeOriginal'] || exif['ExposureTime'] || exif['FNumber']);
   let verdict: MetaResult['verdict'] = 'unknown';
   let verdictText = 'Недостаточно данных, чтобы уверенно судить.';
+  const camera = [exif['Make'], exif['Model']].filter(Boolean).map(fmt).join(' ').trim() || null;
+  const shotDate = fmt(exif['DateTimeOriginal'] || exif['CreateDate'] || '') || null;
+  const stripped = !camera && !gps && !shotDate && !c2pa.present;
+
   if (aiSignals) { verdict = 'ai'; verdictText = 'Похоже на ИИ-генерацию (есть C2PA/AI-пометки).'; }
   else if (hasCamera) { verdict = 'camera'; verdictText = 'Похоже на реальную съёмку (есть камера + параметры экспозиции).'; }
+  else if (stripped) { verdictText = 'Камера/GPS/дата отсутствуют — метаданные, похоже, вырезаны (пересылка через мессенджер/соцсеть).'; }
   else if (!groups.length) verdictText = 'Метаданных нет (файл очищен или формат без EXIF).';
 
-  return { file, name, sizeKB, verdict, verdictText, groups, gps };
+  const summary: MetaSummary = { camera, gps: gps ? `${gps.lat.toFixed(6)}, ${gps.lon.toFixed(6)}` : null, shotDate, c2pa: c2pa.present, stripped };
+
+  return { file, name, sizeKB, verdict, verdictText, summary, groups, gps };
 }
 
 export function registerMetadataHandlers() {
@@ -141,7 +156,7 @@ export function registerMetadataHandlers() {
     try {
       return await readMeta(file);
     } catch (err) {
-      return { file, name: path.basename(file || ''), sizeKB: 0, verdict: 'unknown', verdictText: '', groups: [], gps: null, error: (err as Error).message };
+      return { file, name: path.basename(file || ''), sizeKB: 0, verdict: 'unknown', verdictText: '', summary: { camera: null, gps: null, shotDate: null, c2pa: false, stripped: false }, groups: [], gps: null, error: (err as Error).message };
     }
   });
 }

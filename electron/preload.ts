@@ -346,6 +346,7 @@ const electronAPI = {
   metaPick: (): Promise<string | null> => ipcRenderer.invoke('meta:pick'),
   metaRead: (file: string): Promise<{
     file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
+    summary: { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; stripped: boolean };
     groups: { title: string; rows: [string, string][] }[]; gps: { lat: number; lon: number } | null; error?: string;
   }> => ipcRenderer.invoke('meta:read', file),
   metaOpenMap: (lat: number, lon: number): Promise<{ ok: true }> => ipcRenderer.invoke('meta:openMap', lat, lon),
