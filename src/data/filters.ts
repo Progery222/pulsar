@@ -58,3 +58,20 @@ export const FILTERS: FilterMeta[] = [
   },
   { key: 'vignette', label: 'Vignette', css: 'brightness(0.95)', ffmpeg: 'vignette=angle=PI/4' },
 ];
+
+// Резкость и зерно — блок «Детализация» в цветокоре. 0–100 → фильтры FFmpeg.
+// Применяются поверх грейда, общим слоем на весь ролик.
+export function buildDetailFilters(sharpen = 0, grain = 0): string[] {
+  const out: string[] = [];
+  if (sharpen > 0) {
+    // unsharp: люма-матрица 5x5, amount 0…1.5 (выше — уже видны ореолы).
+    const amount = ((sharpen / 100) * 1.5).toFixed(3);
+    out.push(`unsharp=5:5:${amount}:5:5:0`);
+  }
+  if (grain > 0) {
+    // noise alls 1…30: temporal+uniform, чтобы зерно «жило», а не стояло сеткой.
+    const n = Math.max(1, Math.round((grain / 100) * 30));
+    out.push(`noise=alls=${n}:allf=t+u`);
+  }
+  return out;
+}

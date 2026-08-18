@@ -67,6 +67,8 @@ export default function EditorScreen() {
   const clips = useProjectStore((s) => s.generatedClips);
   const activeFilter = useProjectStore((s) => s.activeFilter);
   const filterIntensity = useProjectStore((s) => s.filterIntensity);
+  const sharpen = useProjectStore((s) => s.sharpen);
+  const grain = useProjectStore((s) => s.grain);
   const fade = useProjectStore((s) => s.fade);
   const selectedTrack = useProjectStore((s) => s.selectedTrack);
   const segmentStart = useProjectStore((s) => s.segmentStart);
@@ -167,10 +169,15 @@ export default function EditorScreen() {
   }, [clips, totalDuration]);
 
   const filterCss = useMemo(() => {
-    if (!activeFilter || filterIntensity <= 0) return 'none';
-    const css = FILTERS.find((f) => f.key === activeFilter)?.css ?? 'none';
-    return scaleCssFilter(css, filterIntensity / 100);
-  }, [activeFilter, filterIntensity]);
+    const graded =
+      !activeFilter || filterIntensity <= 0
+        ? ''
+        : scaleCssFilter(FILTERS.find((f) => f.key === activeFilter)?.css ?? 'none', filterIntensity / 100);
+    // Резкость/зерно в CSS-фильтрах отсутствуют — показываем их SVG-фильтром.
+    const detail = sharpen > 0 || grain > 0 ? 'url(#mtg-detail)' : '';
+    const out = [graded === 'none' ? '' : graded, detail].filter(Boolean).join(' ');
+    return out || 'none';
+  }, [activeFilter, filterIntensity, sharpen, grain]);
 
   // Зеркалирование стейта в рефы.
   useEffect(() => {
@@ -471,8 +478,35 @@ export default function EditorScreen() {
     setIsExporting(false);
   }
 
+  // SVG-фильтр для превью «Детализации»: CSS не умеет ни резкость, ни зерно.
+  // k — сила unsharp-ядра, g — амплитуда зерна вокруг нуля.
+  const k = ((sharpen / 100) * 0.8).toFixed(3);
+  const kc = (1 + 4 * (sharpen / 100) * 0.8).toFixed(3);
+  const g = ((grain / 100) * 0.35).toFixed(3);
+
   return (
     <div className="flex h-full w-full flex-col bg-bg-primary">
+      <svg width="0" height="0" style={{ position: 'absolute' }} aria-hidden>
+        <filter id="mtg-detail" colorInterpolationFilters="sRGB">
+          <feConvolveMatrix
+            order="3"
+            preserveAlpha="true"
+            kernelMatrix={`0 -${k} 0 -${k} ${kc} -${k} 0 -${k} 0`}
+            result="sharp"
+          />
+          <feTurbulence type="fractalNoise" baseFrequency="0.85" numOctaves="2" result="n" />
+          <feColorMatrix in="n" type="saturate" values="0" result="mono" />
+          <feComposite
+            in="sharp"
+            in2="mono"
+            operator="arithmetic"
+            k1="0"
+            k2="1"
+            k3={g}
+            k4={(-Number(g) / 2).toFixed(3)}
+          />
+        </filter>
+      </svg>
       <div
         className="flex shrink-0 items-center justify-between border-b border-border bg-bg-secondary px-4"
         style={{ height: 52 }}
@@ -596,6 +630,7 @@ export default function EditorScreen() {
           <div className="flex shrink-0 border-b border-border" style={{ height: 44 }}>
             {(['tools', 'edit', 'filters'] as const).map((tab) => {
               const active = tab === activeTab;
+              const title = { tools: 'Инструменты', edit: 'Эффекты', filters: 'Цветокор' }[tab];
               return (
                 <button
                   key={tab}
@@ -607,7 +642,7 @@ export default function EditorScreen() {
                   }}
                   onClick={() => setActiveTab(tab)}
                 >
-                  {tab}
+                  {title}
                 </button>
               );
             })}

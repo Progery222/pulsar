@@ -8,6 +8,8 @@ const KEYS: (keyof ProjectState)[] = [
   'activeEffects',
   'activeFilter',
   'filterIntensity',
+  'sharpen',
+  'grain',
   'mood',
   'duration',
   'format',

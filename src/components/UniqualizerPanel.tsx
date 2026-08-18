@@ -6,7 +6,7 @@ type CheckKey = Exclude<keyof UniqualizerSettings, 'enabled'>;
 const OPTIONS: { key: CheckKey; label: string; desc: string }[] = [
   { key: 'colorShift', label: 'Цветовой сдвиг', desc: 'Незаметное смещение цветового баланса' },
   { key: 'mirrorFlip', label: 'Зеркальный флип', desc: 'Горизонтальный флип + обратный флип (незаметно)' },
-  { key: 'noise', label: 'Шум', desc: 'Добавить микро-зерно поверх видео' },
+  { key: 'noise', label: 'Микро-шум', desc: 'Незаметное зерно 1–4 ед. только ради другого хэша. Видимое плёночное зерно — во вкладке «Цветокор»' },
   { key: 'speed', label: 'Скорость', desc: 'Изменить скорость на ±0.5–2%' },
   { key: 'cropEdges', label: 'Обрезка краёв', desc: 'Обрезать 1–3px по краям и растянуть обратно' },
   { key: 'audioShift', label: 'Аудио сдвиг', desc: 'Сдвинуть аудиодорожку на 10–50ms' },
@@ -102,7 +102,7 @@ export default function UniqualizerPanel() {
               Видимая вариация
             </span>
             <span className="block text-text-secondary" style={{ fontSize: 11 }}>
-              Каждая копия с заметно разным фильтром, зумом и отражением — реально разные ролики, а не только разный хэш
+              Каждая копия со своим фильтром, зумом, отражением, резкостью и зерном — реально разные ролики, а не только разный хэш
             </span>
           </span>
         </label>

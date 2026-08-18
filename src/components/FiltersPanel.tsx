@@ -8,6 +8,10 @@ export default function FiltersPanel() {
   const filterIntensity = useProjectStore((s) => s.filterIntensity);
   const setActiveFilter = useProjectStore((s) => s.setActiveFilter);
   const setFilterIntensity = useProjectStore((s) => s.setFilterIntensity);
+  const sharpen = useProjectStore((s) => s.sharpen);
+  const grain = useProjectStore((s) => s.grain);
+  const setSharpen = useProjectStore((s) => s.setSharpen);
+  const setGrain = useProjectStore((s) => s.setGrain);
   const firstClip = useProjectStore((s) => s.generatedClips[0]);
 
   return (
@@ -72,6 +76,74 @@ export default function FiltersPanel() {
           className="w-full accent-[var(--accent-green)]"
         />
       </div>
+
+      {/* Детализация: резкость и зерно — общий слой поверх грейда на весь ролик */}
+      <div className="mt-5 border-t border-border pt-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="uppercase text-text-secondary" style={{ fontSize: 12, letterSpacing: 1 }}>
+            Детализация
+          </span>
+          {(sharpen > 0 || grain > 0) && (
+            <button
+              onClick={() => { setSharpen(0); setGrain(0); }}
+              className="text-text-secondary hover:text-text-primary"
+              style={{ fontSize: 11 }}
+            >
+              Сбросить
+            </button>
+          )}
+        </div>
+
+        <Slider
+          label="Резкость"
+          hint="Подчёркивает контуры (unsharp). Выше 70 на мягком исходнике лезут ореолы."
+          value={sharpen}
+          onChange={setSharpen}
+        />
+        <Slider
+          label="Зерно / шум"
+          hint="Плёночное зерно поверх картинки. Заодно ломает гладкие градиенты — видео меньше похоже на съэкспортированное из шаблона."
+          value={grain}
+          onChange={setGrain}
+        />
+
+        <p className="mt-2 text-text-secondary" style={{ fontSize: 11, lineHeight: 1.4 }}>
+          Применяется ко всему ролику при экспорте. В превью резкость и зерно показаны
+          приблизительно — итог считает FFmpeg.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function Slider({
+  label,
+  hint,
+  value,
+  onChange,
+}: {
+  label: string;
+  hint: string;
+  value: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <div className="mb-3">
+      <div className="mb-1 flex justify-between" style={{ fontSize: 12 }}>
+        <span className="text-text-primary">{label}</span>
+        <span style={{ color: value > 0 ? 'var(--accent-green)' : 'var(--text-secondary)' }}>
+          {value > 0 ? value : 'выкл'}
+        </span>
+      </div>
+      <input
+        type="range"
+        min={0}
+        max={100}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-[var(--accent-green)]"
+      />
+      <div className="text-text-secondary" style={{ fontSize: 10.5, lineHeight: 1.35 }}>{hint}</div>
     </div>
   );
 }

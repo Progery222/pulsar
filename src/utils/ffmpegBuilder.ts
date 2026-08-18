@@ -42,6 +42,8 @@ export async function buildAndRender(
       fade: project.fade,
       filter: project.activeFilter,
       filterIntensity: project.filterIntensity,
+      sharpen: project.sharpen,
+      grain: project.grain,
       volumeOriginal: project.volumeOriginal,
       volumeMusic: project.volumeMusic,
       uniqualizer: project.uniqualizerSettings,

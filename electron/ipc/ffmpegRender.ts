@@ -7,7 +7,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { EFFECTS } from '../../src/data/effects';
-import { FILTERS } from '../../src/data/filters';
+import { FILTERS, buildDetailFilters } from '../../src/data/filters';
 import { buildClipVideoGraph, type RenderEffectSlot } from '../../src/data/effectRender';
 import type { FilterName } from '../../src/types';
 import type { UniqualizerSettings } from '../../src/types/uniqualizer';
@@ -75,6 +75,8 @@ export interface RenderRequest {
   fade: 'none' | 'in' | 'out' | 'all';
   filter: FilterName | null;
   filterIntensity: number;
+  sharpen?: number; // 0–100, резкость из блока «Детализация» цветокора
+  grain?: number; // 0–100, зерно оттуда же
   volumeOriginal: number; // громкость оригинального звука видео (0..1)
   volumeMusic: number; // громкость музыки (0..1)
   uniqualizer: UniqualizerSettings;
@@ -395,15 +397,21 @@ export async function renderProject(req: RenderRequest, hooks: RenderHooks = {})
     // Видео-стрим без аудио (оригинальный звук берём отдельно из concat).
     if (cancelled()) throw new Error('Экспорт отменён');
     const gFilter = req.filterIntensity > 0 ? globalFilter(req.filter) : null;
-    if (gFilter) {
+    // Резкость и зерно идут ПОСЛЕ блендинга грейда: иначе бленд с исходником
+    // наполовину съел бы и то, и другое.
+    const detailVf = buildDetailFilters(req.sharpen ?? 0, req.grain ?? 0);
+    if (gFilter || detailVf.length) {
       const filteredPath = path.join(tmpDir, 'filtered.mp4');
       const k = Math.min(1, req.filterIntensity / 100);
       const cmd = ffmpeg(videoSource);
-      if (k >= 1) {
-        cmd.videoFilters([gFilter]);
+      if (!gFilter) {
+        cmd.videoFilters(detailVf);
+      } else if (k >= 1) {
+        cmd.videoFilters([gFilter, ...detailVf]);
       } else {
+        const blend = `[0:v]split[a][b];[b]${gFilter}[bf];[a][bf]blend=all_expr=A*(1-${k.toFixed(3)})+B*${k.toFixed(3)}`;
         cmd.complexFilter(
-          [`[0:v]split[a][b];[b]${gFilter}[bf];[a][bf]blend=all_expr=A*(1-${k.toFixed(3)})+B*${k.toFixed(3)}[out]`],
+          [detailVf.length ? `${blend}[bl];[bl]${detailVf.join(',')}[out]` : `${blend}[out]`],
           ['out']
         );
       }

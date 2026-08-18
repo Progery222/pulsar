@@ -41,6 +41,8 @@ export interface ProjectState {
   effectSettings: Record<EffectName, EffectSettings>; // мини-настройки эффекта
   activeFilter: FilterName | null;
   filterIntensity: number; // 0–100
+  sharpen: number; // 0–100, резкость (unsharp) поверх грейда
+  grain: number; // 0–100, зерно/шум поверх грейда
 
   // Результат генерации
   generatedClips: GeneratedClip[]; // Нарезанные фрагменты
@@ -75,6 +77,8 @@ export interface ProjectActions {
   setEffectSetting: (effect: EffectName, settings: Partial<EffectSettings>) => void;
   setActiveFilter: (filter: FilterName | null) => void;
   setFilterIntensity: (intensity: number) => void;
+  setSharpen: (value: number) => void;
+  setGrain: (value: number) => void;
   setBeatData: (data: BeatData | null) => void;
   setGeneratedClips: (clips: GeneratedClip[]) => void;
   reorderClips: (from: number, to: number) => void; // ручная перестановка клипов (таймлайн)
@@ -161,6 +165,8 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
   effectSettings: initialEffectSettings,
   activeFilter: null,
   filterIntensity: 50,
+  sharpen: 0,
+  grain: 0,
 
   generatedClips: [],
   beatData: null,
@@ -210,6 +216,8 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
     })),
   setActiveFilter: (filter) => set({ activeFilter: filter }),
   setFilterIntensity: (intensity) => set({ filterIntensity: intensity }),
+  setSharpen: (value) => set({ sharpen: value }),
+  setGrain: (value) => set({ grain: value }),
   setBeatData: (data) => set({ beatData: data }),
   setGeneratedClips: (clips) => set({ generatedClips: clips }),
   reorderClips: (from, to) =>

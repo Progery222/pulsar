@@ -160,5 +160,12 @@ export function buildVisibleVariation(index: number, w: number, h: number): stri
     if (hue) vf.push(`hue=h=${hue}`);
   }
 
+  // Своя резкость и своё зерно на копию — разная детализация читается алгоритмами
+  // как разный материал, а глазом воспринимается просто как другая обработка.
+  const sharp = [0.4, 0.9, 0.15, 1.2, 0.65, 0.3, 1.05, 0.5][index % 8];
+  vf.push(`unsharp=5:5:${sharp.toFixed(2)}:5:5:0`);
+  const grain = [4, 10, 2, 14, 6, 12, 3, 8][index % 8];
+  vf.push(`noise=alls=${grain}:allf=t+u`);
+
   return vf;
 }
