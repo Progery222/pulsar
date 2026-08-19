@@ -18,6 +18,7 @@ export { StabilizationSection } from "./StabilizationSection";
 
 // Color Grading
 export { ColorGradingSection } from "./ColorGradingSection";
+export { DetailSection } from "./DetailSection";
 export {
   ColorWheelsControl,
   DEFAULT_COLOR_WHEEL_VALUES,

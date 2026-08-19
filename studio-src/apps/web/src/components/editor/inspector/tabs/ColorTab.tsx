@@ -1,5 +1,5 @@
 import React from "react";
-import { ColorGradingSection } from "../";
+import { ColorGradingSection, DetailSection } from "../";
 import { InspectorSection } from "../shell/InspectorSection";
 
 export interface ColorTabProps {
@@ -21,6 +21,9 @@ export const ColorTab: React.FC<ColorTabProps> = ({
             defaultOpen={false}
           >
             <ColorGradingSection clipId={clipId} />
+          </InspectorSection>
+          <InspectorSection title="Detail" sectionId="detail" defaultOpen={false}>
+            <DetailSection clipId={clipId} />
           </InspectorSection>
         </>
       )}

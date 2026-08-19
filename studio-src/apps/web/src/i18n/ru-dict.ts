@@ -132,6 +132,10 @@ export const RU_DICT: Record<string, string> = {
   Tint: "Оттенок",
   Hue: "Тон",
   Sharpen: "Резкость",
+  Grain: "Зерно",
+  Detail: "Детализация",
+  "Radius and size are fine-tuned in Video Effects on the Effects tab — these are the same effects.":
+    "Радиус и размер тонко настраиваются в «Видеоэффектах» на вкладке Effects — это те же самые эффекты.",
   "Drop Shadow": "Тень",
   Shadow: "Тень",
   Glow: "Свечение",
