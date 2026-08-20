@@ -565,12 +565,37 @@ export const Timeline: React.FC = () => {
 
   const handleDropMedia = useCallback(
     async (trackId: string, mediaId: string, startTime: number) => {
-      const { addClip, addClipToNewTrack } = useProjectStore.getState();
-      if (trackId) {
-        await addClip(trackId, mediaId, startTime);
-      } else {
-        await addClipToNewTrack(mediaId, startTime);
-      }
+      const store = useProjectStore.getState();
+      const { addClip, addClipToNewTrack } = store;
+
+      // Запоминаем, что было до вставки: id нового клипа действие наружу не отдаёт.
+      const idsBefore = new Set(
+        store.project.timeline.tracks.flatMap((t) => t.clips.map((c) => c.id)),
+      );
+
+      const result = trackId
+        ? await addClip(trackId, mediaId, startTime)
+        : await addClipToNewTrack(mediaId, startTime);
+      if (!result?.success) return;
+
+      // Видео приносим сразу со звуком: кладём его отдельным клипом на аудиодорожку,
+      // а если подходящей дорожки нет — separateAudio её создаёт. Он же глушит звук
+      // у видеоклипа, иначе одна и та же дорожка звучала бы дважды.
+      const after = useProjectStore.getState();
+      const media = after.getMediaItem(mediaId);
+      const hasAudio =
+        media?.type === "video" && (media.metadata?.channels ?? 0) > 0;
+      if (!hasAudio) return;
+
+      const added = after.project.timeline.tracks
+        .flatMap((t) => t.clips.map((c) => ({ clip: c, track: t })))
+        .find(
+          ({ clip, track }) =>
+            !idsBefore.has(clip.id) &&
+            clip.mediaId === mediaId &&
+            track.type === "video",
+        );
+      if (added) await after.separateAudio(added.clip.id);
     },
     [],
   );

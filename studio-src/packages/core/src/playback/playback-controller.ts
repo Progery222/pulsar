@@ -609,6 +609,8 @@ export class PlaybackController {
           pan: getPanFromAudioEffects(clip.audioEffects || []),
           effects: getPreviewAudioEffects(clip.audioEffects || []),
           speed: clip.speed ?? 1,
+          fadeIn: clip.fade?.fadeIn,
+          fadeOut: clip.fade?.fadeOut,
         });
       }
     }

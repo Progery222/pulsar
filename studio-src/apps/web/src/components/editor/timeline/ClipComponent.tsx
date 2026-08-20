@@ -854,6 +854,34 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
         </>
       )}
 
+          {/* Затухание: наглядные клинья по краям, ширина = длительность фейда.
+              Без этого настройка была невидимой — её нельзя было ни проверить,
+              ни вспомнить, что она вообще включена. */}
+          {(clip.fade?.fadeIn ?? 0) > 0 && (
+            <div
+              className="pointer-events-none absolute inset-y-0 left-0"
+              title={`Fade in ${clip.fade?.fadeIn}s`}
+              style={{
+                width: Math.min(width, (clip.fade?.fadeIn ?? 0) * pixelsPerSecond),
+                background:
+                  "linear-gradient(to right, rgba(0,0,0,0.75), rgba(0,0,0,0))",
+                borderLeft: "2px solid rgba(255,255,255,0.5)",
+              }}
+            />
+          )}
+          {(clip.fade?.fadeOut ?? 0) > 0 && (
+            <div
+              className="pointer-events-none absolute inset-y-0 right-0"
+              title={`Fade out ${clip.fade?.fadeOut}s`}
+              style={{
+                width: Math.min(width, (clip.fade?.fadeOut ?? 0) * pixelsPerSecond),
+                background:
+                  "linear-gradient(to left, rgba(0,0,0,0.75), rgba(0,0,0,0))",
+                borderRight: "2px solid rgba(255,255,255,0.5)",
+              }}
+            />
+          )}
+
         </div>
       </ContextMenuTrigger>
       <ClipContextMenu clip={clip} track={track} side={ctxSide} />

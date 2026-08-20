@@ -18,6 +18,9 @@ export interface AudioClipSchedule {
   pan: number;
   effects: Effect[];
   speed: number;
+  /** Плавное появление/затухание клипа, сек. В экспорте это делает audio-engine. */
+  fadeIn?: number;
+  fadeOut?: number;
 }
 
 export interface TrackConfig {
@@ -543,8 +546,12 @@ export class RealtimeAudioGraph {
     source.playbackRate.value = schedule.speed;
 
     const clipGain = this.audioContext.createGain();
+    // Фейды живут на отдельном узле: на clipGain уже пишет автоматизация громкости,
+    // и две расстановки значений на одном параметре затирали бы друг друга.
+    const fadeGain = this.audioContext.createGain();
 
-    source.connect(clipGain);
+    source.connect(fadeGain);
+    fadeGain.connect(clipGain);
     clipGain.connect(trackNodes.inputGain);
 
     const contextStartTime =
@@ -585,9 +592,11 @@ export class RealtimeAudioGraph {
           playbackDuration,
           playbackStartTime,
         );
+        this.applyClipFades(fadeGain, schedule, clipOffset, duration, playbackStartTime);
         source.start(0, sourceOffset, playbackDuration);
       } else {
         source.disconnect();
+        fadeGain.disconnect();
         clipGain.disconnect();
         return;
       }
@@ -613,6 +622,43 @@ export class RealtimeAudioGraph {
         }
       }
     };
+  }
+
+  /**
+   * Гейн-рампы затухания для живого воспроизведения.
+   * clipOffset — сколько секунд клипа уже позади, когда мы стартуем (перемотка
+   * в середину); clipDuration — полная длина клипа на таймлайне.
+   */
+  private applyClipFades(
+    gain: GainNode,
+    schedule: AudioClipSchedule,
+    clipOffset: number,
+    clipDuration: number,
+    startAt: number,
+  ): void {
+    const fadeIn = schedule.fadeIn ?? 0;
+    const fadeOut = schedule.fadeOut ?? 0;
+    if (fadeIn <= 0 && fadeOut <= 0) return;
+
+    gain.gain.cancelScheduledValues(startAt);
+    gain.gain.setValueAtTime(1, startAt);
+
+    if (fadeIn > 0 && clipOffset < fadeIn) {
+      // Стартовали внутри нарастания — подхватываем с текущего уровня, а не с нуля.
+      gain.gain.setValueAtTime(clipOffset / fadeIn, startAt);
+      gain.gain.linearRampToValueAtTime(1, startAt + (fadeIn - clipOffset));
+    }
+
+    if (fadeOut > 0) {
+      const endAt = startAt + (clipDuration - clipOffset);
+      const fadeOutLocal = clipDuration - fadeOut;
+      if (clipOffset >= fadeOutLocal) {
+        gain.gain.setValueAtTime((clipDuration - clipOffset) / fadeOut, startAt);
+      } else {
+        gain.gain.setValueAtTime(1, startAt + (fadeOutLocal - clipOffset));
+      }
+      gain.gain.linearRampToValueAtTime(0, endAt);
+    }
   }
 
   scheduleClips(schedules: AudioClipSchedule[]): void {
