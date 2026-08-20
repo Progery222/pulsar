@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { useUIStore } from '../store/uiStore';
+import WhatsNew from '../components/WhatsNew';
 import { ACCENT_PRESETS, DEFAULT_ACCENT, applyAccent, getAccentKey, resolveAccent } from '../utils/accent';
 
 type GpuMode = 'auto' | 'gpu' | 'cpu';
@@ -9,6 +10,7 @@ const GPU_LABELS: Record<GpuMode, string> = { auto: 'Авто', gpu: 'GPU', cpu:
 
 // Экран настроек (доступен со стартового окна). Здесь же — API-ключ AssemblyAI.
 export default function SettingsScreen() {
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [accent, setAccent] = useState(getAccentKey());
   const custom = accent.startsWith('#') ? accent : resolveAccent(accent).color;
 
@@ -92,10 +94,22 @@ export default function SettingsScreen() {
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg-primary)' }}>
+      {showWhatsNew && <WhatsNew force onClose={() => setShowWhatsNew(false)} />}
       <div style={{ maxWidth: 640, margin: '0 auto', padding: '80px 24px 48px' }}>
         <h1 className="font-semibold" style={{ fontSize: 32, color: 'var(--text-primary)', marginBottom: 32 }}>
           Настройки
         </h1>
+
+        {/* Что нового — то же окно, что показывается после обновления */}
+        <div style={section}>
+          <label style={label}>Что нового</label>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 4 }}>
+            <button onClick={() => setShowWhatsNew(true)} className="btn-primary" style={{ padding: '8px 20px', fontSize: 13 }}>
+              Показать список изменений
+            </button>
+          </div>
+          <p style={hint}>Сводка последнего обновления — та же, что появляется при первом запуске новой версии.</p>
+        </div>
 
         {/* Цвет интерфейса — меняется во всём приложении сразу */}
         <div style={section}>

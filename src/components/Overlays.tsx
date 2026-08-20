@@ -4,6 +4,7 @@ import QueuePanel from './QueuePanel';
 import HistoryPanel from './HistoryPanel';
 import FirstRunSetup from './FirstRunSetup';
 import UpdateBanner from './UpdateBanner';
+import WhatsNew from './WhatsNew';
 
 // Глобальные оверлеи поверх любого экрана: тосты + плавающие мини-окна + мастер настройки.
 export default function Overlays() {
@@ -15,6 +16,7 @@ export default function Overlays() {
       {showHistory && <HistoryPanel />}
       {showQueue && <QueuePanel />}
       {showSetup && <FirstRunSetup />}
+      <WhatsNew />
       <UpdateBanner />
       <Toast />
     </>
