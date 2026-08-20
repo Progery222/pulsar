@@ -70,17 +70,27 @@ export default function PresetBar({
     onSelect?.(id);
   };
   const [mapOpen, setMapOpen] = useState(false);
+  // Имя нового пресета вводится прямо в панели: window.prompt в Electron не
+  // поддерживается и бросает исключение — сохранение молча не доходило до диска.
+  const [naming, setNaming] = useState(false);
+  const [draftName, setDraftName] = useState('');
 
   const preset = presets.find((p) => p.id === selected) ?? null;
 
-  async function saveNew() {
-    const fields = current();
-    if (!Object.keys(fields).length) {
+  function startNaming() {
+    if (!Object.keys(current()).length) {
       showToast('Нечего сохранять — сначала заполни поля');
       return;
     }
-    const name = window.prompt('Название пресета', 'Мой шаблон');
-    if (!name || !name.trim()) return;
+    setDraftName('Мой шаблон');
+    setNaming(true);
+  }
+
+  async function saveNew() {
+    const fields = current();
+    const name = draftName.trim();
+    if (!name) return;
+    setNaming(false);
 
     // Координаты из полей запоминаем как базовую точку с разбросом по умолчанию.
     const c = parseCoords(fields[GPS_KEY] ?? '');
@@ -165,10 +175,30 @@ export default function PresetBar({
         >
           Применить
         </button>
-        <button onClick={saveNew} style={btnMini}>💾 Сохранить как пресет</button>
+        <button onClick={startNaming} style={btnMini}>💾 Сохранить как пресет</button>
         {preset && <button onClick={overwrite} style={btnMini}>Перезаписать</button>}
         {preset && <button onClick={remove} style={{ ...btnMini, color: '#f87171' }}>Удалить</button>}
       </div>
+
+      {naming && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 }}>
+          <input
+            autoFocus
+            value={draftName}
+            onChange={(e) => setDraftName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') saveNew();
+              if (e.key === 'Escape') setNaming(false);
+            }}
+            placeholder="Название пресета"
+            style={{ ...input, flex: 1, maxWidth: 260 }}
+          />
+          <button onClick={saveNew} disabled={!draftName.trim()} style={{ ...btnPrimary, opacity: draftName.trim() ? 1 : 0.45 }}>
+            Сохранить
+          </button>
+          <button onClick={() => setNaming(false)} style={btnMini}>Отмена</button>
+        </div>
+      )}
 
       {preset && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>

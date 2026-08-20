@@ -74,9 +74,9 @@ export default function LocationPicker({
     mapObj.current.panTo([lat, lon], { animate: false });
   }, [lat, lon]);
 
-  async function search() {
-    const q = query.trim();
-    if (q.length < 2) return;
+  async function search(text?: string) {
+    const q = (text ?? query).trim();
+    if (q.length < 2) { setHits([]); return; }
     setSearching(true);
     try {
       setHits(await window.electronAPI.metaGeocode(q));
@@ -84,6 +84,16 @@ export default function LocationPicker({
       setSearching(false);
     }
   }
+
+  // Ищем сами через паузу после набора: жать Enter никто не догадывается,
+  // а на каждую букву дёргать геокодер нельзя — он публичный и с лимитами.
+  useEffect(() => {
+    const q = query.trim();
+    if (q.length < 2) { setHits([]); return; }
+    const t = setTimeout(() => { void search(q); }, 500);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query]);
 
   function choose(h: Hit) {
     setLat(h.lat);
@@ -113,11 +123,11 @@ export default function LocationPicker({
           <input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') search(); }}
-            placeholder="Город или адрес — например «Казань» или «Сочи, Роза Хутор»"
+            onKeyDown={(e) => { if (e.key === 'Enter') void search(); }}
+            placeholder="Город или адрес — «New York», «Казань», «Сочи, Роза Хутор»"
             style={{ ...input, flex: 1 }}
           />
-          <button onClick={search} disabled={searching} style={btnPrimary}>{searching ? 'Ищу…' : 'Найти'}</button>
+          <button onClick={() => void search()} disabled={searching} style={btnPrimary}>{searching ? 'Ищу…' : 'Найти'}</button>
 
           {hits.length > 0 && (
             <div style={{ position: 'absolute', top: 46, left: 14, right: 120, maxHeight: 240, overflowY: 'auto', background: 'var(--bg-tertiary)', border: '1px solid var(--border)', borderRadius: 8, zIndex: 5 }}>
@@ -134,6 +144,13 @@ export default function LocationPicker({
             </div>
           )}
         </div>
+
+        {query.trim().length >= 2 && !searching && hits.length === 0 && (
+          <div style={{ padding: '0 14px 8px', fontSize: 11, color: 'var(--text-secondary)' }}>
+            Ничего не нашлось. Проверь написание или укажи точку прямо на карте — без интернета
+            поиск работает только по встроенному списку городов.
+          </div>
+        )}
 
         <div ref={mapRef} style={{ height: 380, background: '#111' }} />
 
