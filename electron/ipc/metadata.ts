@@ -3,6 +3,7 @@ import exifr from 'exifr';
 import fs from 'node:fs';
 import path from 'node:path';
 import { ExifTool } from 'exiftool-vendored';
+import { jitterCoords, formatCoords } from '../../src/metadata/geo';
 
 // Модуль «Метаданные» — инспектор + редактор: загрузил фото или видео → видишь всё (EXIF, GPS,
 // XMP, QuickTime, C2PA, вердикт ИИ/реал) и можешь править любое поле, удалять, чистить всё.
@@ -535,6 +536,8 @@ interface BatchReq {
   deletes: string[];
   stripAll?: boolean;
   rand: RandOpts;                      // для valuesMode='random'
+  // Если задано, координаты для каждого файла считаются заново вокруг этой точки.
+  gpsJitter?: { lat: number; lon: number; jitterKm: number };
   target: 'overwrite' | 'copy' | 'folder';
   outDir?: string;                     // для target='folder'
 }
@@ -576,7 +579,12 @@ async function runBatch(req: BatchReq, send: (ev: { done: number; total: number;
 
     // Для 'random' значения генерятся заново на каждый файл — метаданные у всех получаются разные.
     const kind = kindOf(src);
-    const edits = req.valuesMode === 'random' ? randomTags(req.rand, kind) : req.edits;
+    const edits = req.valuesMode === 'random' ? randomTags(req.rand, kind) : { ...req.edits };
+    // Разброс места: своя точка на каждый файл, чтобы координаты не повторялись.
+    if (req.gpsJitter && req.valuesMode === 'same') {
+      const j = req.gpsJitter;
+      edits[GPS_KEY] = formatCoords(jitterCoords({ lat: j.lat, lon: j.lon }, j.jitterKm));
+    }
     const tags = buildTags(edits, req.deletes, kind);
     if (typeof tags === 'string') { failed.push({ name, error: tags }); continue; }
 
@@ -594,6 +602,71 @@ async function runBatch(req: BatchReq, send: (ev: { done: number; total: number;
   }
   send({ done: files.length, total: files.length, name: '' });
   return { ok, failed, dir: outDir, canceled: false };
+}
+
+// ─── Пресеты: сохранённый набор полей, чтобы не набивать одно и то же руками ──
+// Лежат в userData, а не в localStorage: пресеты переживают чистку кэша окна
+// и остаются при переустановке приложения.
+
+export interface MetaPreset {
+  id: string;
+  name: string;
+  fields: Record<string, string>; // тег → значение, включая псевдо-поле __gps
+  // Место с разбросом: координаты берутся не точкой, а случайно в круге вокруг неё,
+  // заново для каждого файла — иначе у всей пачки стоит одна координата до шестого знака.
+  gps?: { lat: number; lon: number; jitterKm: number };
+  updatedAt: number;
+}
+
+const presetsFile = () => path.join(app.getPath('userData'), 'meta-presets.json');
+
+async function loadPresets(): Promise<MetaPreset[]> {
+  try {
+    const raw = await fs.promises.readFile(presetsFile(), 'utf8');
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return []; // файла ещё нет или он побился — начинаем с пустого списка
+  }
+}
+
+async function savePresets(list: MetaPreset[]): Promise<void> {
+  await fs.promises.mkdir(path.dirname(presetsFile()), { recursive: true });
+  await fs.promises.writeFile(presetsFile(), JSON.stringify(list, null, 2), 'utf8');
+}
+
+// ─── Поиск места по названию (Nominatim/OpenStreetMap) ───────────────────────
+// Нужен интернет; если его нет, в UI остаётся встроенный список городов и ручной ввод.
+interface GeoHit { name: string; lat: number; lon: number }
+
+async function geocode(query: string): Promise<GeoHit[]> {
+  const q = query.trim();
+  if (q.length < 2) return [];
+
+  // Сначала встроенный список — он работает офлайн и мгновенно.
+  const local = CITIES.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c) => ({
+    name: c.name,
+    lat: c.lat,
+    lon: c.lon,
+  }));
+
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&limit=8&accept-language=ru&q=${encodeURIComponent(q)}`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'Pulsar/1.0 (metadata module)' },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!res.ok) return local;
+    const data = (await res.json()) as { display_name?: string; lat?: string; lon?: string }[];
+    const remote = data
+      .map((d) => ({ name: String(d.display_name ?? ''), lat: Number(d.lat), lon: Number(d.lon) }))
+      .filter((d) => d.name && Number.isFinite(d.lat) && Number.isFinite(d.lon));
+    // Локальные совпадения вперёд, дальше сетевые без дублей по координатам.
+    const seen = new Set(local.map((l) => `${l.lat.toFixed(3)},${l.lon.toFixed(3)}`));
+    return [...local, ...remote.filter((r) => !seen.has(`${r.lat.toFixed(3)},${r.lon.toFixed(3)}`))];
+  } catch {
+    return local; // нет сети/таймаут — отдаём то, что есть офлайн
+  }
 }
 
 export function registerMetadataHandlers() {
@@ -640,6 +713,25 @@ export function registerMetadataHandlers() {
   });
 
   ipcMain.handle('meta:random', (_e, opts: RandOpts, kind: Kind = 'image'): Record<string, string> => randomTags(opts, kind));
+
+  ipcMain.handle('meta:presetsLoad', (): Promise<MetaPreset[]> => loadPresets());
+
+  ipcMain.handle('meta:presetsSave', async (_e, list: MetaPreset[]) => {
+    try {
+      await savePresets(Array.isArray(list) ? list : []);
+      return { ok: true as const };
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+  });
+
+  ipcMain.handle('meta:geocode', async (_e, query: string): Promise<GeoHit[]> => {
+    try {
+      return await geocode(query);
+    } catch {
+      return [];
+    }
+  });
 
   ipcMain.handle('meta:catalog', () => ({
     devices: DEVICES.map((d) => `${d.Make} ${d.Model}`),

@@ -4,6 +4,8 @@ import { showToast } from '../store/toastStore';
 import { mediaUrl, fileName } from '../utils/media';
 import BatchPanel from './BatchPanel';
 import { RandomOptions, DEFAULT_RAND, type RandOpts } from './RandomPanel';
+import PresetBar, { usePresets, presetFields, type MetaPreset } from './PresetBar';
+import LocationPicker from './LocationPicker';
 
 type Row = { tag: string; label: string; value: string; editable: boolean };
 type Group = { title: string; rows: Row[] };
@@ -49,6 +51,8 @@ export default function MetadataApp() {
   const [randOpen, setRandOpen] = useState(false);
   const [q, setQ] = useState('');
   const [openMap, setOpenMap] = useState<Record<string, boolean>>({});
+  const { presets, persist } = usePresets();
+  const [mapOpen, setMapOpen] = useState(false);
 
   const dirty = Object.keys(edits).length > 0 || dels.length > 0;
 
@@ -120,6 +124,23 @@ export default function MetadataApp() {
     setAdded((a) => [...a, tag]);
     setEdits((e) => ({ ...e, [tag]: '' }));
     setNewTag('');
+  }
+
+  // Пресет кладём в поля так же, как рандом: сначала видно, потом сохраняешь.
+  function applyPreset(p: MetaPreset) {
+    const gen = presetFields(p);
+    const fresh = Object.keys(gen).filter((t) => !original.has(t) && !added.includes(t));
+    setAdded((a) => [...a, ...fresh]);
+    setDels((d) => d.filter((t) => !(t in gen)));
+    setEdits((prev) => ({ ...prev, ...gen }));
+    showToast('Применён пресет: ' + p.name);
+  }
+
+  // Что сохранять в пресет: правки плюс всё, что уже стоит в файле.
+  function currentFields(): Record<string, string> {
+    const out: Record<string, string> = {};
+    original.forEach((v, k) => { if (v) out[k] = v; });
+    return { ...out, ...edits };
   }
 
   // Случайное автозаполнение: подставляем в поля, но не пишем — можно поправить и только потом сохранить.
@@ -243,9 +264,16 @@ export default function MetadataApp() {
               )}
 
               {!ro && (
+                <div style={{ marginBottom: 10 }}>
+                  <PresetBar presets={presets} persist={persist} current={currentFields} onApply={applyPreset} />
+                </div>
+              )}
+
+              {!ro && (
                 <div style={{ marginBottom: 10, border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <button onClick={fillRandom} style={btnSecondary}>🎲 Заполнить случайно</button>
+                    <button onClick={() => setMapOpen(true)} style={btnMini}>🗺 Место на карте</button>
                     <button onClick={() => setRandOpen((o) => !o)} style={btnMini}>{randOpen ? 'Свернуть' : 'Настроить'}</button>
                     <div style={{ flex: 1 }} />
                     <input
@@ -326,6 +354,14 @@ export default function MetadataApp() {
           </div>
         )}
       </div>
+
+      {mapOpen && (
+        <LocationPicker
+          value={edits['__gps'] ?? original.get('__gps') ?? ''}
+          onPick={(c) => { setMapOpen(false); setVal('__gps', c); }}
+          onClose={() => setMapOpen(false)}
+        />
+      )}
 
       {/* Панель сохранения — появляется, как только что-то изменено */}
       {tab === 'one' && meta && dirty && !ro && (

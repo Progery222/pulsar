@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { mediaUrl } from '../utils/media';
 import { RandomOptions, DEFAULT_RAND, type RandOpts } from './RandomPanel';
+import PresetBar, { usePresets, presetFields, type MetaPreset } from './PresetBar';
 
 type Target = 'overwrite' | 'copy' | 'folder';
 type ValuesMode = 'same' | 'random';
@@ -27,6 +28,8 @@ export default function BatchPanel() {
   const [prog, setProg] = useState({ done: 0, total: 0, name: '' });
   const [report, setReport] = useState<{ ok: number; failed: { name: string; error: string }[]; dir: string | null; canceled: boolean } | null>(null);
   const offRef = useRef<(() => void) | null>(null);
+  const { presets, persist } = usePresets();
+  const [presetId, setPresetId] = useState('');
 
   useEffect(() => () => offRef.current?.(), []);
 
@@ -45,6 +48,13 @@ export default function BatchPanel() {
     e.stopPropagation();
     const list = Array.from(e.dataTransfer.files).map((f) => window.electronAPI.getPathForFile(f)).filter(Boolean);
     if (list.length) add(list);
+  }
+
+  // Пресет наполняет таблицу «одинаковых» значений — их видно и можно поправить.
+  function applyPreset(p: MetaPreset) {
+    setValuesMode('same');
+    setPairs(Object.entries(presetFields(p)).map(([tag, value]) => ({ tag, value })));
+    showToast('Применён пресет: ' + p.name);
   }
 
   async function rollSame() {
@@ -74,8 +84,12 @@ export default function BatchPanel() {
     try {
       const edits: Record<string, string> = {};
       for (const p of pairs) if (p.tag.trim()) edits[p.tag.trim()] = p.value;
+      // Место из пресета отдаём базовой точкой: координаты для каждого файла
+      // считает main, поэтому у пачки они получаются разные, а не одна на всех.
+      const preset = presets.find((p) => p.id === presetId);
       const res = await window.electronAPI.metaBatch({
         files, valuesMode, edits, deletes: [], stripAll, rand, target, outDir: outDir ?? undefined,
+        gpsJitter: preset?.gps && preset.gps.jitterKm > 0 ? preset.gps : undefined,
       });
       setReport(res);
       showToast(res.canceled ? `Остановлено, обработано ${res.ok}` : `Готово: ${res.ok} из ${files.length}`);
@@ -135,6 +149,15 @@ export default function BatchPanel() {
 
       {/* Настройки */}
       <div style={{ flex: 1, minWidth: 340, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <PresetBar
+          presets={presets}
+          persist={persist}
+          current={() => Object.fromEntries(pairs.filter((p) => p.tag.trim()).map((p) => [p.tag.trim(), p.value]))}
+          onApply={applyPreset}
+          selectedId={presetId}
+          onSelect={setPresetId}
+        />
+
         <Section title="Что записываем">
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <Seg active={valuesMode === 'random'} onClick={() => setValuesMode('random')}>🎲 У каждого свои случайные</Seg>

@@ -10,6 +10,15 @@ interface MetaResult {
   groups: { title: string; rows: { tag: string; label: string; value: string; editable: boolean }[] }[];
   gps: { lat: number; lon: number } | null; kind: 'image' | 'video'; writable: boolean; error?: string;
 }
+// Пресет метаданных: сохранённый набор полей для повторного применения.
+interface MetaPreset {
+  id: string;
+  name: string;
+  fields: Record<string, string>;
+  gps?: { lat: number; lon: number; jitterKm: number };
+  updatedAt: number;
+}
+
 // Что именно рандомить при автозаполнении «снято на телефон X, там-то, тогда-то».
 interface MetaRandOpts {
   device: boolean; shot: boolean; gps: boolean; date: boolean;
@@ -370,9 +379,15 @@ const electronAPI = {
   metaPickSavePath: (src: string): Promise<string | null> => ipcRenderer.invoke('meta:pickSavePath', src),
   metaRandom: (opts: MetaRandOpts, kind: 'image' | 'video' = 'image'): Promise<Record<string, string>> => ipcRenderer.invoke('meta:random', opts, kind),
   metaCatalog: (): Promise<{ devices: string[]; cities: string[] }> => ipcRenderer.invoke('meta:catalog'),
+  metaPresetsLoad: (): Promise<MetaPreset[]> => ipcRenderer.invoke('meta:presetsLoad'),
+  metaPresetsSave: (list: MetaPreset[]): Promise<{ ok: true } | { error: string }> =>
+    ipcRenderer.invoke('meta:presetsSave', list),
+  metaGeocode: (query: string): Promise<{ name: string; lat: number; lon: number }[]> =>
+    ipcRenderer.invoke('meta:geocode', query),
   metaBatch: (req: {
     files: string[]; valuesMode: 'same' | 'random'; edits: Record<string, string>; deletes: string[];
     stripAll?: boolean; rand: MetaRandOpts; target: 'overwrite' | 'copy' | 'folder'; outDir?: string;
+    gpsJitter?: { lat: number; lon: number; jitterKm: number };
   }): Promise<{ ok: number; failed: { name: string; error: string }[]; dir: string | null; canceled: boolean }> =>
     ipcRenderer.invoke('meta:batch', req),
   metaBatchCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('meta:batchCancel'),
