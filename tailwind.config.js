@@ -8,7 +8,7 @@ export default {
         'bg-primary': '#0D0D0D',
         'bg-secondary': '#1A1A1A',
         'bg-tertiary': '#252525',
-        'accent-green': '#CCFF00',
+        'accent-green': 'var(--accent-green)',
         'accent-orange': '#FF6B35',
         'text-primary': '#FFFFFF',
         'text-secondary': '#888888',

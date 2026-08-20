@@ -229,7 +229,7 @@ export default function SplitMergeApp() {
 function MixRow({ label, muted, onMute, volume, onVol }: { label: string; muted: boolean; onMute: () => void; volume: number; onVol: (v: number) => void }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
-      <button onClick={onMute} title={muted ? 'Включить звук' : 'Выключить'} style={{ ...miniBtn, background: muted ? 'var(--bg-tertiary)' : 'var(--accent-green)', color: muted ? 'var(--text-primary)' : '#04120c', minWidth: 30 }}>{muted ? '🔇' : '🔊'}</button>
+      <button onClick={onMute} title={muted ? 'Включить звук' : 'Выключить'} style={{ ...miniBtn, background: muted ? 'var(--bg-tertiary)' : 'var(--accent-green)', color: muted ? 'var(--text-primary)' : 'var(--accent-fg)', minWidth: 30 }}>{muted ? '🔇' : '🔊'}</button>
       <span style={{ width: 58, fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
       <input type="range" min={0} max={2} step={0.05} value={volume} onChange={(e) => onVol(+e.target.value)} style={{ flex: 1 }} />
       <span style={{ width: 42, textAlign: 'right', fontSize: 11.5, color: 'var(--text-secondary)' }}>{Math.round(volume * 100)}%</span>
@@ -394,11 +394,11 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 
 const sel: React.CSSProperties = { width: '100%', padding: '6px 8px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5 };
 const miniBtn: React.CSSProperties = { fontSize: 12, background: 'rgba(0,0,0,0.6)', border: 'none', color: '#fff', borderRadius: 6, padding: '3px 7px', cursor: 'pointer' };
-const miniActive: React.CSSProperties = { background: 'var(--accent-green)', color: '#04120c' };
+const miniActive: React.CSSProperties = { background: 'var(--accent-green)', color: 'var(--accent-fg)' };
 const pickBtn: React.CSSProperties = { padding: '6px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
 const chip: React.CSSProperties = { padding: '5px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
-const chipActive: React.CSSProperties = { background: 'var(--accent-green)', color: '#04120c', borderColor: 'var(--accent-green)', fontWeight: 600 };
+const chipActive: React.CSSProperties = { background: 'var(--accent-green)', color: 'var(--accent-fg)', borderColor: 'var(--accent-green)', fontWeight: 600 };
 const seg: React.CSSProperties = { flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
-const segActive: React.CSSProperties = { background: 'var(--accent-green)', color: '#04120c', borderColor: 'var(--accent-green)', fontWeight: 600 };
-const btnPrimary: React.CSSProperties = { padding: '10px 16px', borderRadius: 10, border: 'none', background: 'var(--accent-green)', color: '#04120c', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
+const segActive: React.CSSProperties = { background: 'var(--accent-green)', color: 'var(--accent-fg)', borderColor: 'var(--accent-green)', fontWeight: 600 };
+const btnPrimary: React.CSSProperties = { padding: '10px 16px', borderRadius: 10, border: 'none', background: 'var(--accent-green)', color: 'var(--accent-fg)', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer' };

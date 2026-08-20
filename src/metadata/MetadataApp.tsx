@@ -428,6 +428,6 @@ function Tab({ active, onClick, children }: { active: boolean; onClick: () => vo
 }
 
 const inputBase: React.CSSProperties = { padding: '4px 7px', borderRadius: 6, border: '1px solid var(--border)', background: 'var(--bg-primary)', color: 'var(--text-primary)', fontSize: 12, outline: 'none', minWidth: 0 };
-const btnPrimary: React.CSSProperties = { padding: '8px 16px', borderRadius: 9, border: 'none', background: 'var(--accent-green)', color: '#04120c', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
+const btnPrimary: React.CSSProperties = { padding: '8px 16px', borderRadius: 9, border: 'none', background: 'var(--accent-green)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { padding: '7px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
 const btnMini: React.CSSProperties = { padding: '4px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 11, cursor: 'pointer', whiteSpace: 'nowrap' };

@@ -194,6 +194,6 @@ export default function TranscribeApp() {
   );
 }
 
-const primaryBtn: React.CSSProperties = { padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--accent-green)', color: '#04120c', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' };
+const primaryBtn: React.CSSProperties = { padding: '9px 18px', borderRadius: 9, border: 'none', background: 'var(--accent-green)', color: 'var(--accent-fg)', fontSize: 13.5, fontWeight: 600, cursor: 'pointer' };
 const secondaryBtn: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer' };
 const selectStyle: React.CSSProperties = { padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 13 };

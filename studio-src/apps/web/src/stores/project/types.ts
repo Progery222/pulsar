@@ -364,6 +364,10 @@ export interface ProjectState {
     bypassed: boolean,
   ) => boolean;
   getAudioEffects: (clipId: string) => Effect[];
+  setClipFade: (
+    clipId: string,
+    patch: { fadeIn?: number; fadeOut?: number },
+  ) => boolean;
   setClipAudioDucking: (
     clipId: string,
     settings: AudioDuckingSettings,

@@ -11,6 +11,8 @@ import {
   Image,
   ArrowLeftToLine,
   Blend,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
 import type { Clip, Track } from "@openreel/core";
 import { useProjectStore } from "../../../stores/project-store";
@@ -30,8 +32,14 @@ import {
 interface ClipContextMenuProps {
   clip: Clip;
   track: Track;
+  /** С какого края клипа кликнули правой кнопкой — этот блок затухания открыт сразу. */
+  side?: "start" | "end" | null;
   onClose?: () => void;
 }
+
+// Длительности затухания. 0 = снять.
+const FADE_STEPS = [0, 0.25, 0.5, 1, 2, 3];
+const fadeLabel = (sec: number) => (sec === 0 ? "Off" : `${sec}s`);
 
 const FILMIMPACT_TRANSITIONS: { type: string; label: string }[] = [
   { type: "impactBlur", label: "Impact Blur Dissolve" },
@@ -44,6 +52,7 @@ const FILMIMPACT_TRANSITIONS: { type: string; label: string }[] = [
 export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
   clip,
   track,
+  side = null,
   onClose,
 }) => {
   const {
@@ -58,6 +67,7 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
     pasteEffects,
     copiedEffects,
     closeGapBeforeClip,
+    setClipFade,
   } = useProjectStore();
   const { playheadPosition } = useTimelineStore();
 
@@ -97,6 +107,28 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
     mediaItem?.type === "video" &&
     mediaItem?.metadata?.channels &&
     mediaItem.metadata.channels > 0;
+
+  // Затухание применимо ко всему, что звучит: аудио-клипы и видео со звуковой дорожкой.
+  const hasSound = Boolean(isAudio || isVideoWithAudio);
+  const fadeIn = clip.fade?.fadeIn ?? 0;
+  const fadeOut = clip.fade?.fadeOut ?? 0;
+  // Кликнули у края — подсказываем, какой именно край сейчас настраивается.
+  const fadeSummary =
+    fadeIn > 0 || fadeOut > 0
+      ? `Fade — in ${fadeIn}s / out ${fadeOut}s`
+      : side === "start"
+        ? "Fade (clip start)"
+        : side === "end"
+          ? "Fade (clip end)"
+          : "Fade";
+
+  const applyFade = React.useCallback(
+    (patch: { fadeIn?: number; fadeOut?: number }) => {
+      setClipFade(clip.id, patch);
+      onClose?.();
+    },
+    [clip.id, setClipFade, onClose],
+  );
 
   const hasEffects = clip.effects && clip.effects.length > 0;
   const hasCopiedEffects = copiedEffects && copiedEffects.length > 0;
@@ -261,6 +293,61 @@ export const ClipContextMenu: React.FC<ClipContextMenuProps> = ({
           <ContextMenuItem onClick={handleSeparateAudio}>
             <Music className="mr-2 h-4 w-4" />
             Separate Audio
+          </ContextMenuItem>
+        </>
+      )}
+
+      {hasSound && (
+        <>
+          <ContextMenuSeparator />
+          <ContextMenuLabel>{fadeSummary}</ContextMenuLabel>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <TrendingUp className="mr-2 h-4 w-4" />
+              Fade In
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {FADE_STEPS.map((sec) => (
+                <ContextMenuItem
+                  key={sec}
+                  disabled={sec > clip.duration}
+                  onClick={() => applyFade({ fadeIn: sec })}
+                >
+                  {fadeIn === sec ? "• " : ""}
+                  {fadeLabel(sec)}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+          <ContextMenuSub>
+            <ContextMenuSubTrigger>
+              <TrendingDown className="mr-2 h-4 w-4" />
+              Fade Out
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent>
+              {FADE_STEPS.map((sec) => (
+                <ContextMenuItem
+                  key={sec}
+                  disabled={sec > clip.duration}
+                  onClick={() => applyFade({ fadeOut: sec })}
+                >
+                  {fadeOut === sec ? "• " : ""}
+                  {fadeLabel(sec)}
+                </ContextMenuItem>
+              ))}
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+          <ContextMenuItem
+            onClick={() => applyFade({ fadeIn: 1, fadeOut: 1 })}
+            disabled={clip.duration < 2}
+          >
+            Fade In + Out 1s
+          </ContextMenuItem>
+          <ContextMenuItem
+            onClick={() => applyFade({ fadeIn: 0, fadeOut: 0 })}
+            disabled={fadeIn === 0 && fadeOut === 0}
+          >
+            Remove Fades
           </ContextMenuItem>
         </>
       )}

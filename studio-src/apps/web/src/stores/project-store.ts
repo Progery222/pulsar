@@ -450,6 +450,10 @@ export interface ProjectState {
     bypassed: boolean,
   ) => boolean;
   getAudioEffects: (clipId: string) => Effect[];
+  setClipFade: (
+    clipId: string,
+    patch: { fadeIn?: number; fadeOut?: number },
+  ) => boolean;
   setClipAudioDucking: (
     clipId: string,
     settings: AudioDuckingSettings,
@@ -2521,6 +2525,9 @@ export const useProjectStore = create<ProjectState>()(
           const targetTrack = audioTimelineTracks[trackIdx];
           if (!targetTrack) break;
 
+          // Отделяем звук ИМЕННО у этого клипа, а не всю дорожку исходника:
+          // без duration/inPoint/outPoint clip/add подставляет длину всей медиа,
+          // и от обрезанного видео отделялся звук целого файла.
           const action: Action = {
             type: "clip/add",
             id: uuidv4(),
@@ -2529,6 +2536,15 @@ export const useProjectStore = create<ProjectState>()(
               trackId: targetTrack.id,
               mediaId: videoClip.mediaId,
               startTime: videoClip.startTime,
+              duration: videoClip.duration,
+              inPoint: videoClip.inPoint,
+              outPoint: videoClip.outPoint,
+              // Скорость и реверс тоже переносим, иначе звук разъедется с картинкой.
+              ...(videoClip.speed !== undefined ? { speed: videoClip.speed } : {}),
+              ...(videoClip.reversed !== undefined ? { reversed: videoClip.reversed } : {}),
+              ...(videoClip.fade ? { fade: { ...videoClip.fade } } : {}),
+              // Громкость забираем с видео — оно ниже глушится в ноль.
+              volume: videoClip.volume,
               audioTrackIndex: trackIdx,
             },
           };
@@ -6019,6 +6035,39 @@ export const useProjectStore = create<ProjectState>()(
           }
         }
         return [];
+      },
+
+      // Плавное появление/затухание звука клипа. Движок (audio-engine) уже умеет
+      // clip.fade — и на воспроизведении, и на экспорте, там общий рендер звука.
+      setClipFade: (
+        clipId: string,
+        patch: { fadeIn?: number; fadeOut?: number },
+      ) => {
+        const { project } = get();
+        const updatedProject = updateProjectClip(project, clipId, (clip) => {
+          const prevIn = clip.fade?.fadeIn ?? 0;
+          const prevOut = clip.fade?.fadeOut ?? 0;
+          let fadeIn = Math.max(0, patch.fadeIn ?? prevIn);
+          let fadeOut = Math.max(0, patch.fadeOut ?? prevOut);
+          // Затухание не может быть длиннее клипа, а вместе они не должны
+          // перекрывать друг друга — иначе звук уходит в ноль в середине.
+          const max = Math.max(0, clip.duration);
+          if (patch.fadeIn !== undefined) fadeIn = Math.min(fadeIn, Math.max(0, max - fadeOut));
+          if (patch.fadeOut !== undefined) fadeOut = Math.min(fadeOut, Math.max(0, max - fadeIn));
+          if (fadeIn <= 0 && fadeOut <= 0) {
+            const next = { ...clip };
+            delete (next as { fade?: unknown }).fade;
+            return next;
+          }
+          return { ...clip, fade: { fadeIn, fadeOut } };
+        });
+
+        if (!updatedProject) {
+          return false;
+        }
+
+        set({ project: updatedProject });
+        return true;
       },
 
       setClipAudioDucking: (

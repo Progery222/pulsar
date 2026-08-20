@@ -723,19 +723,55 @@ export const Timeline: React.FC = () => {
       if (!clip) return;
 
       const oldDuration = clip.duration;
-      const newDuration =
-        edge === "left"
-          ? Math.max(0.1, clip.startTime + clip.duration - newTime)
-          : Math.max(0.1, newTime - clip.startTime);
+      const MIN_DURATION = 0.1;
+
+      // Окно в исходнике (inPoint/outPoint) обязано ехать вместе с краем клипа.
+      // Раньше менялись только startTime/duration — из-за этого растянутый обратно
+      // клип не показывал недостающий кусок: длина росла, а материал не открывался.
+      const media = project.mediaLibrary.items.find((m) => m.id === clip.mediaId);
+      const sourceDuration =
+        media?.metadata?.duration && media.metadata.duration > 0
+          ? media.metadata.duration
+          : null; // у картинок/графики материал по времени не ограничен
+
+      let newStartTime = clip.startTime;
+      let newDuration: number;
+      let newInPoint = clip.inPoint;
+
+      if (edge === "left") {
+        // delta < 0 — тянем влево, открывая материал перед inPoint.
+        let delta = newTime - clip.startTime;
+        delta = Math.min(delta, clip.duration - MIN_DURATION);
+        // Левее начала исходника уходить некуда.
+        if (sourceDuration !== null) delta = Math.max(delta, -clip.inPoint);
+        else delta = Math.max(delta, -clip.startTime);
+
+        newStartTime = clip.startTime + delta;
+        newDuration = clip.duration - delta;
+        if (sourceDuration !== null) newInPoint = clip.inPoint + delta;
+      } else {
+        newDuration = Math.max(MIN_DURATION, newTime - clip.startTime);
+        // Правее конца исходника материала тоже нет.
+        if (sourceDuration !== null) {
+          newDuration = Math.min(newDuration, sourceDuration - clip.inPoint);
+          newDuration = Math.max(MIN_DURATION, newDuration);
+        }
+      }
+
+      // outPoint держим согласованным с длиной — так же, как это делает clip/split.
+      const newOutPoint = newInPoint + newDuration;
 
       const updates =
         edge === "left"
           ? {
-              startTime: newTime,
+              startTime: newStartTime,
               duration: newDuration,
+              inPoint: newInPoint,
+              outPoint: newOutPoint,
             }
           : {
               duration: newDuration,
+              outPoint: newOutPoint,
             };
 
       const adjustedKeyframes = clip.keyframes.map((kf) => {
@@ -764,7 +800,7 @@ export const Timeline: React.FC = () => {
         },
       }));
     },
-    [tracks],
+    [tracks, project.mediaLibrary.items],
   );
 
   const visualOrderTracks = useMemo(() => tracks, [tracks]);
@@ -1168,6 +1204,43 @@ export const Timeline: React.FC = () => {
                   </div>
                 );
               })}
+
+              {/* Добавление дорожки прямо под списком — там же, где его ищут.
+                  Та же команда, что и кнопка «+» на панели, просто с подписью. */}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    title="Add track"
+                    className="m-1 flex items-center gap-1.5 rounded-md border border-dashed border-border px-2 py-1.5 text-[11px] text-fg-2 hover:bg-hover hover:text-fg transition-colors"
+                  >
+                    <Plus size={12} />
+                    <span>Add track</span>
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent side="right" align="start" sideOffset={6} className="w-48">
+                  <DropdownMenuItem onClick={() => addTrack("video")}>
+                    <Film size={16} className="text-clip-video" />
+                    <span>Video Track</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTrack("audio")}>
+                    <Music size={16} className="text-clip-audio" />
+                    <span>Audio Track</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={() => addTrack("image")}>
+                    <Image size={16} className="text-clip-music" />
+                    <span>Image Track</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTrack("text")}>
+                    <Type size={16} className="text-clip-text" />
+                    <span>Text Track</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => addTrack("graphics")}>
+                    <Shapes size={16} className="text-clip-music" />
+                    <span>Graphics Track</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
 

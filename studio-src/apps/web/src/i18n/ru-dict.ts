@@ -275,7 +275,6 @@ export const RU_DICT: Record<string, string> = {
   "Audio Ducking": "Приглушение под голос",
   "Audio Effects": "Аудиоэффекты",
   "Audio Settings": "Настройки звука",
-  "Audio Track": "Аудиодорожка",
   "Audio mixer": "Аудио-микшер",
   "Auto Captions": "Авто-субтитры",
   "Auto Cut Silence": "Вырезать тишину",

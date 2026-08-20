@@ -4,9 +4,13 @@ import App from './App';
 import RecorderControlBar from './recorder/RecorderControlBar';
 import RecorderNotes from './recorder/RecorderNotes';
 import './index.css';
+import { initAccent } from './utils/accent';
 
 // Отдельные окна рекордера (always-on-top) переиспользуют наш bundle через ?win=…:
 // recControl — панель управления записью, recNotes — окно заметок.
+// Цвет интерфейса применяем до первой отрисовки, иначе моргнёт стандартным.
+initAccent();
+
 const winParam = new URLSearchParams(location.search).get('win');
 
 function Root() {

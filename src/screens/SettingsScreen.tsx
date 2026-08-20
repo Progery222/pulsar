@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { useUIStore } from '../store/uiStore';
+import { ACCENT_PRESETS, DEFAULT_ACCENT, applyAccent, getAccentKey, resolveAccent } from '../utils/accent';
 
 type GpuMode = 'auto' | 'gpu' | 'cpu';
 
@@ -8,6 +9,14 @@ const GPU_LABELS: Record<GpuMode, string> = { auto: 'Авто', gpu: 'GPU', cpu:
 
 // Экран настроек (доступен со стартового окна). Здесь же — API-ключ AssemblyAI.
 export default function SettingsScreen() {
+  const [accent, setAccent] = useState(getAccentKey());
+  const custom = accent.startsWith('#') ? accent : resolveAccent(accent).color;
+
+  function pickAccent(key: string) {
+    setAccent(key);
+    applyAccent(key);
+  }
+
   const setShowSetup = useUIStore((s) => s.setShowSetup);
   const [apiKey, setApiKey] = useState('');
   const [savedKey, setSavedKey] = useState(false);
@@ -87,6 +96,73 @@ export default function SettingsScreen() {
         <h1 className="font-semibold" style={{ fontSize: 32, color: 'var(--text-primary)', marginBottom: 32 }}>
           Настройки
         </h1>
+
+        {/* Цвет интерфейса — меняется во всём приложении сразу */}
+        <div style={section}>
+          <label style={label}>Цвет интерфейса</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, marginTop: 4 }}>
+            {ACCENT_PRESETS.map((p) => {
+              const sel = accent === p.key;
+              return (
+                <button
+                  key={p.key}
+                  onClick={() => pickAccent(p.key)}
+                  title={p.label}
+                  style={{
+                    width: 38,
+                    height: 38,
+                    borderRadius: 10,
+                    background: p.color,
+                    cursor: 'pointer',
+                    border: sel ? '3px solid var(--text-primary)' : '1px solid var(--border)',
+                    boxShadow: sel ? '0 0 0 2px var(--bg-primary) inset' : 'none',
+                  }}
+                />
+              );
+            })}
+            <label
+              title="Свой цвет"
+              style={{
+                width: 38,
+                height: 38,
+                borderRadius: 10,
+                display: 'grid',
+                placeItems: 'center',
+                cursor: 'pointer',
+                border: accent.startsWith('#') ? '3px solid var(--text-primary)' : '1px dashed var(--border)',
+                background: accent.startsWith('#') ? custom : 'transparent',
+                color: 'var(--text-secondary)',
+                fontSize: 16,
+              }}
+            >
+              {accent.startsWith('#') ? '' : '+'}
+              <input
+                type="color"
+                value={custom}
+                onChange={(e) => pickAccent(e.target.value)}
+                style={{ width: 0, height: 0, opacity: 0, position: 'absolute' }}
+              />
+            </label>
+          </div>
+          <div style={{ display: 'flex', gap: 12, alignItems: 'center', marginTop: 14 }}>
+            <button className="btn-primary" style={{ padding: '8px 20px', fontSize: 13 }}>
+              Так выглядят кнопки
+            </button>
+            {accent !== DEFAULT_ACCENT && (
+              <button
+                onClick={() => pickAccent(DEFAULT_ACCENT)}
+                style={{ padding: '7px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' }}
+              >
+                Вернуть стандартный
+              </button>
+            )}
+          </div>
+          <p style={hint}>
+            Применяется сразу ко всему приложению и запоминается. Цвет подписи на кнопках
+            подбирается автоматически, чтобы текст читался на светлом и на тёмном.
+            Встроенная «Студия» рисуется своей темой и этот цвет пока не подхватывает.
+          </p>
+        </div>
 
         {/* API-ключ AssemblyAI (распознавание речи для титров) */}
         <div style={section}>

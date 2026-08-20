@@ -36,6 +36,8 @@
   --bg-secondary: #1a1a1a;
   --bg-tertiary: #252525;
   --accent-green: #ccff00;
+  /* Текст поверх акцента: пересчитывается при смене цвета интерфейса. */
+  --accent-fg: #04120c;
   --accent-orange: #ff6b35;
   --text-primary: #ffffff;
   --text-secondary: #888888;

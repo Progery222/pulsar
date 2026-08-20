@@ -380,7 +380,7 @@ function Slider({ label, min, max, step, value, onChange, disabled }: { label: s
   );
 }
 
-const btnPrimary: React.CSSProperties = { padding: '9px 14px', borderRadius: 9, border: 'none', background: 'var(--accent-green)', color: '#04120c', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
+const btnPrimary: React.CSSProperties = { padding: '9px 14px', borderRadius: 9, border: 'none', background: 'var(--accent-green)', color: 'var(--accent-fg)', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
 const btnGhost: React.CSSProperties = { padding: '8px 14px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12.5, cursor: 'pointer' };
 const rowLabel: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: 'var(--text-primary)', cursor: 'pointer' };
 const chip: React.CSSProperties = { padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 12, cursor: 'pointer' };

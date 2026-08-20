@@ -8,7 +8,6 @@ import { calculateSnap, generateWaveformPath, getClipStyle } from "./utils";
 import { ClipContextMenu } from "./ClipContextMenu";
 import { ContextMenu, ContextMenuTrigger } from "@openreel/ui";
 import { toast } from "../../../stores/notification-store";
-import { getTransitionBridge } from "../../../bridges/transition-bridge";
 import { applyCrossfadeOverlap } from "./crossfade";
 import type { VideoEffectType } from "../../../bridges/effects-bridge";
 import {
@@ -66,6 +65,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
   );
   const { playheadPosition } = useTimelineStore();
   const mediaItem = getMediaItem(clip.mediaId);
+  const [ctxSide, setCtxSide] = useState<"start" | "end" | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isPendingDrag, setIsPendingDrag] = useState(false);
   const [dragOffset, setDragOffset] = useState(0);
@@ -628,6 +628,12 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
       <ContextMenuTrigger asChild>
         <div
           ref={clipRef}
+          onContextMenu={(e) => {
+            // Запоминаем, у какого края кликнули — меню подписывает, что настраивается.
+            const r = e.currentTarget.getBoundingClientRect();
+            const t = r.width > 0 ? (e.clientX - r.left) / r.width : 0.5;
+            setCtxSide(t < 0.34 ? "start" : t > 0.66 ? "end" : null);
+          }}
           onClick={handleClick}
           onMouseDown={handleMouseDown}
           onDragOver={handleDragOver}
@@ -850,7 +856,7 @@ export const ClipComponent: React.FC<ClipComponentProps> = ({
 
         </div>
       </ContextMenuTrigger>
-      <ClipContextMenu clip={clip} track={track} />
+      <ClipContextMenu clip={clip} track={track} side={ctxSide} />
     </ContextMenu>
   );
 };

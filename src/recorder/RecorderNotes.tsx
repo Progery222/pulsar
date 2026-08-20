@@ -51,7 +51,7 @@ export default function RecorderNotes() {
           <button
             onClick={() => setScroll((s) => !s)}
             title="Автопрокрутка (телепромптер)"
-            style={{ WebkitAppRegion: 'no-drag', background: scroll ? '#ccff00' : 'rgba(255,255,255,0.12)', color: scroll ? '#04120c' : '#fff', border: 'none', borderRadius: 6, fontSize: 11, padding: '3px 8px', cursor: 'pointer' } as React.CSSProperties}
+            style={{ WebkitAppRegion: 'no-drag', background: scroll ? '#ccff00' : 'rgba(255,255,255,0.12)', color: scroll ? 'var(--accent-fg)' : '#fff', border: 'none', borderRadius: 6, fontSize: 11, padding: '3px 8px', cursor: 'pointer' } as React.CSSProperties}
           >
             {scroll ? '❚❚' : '▶'}
           </button>

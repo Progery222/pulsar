@@ -261,7 +261,7 @@ export default function AiVideoApp() {
 
 const pageWrap: React.CSSProperties = { height: '100%', overflowY: 'auto', padding: '28px 32px', background: 'var(--bg-primary)', display: 'flex', flexDirection: 'column' };
 const center: React.CSSProperties = { height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-primary)' };
-const btnPrimary: React.CSSProperties = { padding: '10px 20px', borderRadius: 10, border: 'none', background: 'var(--accent-green)', color: '#04120c', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
+const btnPrimary: React.CSSProperties = { padding: '10px 20px', borderRadius: 10, border: 'none', background: 'var(--accent-green)', color: 'var(--accent-fg)', fontSize: 14, fontWeight: 600, cursor: 'pointer' };
 const btnSecondary: React.CSSProperties = { padding: '9px 16px', borderRadius: 10, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 13.5, cursor: 'pointer' };
 const inp: React.CSSProperties = { width: '100%', padding: '9px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 14, boxSizing: 'border-box' };
 const sel: React.CSSProperties = { padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', fontSize: 13.5 };
