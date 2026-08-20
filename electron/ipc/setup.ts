@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
+import { resolvePython, forgetPython, spawnPython } from './python';
 
 function ttsScript(): string {
   return app.isPackaged
@@ -12,10 +13,6 @@ function pyScript(name: string): string {
   return app.isPackaged
     ? path.join(process.resourcesPath, 'python', name)
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', name);
-}
-
-function pyCmd(): string {
-  return process.platform === 'win32' ? 'python' : 'python3';
 }
 
 // pip-пакет для каждого движка озвучки.
@@ -34,18 +31,33 @@ interface SetupStatus {
   error?: string;
 }
 
-function checkStatus(): Promise<SetupStatus> {
+async function checkStatus(): Promise<SetupStatus> {
+  // Сначала ищем реальный интерпретатор: раньше spawn('python') попадал в
+  // заглушку Microsoft Store, та молчала, и Python считался ненайденным —
+  // вместе с ним блокировалась установка всех остальных движков.
+  const py = await resolvePython();
+  if (!py) return { pythonOk: false, error: 'Python не найден' };
+
   return new Promise((resolve) => {
-    const child = spawn(pyCmd(), [ttsScript(), 'check']);
+    const child = spawn(py.cmd, [...py.args, ttsScript(), 'check'], { windowsHide: true });
     let stdout = '';
+    let stderr = '';
     child.stdout.on('data', (c) => (stdout += c.toString()));
+    child.stderr.on('data', (c) => (stderr += c.toString()));
     child.on('error', () => resolve({ pythonOk: false, error: 'Python не найден' }));
     child.on('close', () => {
       try {
         const r = JSON.parse(stdout.trim());
-        resolve({ pythonOk: true, pythonVersion: r.python, engines: r.engines });
+        resolve({ pythonOk: true, pythonVersion: r.python ?? py.version, engines: r.engines });
       } catch {
-        resolve({ pythonOk: false, error: 'Python не найден или недоступен' });
+        // Python есть, но проверочный скрипт не отработал — это другая беда,
+        // и говорить про «не найден» здесь было бы неправдой.
+        resolve({
+          pythonOk: true,
+          pythonVersion: py.version,
+          engines: {},
+          error: 'Python ' + py.version + ' найден, но проверка движков не отработала: ' + (stderr.trim().slice(-200) || 'нет вывода'),
+        });
       }
     });
   });
@@ -91,7 +103,8 @@ function meaningfulLines(s: string): string[] {
 function downloadWhisperModel(): Promise<{ ok: true } | { error: string }> {
   return new Promise((resolve) => {
     sendProgress({ line: 'Скачиваю модель распознавания (Whisper)…' });
-    const child = spawn(pyCmd(), ['-u', pyScript('download_whisper.py'), '--model', 'small'], {
+    void (async () => {
+    const child = await spawnPython(['-u', pyScript('download_whisper.py'), '--model', 'small'], {
       env: { ...process.env, PYTHONUNBUFFERED: '1' },
     });
     const handle = (chunk: Buffer) => {
@@ -114,6 +127,7 @@ function downloadWhisperModel(): Promise<{ ok: true } | { error: string }> {
     child.on('close', (code) =>
       code === 0 ? resolve({ ok: true }) : resolve({ error: `Не удалось скачать модель Whisper (код ${code})` })
     );
+    })().catch((err) => resolve({ error: (err as Error).message }));
   });
 }
 
@@ -126,8 +140,8 @@ function installEngine(engine: string): Promise<{ ok: true } | { error: string }
       return;
     }
     sendProgress({ line: `Устанавливаю: pip install ${pkgs.join(' ')} …` });
-    const child = spawn(
-      pyCmd(),
+    void (async () => {
+    const child = await spawnPython(
       ['-u', '-m', 'pip', 'install', '--upgrade', '--progress-bar', 'on', ...pkgs],
       { env: { ...process.env, PYTHONUNBUFFERED: '1', PIP_DISABLE_PIP_VERSION_CHECK: '1' } }
     );
@@ -167,6 +181,7 @@ function installEngine(engine: string): Promise<{ ok: true } | { error: string }
       sendProgress({ line: 'Готово. Движок установлен.', percent: 100 });
       resolve({ ok: true });
     });
+    })().catch((err) => resolve({ error: (err as Error).message }));
   });
 }
 
@@ -197,6 +212,8 @@ function installPython(): Promise<{ needsRestart: true } | { error: string }> {
     });
     child.on('close', (code) => {
       if (code === 0) {
+        // Кэш сбрасываем: вдруг интерпретатор появится и без перезапуска.
+        forgetPython();
         sendProgress({ line: 'Python установлен. Перезапустите приложение.', percent: 100 });
         resolve({ needsRestart: true });
       } else {
@@ -207,6 +224,9 @@ function installPython(): Promise<{ needsRestart: true } | { error: string }> {
 }
 
 export function registerSetupHandlers() {
+  // Ищем интерпретатор заранее: дальше все модули берут готовый путь синхронно.
+  void resolvePython();
+
   ipcMain.handle('setup:status', () => checkStatus());
   ipcMain.handle('setup:install', (_e, engine: string) => installEngine(engine));
   ipcMain.handle('setup:installPython', () => installPython());

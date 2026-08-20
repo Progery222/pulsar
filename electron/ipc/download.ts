@@ -3,12 +3,15 @@ import ffmpegStatic from 'ffmpeg-static';
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pythonCmdSync } from './python';
 
 // Скачивание видео по ссылке (TikTok, YouTube, Instagram, …) через yt-dlp
 // в локальную папку — дальше его подхватывает Уникализатор (VUB).
 
 function pyCmd(): string {
-  return process.platform === 'win32' ? 'python' : 'python3';
+  // Абсолютный путь из общего резолвера: голое 'python' на Windows ведёт
+  // в заглушку Microsoft Store, которая скрипты не запускает.
+  return pythonCmdSync();
 }
 
 // Каталог с бинарником ffmpeg (нужен yt-dlp для склейки видео+аудио).

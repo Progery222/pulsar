@@ -25,6 +25,7 @@ import { buildVubPlan } from '../../src/vub/ffmpegBuild';
 import { randomVoice } from '../../src/tts/edgeVoices';
 import type { VubEffects, VubParams, VubText } from '../../src/vub/types';
 import type { FunnelStartRequest, FunnelProgressEvent } from '../../src/funnel/types';
+import { pythonCmdSync } from './python';
 
 // Оркестратор модуля «Воронка»: скачивание (yt-dlp) -> AI-классификация (Gemini)
 // -> маршрутизация по 5 веткам -> выполнение ветки (переиспользуя Cleaner/Дубляж/VUB)
@@ -41,7 +42,9 @@ const activeProc = new Set<ChildProcess>();
 const activeAborts = new Set<AbortController>();
 
 function pyCmd(): string {
-  return process.platform === 'win32' ? 'python' : 'python3';
+  // Абсолютный путь из общего резолвера: голое 'python' на Windows ведёт
+  // в заглушку Microsoft Store, которая скрипты не запускает.
+  return pythonCmdSync();
 }
 function scriptPath(name: string): string {
   return app.isPackaged

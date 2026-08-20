@@ -11,6 +11,7 @@ import { getAssemblyKey } from './config';
 import { buildAss, roundRectPath } from '../../src/vub/assBuilder';
 import type { TitlesStyle, TranscriptWord } from '../../src/vub/types';
 import { videoEncoderOptions } from './encoder';
+import { pythonCmdSync } from './python';
 
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
@@ -96,7 +97,11 @@ function getWords(videoPath: string, key: string, lang: string): Promise<Transcr
 }
 
 const PY_CANDIDATES =
-  process.platform === 'win32' ? [['python', []], ['py', ['-3']], ['python3', []]] : [['python3', []], ['python', []]];
+  // Первым — абсолютный путь из резолвера, иначе на Windows выигрывала заглушка
+  // Microsoft Store, стоящая в PATH раньше настоящего Python.
+  process.platform === 'win32'
+    ? [[pythonCmdSync(), []], ['py', ['-3']], ['python', []], ['python3', []]]
+    : [[pythonCmdSync(), []], ['python3', []], ['python', []]];
 
 function runPy(cmd: string, pre: string[], args: string[]): Promise<{ out: string; err: string; code: number | null; spawnErr?: string }> {
   return new Promise((resolve) => {

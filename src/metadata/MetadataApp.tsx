@@ -69,6 +69,15 @@ export default function MetadataApp() {
     return m;
   }, [meta]);
 
+  // Только те теги, которые вообще можно записать. Нужно для пресета: раньше он
+  // забирал все строки подряд — включая подписи C2PA и вычисляемые поля вроде
+  // размеров кадра, — и запись падала на первом же непригодном имени.
+  const editableTags = useMemo(() => {
+    const s = new Set<string>(KEY_FIELDS.map((f) => f.tag));
+    meta?.groups.forEach((g) => g.rows.forEach((r) => { if (r.editable) s.add(r.tag); }));
+    return s;
+  }, [meta]);
+
   const valueOf = (tag: string) => edits[tag] ?? original.get(tag) ?? '';
 
   // «Все поля» — то, что раньше висело на экране постоянно. Теперь свёрнуто:
@@ -163,8 +172,9 @@ export default function MetadataApp() {
 
   function currentFields(): Record<string, string> {
     const out: Record<string, string> = {};
-    original.forEach((v, k) => { if (v) out[k] = v; });
-    return { ...out, ...edits };
+    original.forEach((v, k) => { if (v && editableTags.has(k)) out[k] = v; });
+    for (const [k, v] of Object.entries(edits)) if (editableTags.has(k)) out[k] = v;
+    return out;
   }
 
   async function save(mode: 'overwrite' | 'copy' | 'saveAs', strip = false) {
@@ -242,9 +252,14 @@ export default function MetadataApp() {
               </div>
 
               {v && (
-                <div title={meta.verdictText} style={{ display: 'flex', alignItems: 'center', gap: 7, marginTop: 10, fontSize: 12.5, color: v.fg, fontWeight: 600 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: '50%', background: v.fg, flexShrink: 0 }} />
-                  {v.label}
+                <div style={{ marginTop: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, color: v.fg, fontWeight: 600 }}>
+                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: v.fg, flexShrink: 0 }} />
+                    {v.label}
+                  </div>
+                  {/* Причина вердикта была только в подсказке при наведении — из-за
+                      этого было непонятно, почему после правки полей он не меняется. */}
+                  <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.4 }}>{meta.verdictText}</div>
                 </div>
               )}
 
@@ -291,9 +306,12 @@ export default function MetadataApp() {
                   />
                 ))}
                 {meta.summary.c2pa && (
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '6px 10px', background: 'var(--bg-tertiary)', fontSize: 11.5 }}>
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 10px', background: 'var(--bg-tertiary)', fontSize: 11.5 }}>
                     <span style={{ width: 130, flexShrink: 0, color: 'var(--text-secondary)' }}>C2PA / AI-метки</span>
-                    <span style={{ color: '#ff6b6b' }}>есть — манифест подписан, по одному полю не правится</span>
+                    <span style={{ color: '#ff6b6b', lineHeight: 1.45 }}>
+                      есть — подписанный манифест происхождения. Он лежит отдельным блоком контейнера,
+                      поэтому переживает и правку полей, и «Стереть всё».
+                    </span>
                   </div>
                 )}
               </div>
@@ -355,6 +373,10 @@ export default function MetadataApp() {
                         >
                           Стереть всё в этом файле
                         </button>
+                      </div>
+                      <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.4 }}>
+                        Убирает EXIF, GPS, XMP и прочие поля. Подписанный манифест C2PA
+                        не затрагивается — он хранится вне метаданных.
                       </div>
                     </Panel>
                   )}

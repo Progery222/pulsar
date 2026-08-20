@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import type { TranscriptWord } from '../../src/vub/types';
+import { pythonCmdSync } from './python';
 
 // Транскрибация речи через AssemblyAI (облако). Независимо от логики редактора.
 const API = 'https://api.assemblyai.com/v2';
@@ -86,7 +87,9 @@ export async function transcribe(
 // ── Офлайн-распознавание через faster-whisper (whisper_asr.py) ────────────────
 // Альтернатива AssemblyAI, когда облако недоступно (блокировка/нет интернета).
 function pyCmd(): string {
-  return process.platform === 'win32' ? 'python' : 'python3';
+  // Абсолютный путь из общего резолвера: голое 'python' на Windows ведёт
+  // в заглушку Microsoft Store, которая скрипты не запускает.
+  return pythonCmdSync();
 }
 function whisperScript(): string {
   return app.isPackaged

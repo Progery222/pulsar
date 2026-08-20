@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import ffmpegStatic from 'ffmpeg-static';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pythonCmdSync } from './python';
 
 // Папка с встроенным ffmpeg — добавляем её в PATH питон-процесса, иначе librosa
 // не может декодировать часть аудиоформатов (audioread backend ищет `ffmpeg` в PATH).
@@ -57,8 +58,8 @@ function fileKey(p: string): string | null {
 // который при spawn из GUI иногда зависает), затем обычные python/python3.
 function pythonCandidates(): string[][] {
   return process.platform === 'win32'
-    ? [['py', '-3'], ['python'], ['python3']]
-    : [['python3'], ['python']];
+    ? [[pythonCmdSync()], ['py', '-3'], ['python'], ['python3']]
+    : [[pythonCmdSync()], ['python3'], ['python']];
 }
 
 // Запуск beat_detect.py перебором кандидатов Python (ENOENT -> следующий).

@@ -11,6 +11,7 @@ import { getAssemblyKey } from './config';
 import { runSynth } from './tts';
 import { videoEncoderOptions } from './encoder';
 import type { TranscriptWord } from '../../src/vub/types';
+import { pythonCmdSync } from './python';
 
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
@@ -53,7 +54,9 @@ interface Segment {
 }
 
 function py(): string {
-  return process.platform === 'win32' ? 'python' : 'python3';
+  // Абсолютный путь из общего резолвера: голое 'python' на Windows ведёт
+  // в заглушку Microsoft Store, которая скрипты не запускает.
+  return pythonCmdSync();
 }
 function scriptPath(name: string): string {
   return app.isPackaged

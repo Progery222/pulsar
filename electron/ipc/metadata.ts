@@ -204,7 +204,9 @@ async function readVideoMeta(file: string): Promise<MetaResult> {
   const c2pa = scanC2PA(await readHead(file, HEAD_BYTES));
   if (c2pa.present) {
     const src = c2pa.rows.length ? c2pa.rows : ([['Статус', 'манифест присутствует']] as [string, string][]);
-    groups.push({ title: 'C2PA / Content Credentials', rows: src.map(([k, v]) => row(k, v, false, k)) });
+    // Тег служебный (__c2pa*), а подпись человеческая: раньше подпись шла тегом,
+    // и «Генератор (softwareAgent)» уезжал в запись, ломая её целиком.
+    groups.push({ title: 'C2PA / Content Credentials', rows: src.map(([k, v], i) => row(`__c2pa${i}`, v, false, k)) });
   }
 
   const camera = [tags['Make'], tags['Model']].filter(Boolean).map(fmt).join(' ').trim() || null;
@@ -286,7 +288,9 @@ async function readMeta(file: string): Promise<MetaResult> {
   if (c2pa.present) {
     const src = c2pa.rows.length ? c2pa.rows : ([['Статус', 'манифест присутствует']] as [string, string][]);
     // Манифест подписан криптографически — правке по одному полю не поддаётся, только удаление целиком.
-    groups.push({ title: 'C2PA / Content Credentials', rows: src.map(([k, v]) => row(k, v, false, k)) });
+    // Тег служебный (__c2pa*), а подпись человеческая: раньше подпись шла тегом,
+    // и «Генератор (softwareAgent)» уезжал в запись, ломая её целиком.
+    groups.push({ title: 'C2PA / Content Credentials', rows: src.map(([k, v], i) => row(`__c2pa${i}`, v, false, k)) });
   }
 
   // Вердикт.
@@ -346,12 +350,26 @@ const VIDEO_TAG_GROUP: Record<string, string> = {
   CreateDate: 'QuickTime:CreateDate', ModifyDate: 'QuickTime:ModifyDate',
 };
 
+// exiftool принимает только такие имена; всё остальное валит запись целиком.
+const TAG_NAME_RE = /^[A-Za-z0-9_:*?+#^][A-Za-z0-9_:\-*?+#^]*$/;
+
+// Отсев перед записью: служебные строки интерфейса (C2PA и прочие псевдо-поля)
+// и любые имена, которые exiftool не примет. Раньше одно такое поле — например
+// сохранённое в старом пресете — обрушивало сохранение всего файла.
+// READONLY_TAGS сюда же: это размеры кадра, длительность, кодек и прочее, что
+// описывает сам файл. Записать их технически можно, но получится ложь — другие
+// программы читают их как настоящие. В интерфейсе они не редактируются, а вот
+// пресет, сохранённый до этой проверки, мог такое протащить.
+const writableTag = (tag: string): boolean =>
+  tag === GPS_KEY || (!tag.startsWith('__') && TAG_NAME_RE.test(tag) && !READONLY_TAGS.has(tag));
+
 // edits/deletes из UI → набор тегов для exiftool. Строка в ответе = текст ошибки валидации.
 function buildTags(edits: Record<string, string> = {}, deletes: string[] = [], kind: Kind = 'image'): Record<string, unknown> | string {
   const video = kind === 'video';
   const name = (t: string) => (video ? VIDEO_TAG_GROUP[t] ?? t : t);
   const tags: Record<string, unknown> = {};
   for (const [tag, raw] of Object.entries(edits)) {
+    if (!writableTag(tag)) continue;
     if (tag === GPS_KEY) {
       const g = gpsTags(raw, kind);
       if (typeof g === 'string') return g;
@@ -362,6 +380,7 @@ function buildTags(edits: Record<string, string> = {}, deletes: string[] = [], k
     tags[name(tag)] = v === '' ? null : v;
   }
   for (const tag of deletes) {
+    if (!writableTag(tag)) continue;
     if (tag === GPS_KEY) { for (const t of (video ? VIDEO_GPS_TAGS : GPS_TAGS)) tags[t] = null; continue; }
     tags[name(tag)] = null;
   }

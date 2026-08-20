@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { videoEncoderOptions } from './encoder';
+import { pythonCmdSync } from './python';
 
 const ffmpegPath = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 if (ffmpegPath) ffmpeg.setFfmpegPath(ffmpegPath);
@@ -34,7 +35,7 @@ export function runSynth(text: string, outWav: string, lang: string, engine: str
   return new Promise((resolve) => {
     const tmpTxt = path.join(os.tmpdir(), `pulsar_tts_${Date.now()}_${Math.random().toString(36).slice(2)}.txt`);
     fs.writeFileSync(tmpTxt, text, 'utf-8');
-    const py = process.platform === 'win32' ? 'python' : 'python3';
+    const py = pythonCmdSync();
     const argsv = ['synth', '--text-file', tmpTxt, '--out', outWav, '--lang', lang, '--engine', engine, '--speed', String(speed)];
     if (voice) argsv.push('--voice', voice);
     const child = spawn(py, [scriptPath(), ...argsv], {
@@ -86,7 +87,7 @@ function muxAudio(video: string, audio: string, out: string, keepOriginal: boole
 export function registerTtsHandlers() {
   ipcMain.handle('tts:engines', () => {
     return new Promise((resolve) => {
-      const py = process.platform === 'win32' ? 'python' : 'python3';
+      const py = pythonCmdSync();
       const child = spawn(py, [scriptPath(), 'engines'], {
         env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
       });

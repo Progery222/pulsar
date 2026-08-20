@@ -3,9 +3,12 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { pythonCmdSync } from './python';
 
 function pyCmd(): string {
-  return process.platform === 'win32' ? 'python' : 'python3';
+  // Абсолютный путь из общего резолвера: голое 'python' на Windows ведёт
+  // в заглушку Microsoft Store, которая скрипты не запускает.
+  return pythonCmdSync();
 }
 function upscaleScript(): string {
   return app.isPackaged
