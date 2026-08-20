@@ -82,8 +82,10 @@ p {
   /* Кнопки */
   .btn-primary {
     @apply inline-flex items-center justify-center rounded-card bg-accent-green
-      font-semibold text-black transition-[opacity,transform] hover:opacity-90
+      font-semibold transition-[opacity,transform] hover:opacity-90
       active:scale-[0.96] disabled:cursor-not-allowed disabled:opacity-40;
+    /* Текст подбирается под акцент: на красном/синем чёрная подпись не читается. */
+    color: var(--accent-fg);
   }
 
   .btn-secondary {
