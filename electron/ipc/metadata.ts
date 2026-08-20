@@ -387,14 +387,19 @@ function buildTags(edits: Record<string, string> = {}, deletes: string[] = [], k
   return tags;
 }
 
+// C2PA — подписанный JUMBF-манифест, его нельзя достоверно отредактировать
+// отдельными полями. Любая запись в файл делает подпись недействительной,
+// поэтому перед сохранением удаляем манифест целиком.
+const C2PA_REMOVE_ARGS = ['-jumbf:all='];
+
 // Записать теги в конкретный файл. Бросает исключение с текстом от exiftool.
 async function applyTags(target: string, tags: Record<string, unknown>, stripAll?: boolean) {
   const extra = kindOf(target) === 'video' ? QT_ARGS : [];
   // Сначала полная очистка (отдельным проходом: в одном вызове «-all=» затрёт и новые значения),
   // потом запись правок. «-overwrite_original» — чтобы не плодить файлы *_original рядом.
-  if (stripAll) await tool().write(target, {}, { writeArgs: ['-all=', '-overwrite_original', ...extra] });
+  if (stripAll) await tool().write(target, {}, { writeArgs: ['-all=', ...C2PA_REMOVE_ARGS, '-overwrite_original', ...extra] });
   if (Object.keys(tags).length) {
-    const res = await tool().write(target, tags as never, { writeArgs: ['-overwrite_original', ...extra] });
+    const res = await tool().write(target, tags as never, { writeArgs: [...C2PA_REMOVE_ARGS, '-overwrite_original', ...extra] });
     // «Nothing to do» — это не ошибка (например, стёрли уже пустое поле).
     const bad = (res.warnings ?? []).filter((w) => !/nothing to do/i.test(w));
     if (bad.length && !res.created && !res.updated) throw new Error(bad.join('; '));

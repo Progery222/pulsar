@@ -310,7 +310,8 @@ export default function MetadataApp() {
                     <span style={{ width: 130, flexShrink: 0, color: 'var(--text-secondary)' }}>C2PA / AI-метки</span>
                     <span style={{ color: '#ff6b6b', lineHeight: 1.45 }}>
                       есть — подписанный манифест происхождения. Он лежит отдельным блоком контейнера,
-                      поэтому переживает и правку полей, и «Стереть всё».
+                      поэтому его нельзя править по полям. При сохранении изменений или «Стереть всё»
+                      он удаляется целиком.
                     </span>
                   </div>
                 )}
@@ -375,8 +376,7 @@ export default function MetadataApp() {
                         </button>
                       </div>
                       <div style={{ fontSize: 10.5, color: 'var(--text-secondary)', marginTop: 8, lineHeight: 1.4 }}>
-                        Убирает EXIF, GPS, XMP и прочие поля. Подписанный манифест C2PA
-                        не затрагивается — он хранится вне метаданных.
+                        Убирает EXIF, GPS, XMP, C2PA/AI-метки и прочие поля.
                       </div>
                     </Panel>
                   )}
