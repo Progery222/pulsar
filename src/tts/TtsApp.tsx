@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { useQueueStore } from '../store/queueStore';
 import { EDGE_VOICES } from './edgeVoices';
+import { CLONE_PREFIX, ENGINE_OPTIONS, OMNI_PRESETS, cloneVoiceFile, isCloneVoice, type TtsEngineChoice } from './omniVoices';
+
+type TtsStatus = { omnivoice: boolean; nvidia: boolean; defaultEngine: 'omnivoice' | 'edge'; setting: string };
 
 const LANGS = [
   { value: 'ru', label: 'Русский' },
@@ -34,11 +37,14 @@ const SAMPLE_TEXT: Record<string, string> = {
   fr: 'Salut ! Ceci est un exemple de voix dans Pulsar.',
 };
 
-// Раздел «Озвучка» на Edge TTS: текст → речь, опционально наложить на видео.
+// Раздел «Озвучка»: текст → речь (OmniVoice офлайн с клоном голоса / Edge TTS онлайн),
+// опционально наложить на видео.
 export default function TtsApp() {
   const [text, setText] = useState('');
   const [lang, setLang] = useState('ru');
   const [voice, setVoice] = useState('');
+  const [engine, setEngine] = useState<TtsEngineChoice>('auto');
+  const [status, setStatus] = useState<TtsStatus | null>(null);
   const [speed, setSpeed] = useState(1);
   const [outputDir, setOutputDir] = useState('');
   const [attachVideo, setAttachVideo] = useState('');
@@ -50,11 +56,23 @@ export default function TtsApp() {
     window.electronAPI.getSetting('defaultOutputDir').then((d) => {
       if (d) setOutputDir(d as string);
     });
+    window.electronAPI.ttsStatus().then(setStatus).catch(() => {});
   }, []);
+
+  // Какой движок реально отработает при «Авто».
+  const effective: 'omnivoice' | 'edge' = engine === 'auto' ? (status?.defaultEngine ?? 'edge') : engine;
 
   async function pickFolder() {
     const d = await window.electronAPI.selectDirectory();
     if (d) setOutputDir(d);
+  }
+  async function pickCloneFile() {
+    const f = await window.electronAPI.selectAudio();
+    if (f) setVoice(CLONE_PREFIX + f);
+  }
+  function changeEngine(v: TtsEngineChoice) {
+    setEngine(v);
+    setVoice('');
   }
   async function pickVideo() {
     const v = await window.electronAPI.selectVideos();
@@ -68,7 +86,7 @@ export default function TtsApp() {
       const r = await window.electronAPI.ttsSample({
         text: SAMPLE_TEXT[lang] ?? SAMPLE_TEXT.en,
         lang,
-        engine: 'edge',
+        engine,
         speed,
         voice: voice || undefined,
       });
@@ -90,7 +108,7 @@ export default function TtsApp() {
       const r = await window.electronAPI.ttsSynth({
         text,
         lang,
-        engine: 'edge',
+        engine,
         speed,
         voice: voice || undefined,
         outputDir,
@@ -107,7 +125,7 @@ export default function TtsApp() {
         window.electronAPI.historyAdd({
           id,
           mode: 'editor',
-          title: `Озвучка • ${lang}${voice ? ' • ' + voice : ''}`,
+          title: `Озвучка • ${lang} • ${effective}${voice ? ' • ' + (isCloneVoice(voice) ? 'клон' : voice.replace(/^design:/, '')) : ''}`,
           createdAt: Date.now(),
           outputDir,
           files: [r.out.split(/[\\/]/).pop() || ''],
@@ -126,6 +144,14 @@ export default function TtsApp() {
   };
   const label: React.CSSProperties = { fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' };
   const voices = EDGE_VOICES[lang] ?? [];
+  const omni = effective === 'omnivoice';
+  const statusLine = !status
+    ? ''
+    : omni
+      ? status.omnivoice
+        ? `OmniVoice установлен · ${status.nvidia ? 'NVIDIA GPU — быстро' : 'без NVIDIA GPU — на процессоре, медленно'}`
+        : 'OmniVoice не установлен — поставьте в «Настройки → Компоненты» (≈5 ГБ). Пока сработает резерв Edge TTS.'
+      : 'Edge TTS: голоса Microsoft, нужен интернет';
 
   return (
     <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg-primary)' }}>
@@ -134,7 +160,8 @@ export default function TtsApp() {
           Озвучка
         </h1>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
-          Текст → речь живыми нейроголосами (Edge TTS, бесплатно). Можно сразу наложить на видео.
+          Текст → речь. OmniVoice — офлайн, клонирование голоса из файла, 646 языков; Edge TTS — онлайн-голоса Microsoft.
+          Можно сразу наложить на видео.
         </p>
 
         <textarea
@@ -145,21 +172,51 @@ export default function TtsApp() {
           style={{ ...field, resize: 'vertical', marginBottom: 16, lineHeight: 1.5 }}
         />
 
+        <div style={{ marginBottom: 16 }}>
+          <label style={label}>Движок</label>
+          <select value={engine} onChange={(e) => changeEngine(e.target.value as TtsEngineChoice)} style={field}>
+            {ENGINE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          {statusLine && <div style={{ fontSize: 12, color: omni && !status?.omnivoice ? 'var(--danger)' : 'var(--text-secondary)', marginTop: 6 }}>{statusLine}</div>}
+        </div>
+
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 16 }}>
           <div>
             <label style={label}>Язык</label>
-            <select value={lang} onChange={(e) => { setLang(e.target.value); setVoice(''); }} style={field}>
+            <select value={lang} onChange={(e) => { setLang(e.target.value); if (!omni) setVoice(''); }} style={field}>
               {LANGS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
             </select>
           </div>
           <div>
-            <label style={label}>Голос ({voices.length})</label>
-            <select value={voice} onChange={(e) => setVoice(e.target.value)} style={field}>
-              <option value="">По умолчанию</option>
-              {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-            </select>
+            <label style={label}>{omni ? 'Голос' : `Голос (${voices.length})`}</label>
+            {omni && isCloneVoice(voice) ? (
+              <div style={{ ...field, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>🎙 {cloneVoiceFile(voice).split(/[\\/]/).pop()}</span>
+                <button onClick={() => setVoice('')} title="Убрать клон" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', fontSize: 14 }}>✕</button>
+              </div>
+            ) : (
+              <select value={voice} onChange={(e) => setVoice(e.target.value)} style={field}>
+                {omni
+                  ? OMNI_PRESETS.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)
+                  : <><option value="">По умолчанию</option>{voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</>}
+              </select>
+            )}
           </div>
         </div>
+
+        {omni && (
+          <div style={{ marginBottom: 16, marginTop: -6 }}>
+            <button
+              onClick={pickCloneFile}
+              style={{ background: 'var(--bg-tertiary)', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}
+            >
+              🎙 Клонировать голос из аудиофайла…
+            </button>
+            <span style={{ fontSize: 12, color: 'var(--text-secondary)', marginLeft: 10 }}>
+              3–10 секунд чистой речи без музыки
+            </span>
+          </div>
+        )}
 
         <div style={{ marginBottom: 16 }}>
           <button
@@ -213,7 +270,7 @@ export default function TtsApp() {
         </button>
 
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 20, lineHeight: 1.5 }}>
-          Движок Edge TTS ставится в «Настройках → Установка движков» (<code>pip install edge-tts</code>, онлайн). Прогресс — в окне «Очередь».
+          Движки ставятся в «Настройках → Компоненты»: OmniVoice (офлайн, ≈5 ГБ, лучше с NVIDIA GPU) и Edge TTS (онлайн). Прогресс — в окне «Очередь».
         </p>
       </div>
     </div>

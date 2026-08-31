@@ -665,6 +665,7 @@ async function processBranchLang(
         sourceLang: cls.language && cls.language !== 'unknown' ? cls.language : 'auto',
         targetLang: dubLang,
         voice,
+        engine: req.engine || 'auto', // OmniVoice клонирует голос говорящего, Edge берёт voice
         keepOriginal: true,
         originalVolume: 0.12,
         syncTiming: true,

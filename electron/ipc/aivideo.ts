@@ -7,10 +7,10 @@ import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { getOpenRouterKey, getPexelsKey, getPixabayKey } from './config';
-import { runSynth } from './tts';
+import { runSynthBatch } from './tts';
 
 // Модуль «AI-ролик по теме»: тема → сценарий (LLM) → сток-клипы (Pexels/Pixabay) →
-// озвучка (edge-tts) → субтитры → сборка ffmpeg. Переиспользует TTS/LLM/ffmpeg Pulsar.
+// озвучка (OmniVoice/Edge) → субтитры → сборка ffmpeg. Переиспользует TTS/LLM/ffmpeg Pulsar.
 
 const ffmpegBin = (ffmpegStatic as unknown as string)?.replace('app.asar', 'app.asar.unpacked');
 const ffprobeBin = (ffprobeStatic as unknown as { path: string })?.path?.replace('app.asar', 'app.asar.unpacked');
@@ -244,7 +244,7 @@ export function registerAiVideoHandlers() {
 
   // Полная сборка ролика.
   ipcMain.handle('aivideo:generate', async (e, req: {
-    scenes: Scene[]; lang: string; voice: string; format: string; outputPath: string; bgmPath?: string; subtitles: boolean;
+    scenes: Scene[]; lang: string; voice: string; engine?: string; format: string; outputPath: string; bgmPath?: string; subtitles: boolean;
   }) => {
     cancelled = false;
     if (!ffmpegBin) return { error: 'ffmpeg не найден' };
@@ -258,14 +258,21 @@ export function registerAiVideoHandlers() {
     const spans: { start: number; end: number; text: string }[] = [];
     let cursor = 0;
     try {
+      // Озвучка всех сцен одним пакетом: OmniVoice грузит модель один раз, голос един на весь ролик.
+      emit('Озвучка сцен…', 1);
+      const rawWavs = req.scenes.map((_, i) => path.join(dir, `vr${i}.wav`));
+      const ttsRes = await runSynthBatch(
+        req.scenes.map((sc, i) => ({ text: sc.text, out: rawWavs[i] })),
+        req.lang, req.engine || 'auto', 1, req.voice || '',
+        { onProgress: (d, n) => emit(`Озвучка сцены ${Math.min(d + 1, n)}/${n}`, Math.round((d / n) * 25)) }
+      );
+      if ('error' in ttsRes) throw new Error(`озвучка: ${ttsRes.error}`);
       for (let i = 0; i < N; i++) {
         if (cancelled) throw new Error('отменено');
         const sc = req.scenes[i];
-        emit(`Озвучка сцены ${i + 1}/${N}`, Math.round((i / N) * 60));
-        // 1) Озвучка сцены + пауза 0.3с в конце (чтобы стыки сцен не звучали рвано).
-        const rawWav = path.join(dir, `vr${i}.wav`);
-        const ttsRes = await runSynth(sc.text, rawWav, req.lang, 'edge', 1, req.voice || '');
-        if ('error' in ttsRes) throw new Error(`озвучка: ${ttsRes.error}`);
+        emit(`Сцена ${i + 1}/${N}`, 25 + Math.round((i / N) * 35));
+        // 1) Пауза 0.3с в конце озвучки (чтобы стыки сцен не звучали рвано).
+        const rawWav = rawWavs[i];
         const wav = path.join(dir, `v${i}.wav`);
         await ff(['-y', '-i', rawWav, '-af', 'apad=pad_dur=0.3', '-ar', '44100', '-ac', '2', '-c:a', 'pcm_s16le', wav]).catch(() => fs.promises.copyFile(rawWav, wav));
         const d = Math.max(1.2, await probeDur(wav));
@@ -274,7 +281,7 @@ export function registerAiVideoHandlers() {
         cursor += d;
 
         // 2) Клип: выбранный или авто-подбор по keywords.
-        emit(`Подбор видео ${i + 1}/${N}`, Math.round((i / N) * 60) + 5);
+        emit(`Подбор видео ${i + 1}/${N}`, 25 + Math.round((i / N) * 35) + 3);
         let clipUrl = sc.clipUrl;
         if (!clipUrl) {
           for (const kw of sc.keywords.length ? sc.keywords : ['abstract']) {

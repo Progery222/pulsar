@@ -5,11 +5,13 @@ interface Status {
   pythonOk: boolean;
   pythonVersion?: string;
   engines?: Record<string, boolean>;
+  cuda?: boolean | null; // видит ли PyTorch видеокарту (null — PyTorch не установлен)
   error?: string;
 }
 
 const ENGINE_INFO: { id: string; name: string; note: string }[] = [
-  { id: 'edge', name: 'Edge TTS (озвучка)', note: 'Живые нейроголоса, бесплатно, без ключа, много языков' },
+  { id: 'omnivoice', name: 'OmniVoice — озвучка и дубляж офлайн', note: 'Клонирование голоса, 646 языков (k2-fsa/OmniVoice). Загрузка ≈5 ГБ: PyTorch + модель. С NVIDIA GPU — секунды, без GPU — медленно' },
+  { id: 'edge', name: 'Edge TTS (резервная озвучка)', note: 'Онлайн-голоса Microsoft, бесплатно, без ключа. Работает без GPU и без OmniVoice' },
   { id: 'translate', name: 'Перевод', note: 'Перевод текста для дубляжа и субтитров (deep-translator, бесплатно)' },
   { id: 'download', name: 'Загрузка по ссылке', note: 'Скачивание видео из TikTok/YouTube/Instagram (yt-dlp)' },
   { id: 'whisper', name: 'Распознавание речи офлайн', note: 'Whisper локально — для дубляжа без облака AssemblyAI (faster-whisper)' },
@@ -250,7 +252,9 @@ export default function FirstRunSetup() {
                     <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{e.note}</div>
                   </div>
                   {installed ? (
-                    <span style={{ fontSize: 13, color: 'var(--accent-green)', flexShrink: 0 }}>Установлен ✓</span>
+                    <span style={{ fontSize: 13, color: 'var(--accent-green)', flexShrink: 0 }}>
+                      Установлен ✓{e.id === 'omnivoice' && status?.cuda != null ? (status.cuda ? ' · GPU' : ' · CPU') : ''}
+                    </span>
                   ) : (
                     <button
                       onClick={() => install(e.id)}

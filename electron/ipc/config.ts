@@ -25,6 +25,11 @@ function writeSettings(data: Record<string, unknown>): void {
   fs.writeFileSync(settingsPath(), JSON.stringify(data), 'utf-8');
 }
 
+// Чтение одной несекретной настройки из main-процесса (движок озвучки и т.п.).
+export function getSettingValue(key: string): unknown {
+  return readSettings()[key] ?? null;
+}
+
 // Загрузка сохранённого режима GPU в энкодер при старте приложения.
 export function loadSettings(): void {
   const m = readSettings().gpuMode;

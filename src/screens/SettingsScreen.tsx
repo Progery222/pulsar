@@ -3,6 +3,9 @@ import { showToast } from '../store/toastStore';
 import { useUIStore } from '../store/uiStore';
 import WhatsNew from '../components/WhatsNew';
 import { ACCENT_PRESETS, DEFAULT_ACCENT, applyAccent, getAccentKey, resolveAccent } from '../utils/accent';
+import { ENGINE_OPTIONS, type TtsEngineChoice } from '../tts/omniVoices';
+
+type TtsStatus = { omnivoice: boolean; nvidia: boolean; defaultEngine: 'omnivoice' | 'edge'; setting: string };
 
 type GpuMode = 'auto' | 'gpu' | 'cpu';
 
@@ -26,6 +29,8 @@ export default function SettingsScreen() {
   const [savedOr, setSavedOr] = useState(false);
   const [orModel, setOrModel] = useState('');
   const [gpuMode, setGpuMode] = useState<GpuMode>('auto');
+  const [ttsEngine, setTtsEngine] = useState<TtsEngineChoice>('auto');
+  const [ttsStatus, setTtsStatus] = useState<TtsStatus | null>(null);
   const [outputDir, setOutputDir] = useState<string>('');
   const [version, setVersion] = useState('');
   const [checking, setChecking] = useState(false);
@@ -35,6 +40,10 @@ export default function SettingsScreen() {
     window.electronAPI.getOpenRouterKey().then((k) => setOrKey(k || ''));
     window.electronAPI.getSetting('funnel_model').then((m) => setOrModel((m as string) || 'google/gemini-3.5-flash'));
     window.electronAPI.getGpuMode().then(setGpuMode);
+    window.electronAPI.ttsStatus().then((s) => {
+      setTtsStatus(s);
+      if (s.setting === 'omnivoice' || s.setting === 'edge') setTtsEngine(s.setting);
+    }).catch(() => {});
     window.electronAPI.getSetting('defaultOutputDir').then((d) => setOutputDir((d as string) || ''));
     window.electronAPI.appVersion().then(setVersion);
   }, []);
@@ -259,6 +268,31 @@ export default function SettingsScreen() {
           </p>
         </div>
 
+        {/* Движок озвучки */}
+        <div style={section}>
+          <label style={label}>Движок озвучки</label>
+          <select
+            value={ttsEngine}
+            onChange={async (e) => {
+              const v = e.target.value as TtsEngineChoice;
+              setTtsEngine(v);
+              await window.electronAPI.setSetting('ttsEngine', v);
+              window.electronAPI.ttsStatus().then(setTtsStatus).catch(() => {});
+            }}
+            style={input}
+          >
+            {ENGINE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+          <p style={hint}>
+            Для Озвучки, Дубляжа, AI-ролика и Воронки.{' '}
+            {ttsStatus
+              ? ttsStatus.omnivoice
+                ? `OmniVoice установлен · ${ttsStatus.nvidia ? 'NVIDIA GPU найдена — быстро' : 'NVIDIA GPU нет — работа на процессоре, медленно'}.`
+                : 'OmniVoice не установлен — поставьте ниже в «Компонентах» (≈5 ГБ); пока используется Edge TTS.'
+              : ''}
+          </p>
+        </div>
+
         {/* Движки озвучки */}
         <div style={section}>
           <label style={label}>Компоненты приложения</label>
@@ -269,7 +303,7 @@ export default function SettingsScreen() {
           >
             Установка / проверка компонентов
           </button>
-          <p style={hint}>Проверить Python и установить компоненты: озвучка (Edge TTS), перевод, загрузка по ссылке.</p>
+          <p style={hint}>Проверить Python и установить компоненты: озвучка (OmniVoice, Edge TTS), распознавание речи (Whisper), перевод, загрузка по ссылке.</p>
         </div>
 
         {/* Обновления */}

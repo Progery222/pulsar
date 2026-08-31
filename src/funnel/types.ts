@@ -31,6 +31,7 @@ export interface FunnelStartRequest {
   outputDir: string;
   model?: string; // slug модели OpenRouter для классификации
   asr?: 'assemblyai' | 'whisper'; // движок распознавания речи для дубляжа
+  engine?: string; // движок озвучки дубляжа: 'auto' | 'omnivoice' | 'edge'
   varyVoices?: boolean; // случайный голос дубляжа для каждого видео/языка (разнообразие)
   hooks?: { enabled: boolean; folder: string | null }; // интро-хук в начало каждого результата
 }

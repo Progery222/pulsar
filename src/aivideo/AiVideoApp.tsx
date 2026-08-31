@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useUIStore } from '../store/uiStore';
 import { showToast } from '../store/toastStore';
 import tracksData from '../data/tracks.json';
+import { ENGINE_OPTIONS, OMNI_PRESETS, type TtsEngineChoice } from '../tts/omniVoices';
 
 const TRACKS = tracksData as { id: string; title: string; artist: string; file: string }[];
 
@@ -33,6 +34,8 @@ export default function AiVideoApp() {
   const [seconds, setSeconds] = useState(40);
   const [sceneCount, setSceneCount] = useState(5);
   const [voice, setVoice] = useState('ru-RU-DmitryNeural');
+  const [engine, setEngine] = useState<TtsEngineChoice>('auto');
+  const [defaultEngine, setDefaultEngine] = useState<'omnivoice' | 'edge'>('edge');
   const [subtitles, setSubtitles] = useState(true);
   const [musicFile, setMusicFile] = useState('');
   const [title, setTitle] = useState('');
@@ -52,11 +55,23 @@ export default function AiVideoApp() {
       setKeys(k);
       if (!k.pexels && !k.pixabay) setShowKeys(true);
     });
+    window.electronAPI.ttsStatus().then((s) => {
+      setDefaultEngine(s.defaultEngine);
+      if (s.defaultEngine === 'omnivoice') setVoice('');
+    }).catch(() => {});
   }, []);
+
+  // Какой движок реально отработает при «Авто»; у OmniVoice голоса — пресеты по описанию.
+  const omni = (engine === 'auto' ? defaultEngine : engine) === 'omnivoice';
 
   function setLangAndVoice(code: string) {
     setLang(code);
-    setVoice(LANGS.find((l) => l.code === code)?.voice ?? voice);
+    if (!omni) setVoice(LANGS.find((l) => l.code === code)?.voice ?? voice);
+  }
+  function changeEngine(v: TtsEngineChoice) {
+    setEngine(v);
+    const eff = v === 'auto' ? defaultEngine : v;
+    setVoice(eff === 'omnivoice' ? '' : (LANGS.find((l) => l.code === lang)?.voice ?? 'ru-RU-DmitryNeural'));
   }
 
   async function saveKeys() {
@@ -108,7 +123,7 @@ export default function AiVideoApp() {
     try {
       const res = await window.electronAPI.aiVideoGenerate({
         scenes: scenes.map((s) => ({ text: s.text, keywords: s.keywords, clipUrl: s.clipUrl })),
-        lang, voice, format, outputPath: out, subtitles, bgmPath: musicFile || undefined,
+        lang, voice, engine, format, outputPath: out, subtitles, bgmPath: musicFile || undefined,
       });
       if ('error' in res) { showToast('Сборка: ' + res.error); setPhase('script'); return; }
       setPhase('done');
@@ -229,9 +244,16 @@ export default function AiVideoApp() {
             {LANGS.map((l) => <option key={l.code} value={l.code}>{l.label}</option>)}
           </select>
         </label>
+        <label style={fieldLbl}>Движок
+          <select value={engine} onChange={(e) => changeEngine(e.target.value as TtsEngineChoice)} style={sel}>
+            {ENGINE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        </label>
         <label style={fieldLbl}>Голос
           <select value={voice} onChange={(e) => setVoice(e.target.value)} style={sel}>
-            {(VOICES[lang] ?? [voice]).map((v) => <option key={v} value={v}>{v.split('-').slice(2).join('-')}</option>)}
+            {omni
+              ? OMNI_PRESETS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)
+              : (VOICES[lang] ?? [voice]).map((v) => <option key={v} value={v}>{v.split('-').slice(2).join('-')}</option>)}
           </select>
         </label>
         <label style={fieldLbl}>Длина, с

@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { resolvePython, forgetPython, spawnPython } from './python';
+import { hasNvidiaGpu } from './omnivoice';
 
 function ttsScript(): string {
   return app.isPackaged
@@ -15,7 +16,7 @@ function pyScript(name: string): string {
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'python', name);
 }
 
-// pip-пакет для каждого движка озвучки.
+// pip-пакет для каждого движка озвучки (OmniVoice ставится отдельной цепочкой — см. installOmniVoice).
 const PIP_PACKAGE: Record<string, string[]> = {
   edge: ['edge-tts'],
   translate: ['deep-translator'],
@@ -28,6 +29,7 @@ interface SetupStatus {
   pythonOk: boolean;
   pythonVersion?: string;
   engines?: Record<string, boolean>;
+  cuda?: boolean | null; // видит ли PyTorch видеокарту (null — PyTorch не установлен)
   error?: string;
 }
 
@@ -39,7 +41,10 @@ async function checkStatus(): Promise<SetupStatus> {
   if (!py) return { pythonOk: false, error: 'Python не найден' };
 
   return new Promise((resolve) => {
-    const child = spawn(py.cmd, [...py.args, ttsScript(), 'check'], { windowsHide: true });
+    const child = spawn(py.cmd, [...py.args, ttsScript(), 'check'], {
+      windowsHide: true,
+      env: { ...process.env, PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
+    });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (c) => (stdout += c.toString()));
@@ -47,8 +52,10 @@ async function checkStatus(): Promise<SetupStatus> {
     child.on('error', () => resolve({ pythonOk: false, error: 'Python не найден' }));
     child.on('close', () => {
       try {
-        const r = JSON.parse(stdout.trim());
-        resolve({ pythonOk: true, pythonVersion: r.python ?? py.version, engines: r.engines });
+        // Ответ — последняя JSON-строка (библиотеки могут шуметь в stdout).
+        const line = stdout.trim().split(/\r?\n/).reverse().find((l) => l.trim().startsWith('{')) ?? '';
+        const r = JSON.parse(line);
+        resolve({ pythonOk: true, pythonVersion: r.python ?? py.version, engines: r.engines, cuda: r.cuda ?? null });
       } catch {
         // Python есть, но проверочный скрипт не отработал — это другая беда,
         // и говорить про «не найден» здесь было бы неправдой.
@@ -99,16 +106,17 @@ function meaningfulLines(s: string): string[] {
   return out;
 }
 
-// Загрузка модели Whisper (faster-whisper) с зеркала, стриминг прогресса.
-function downloadWhisperModel(): Promise<{ ok: true } | { error: string }> {
+// Загрузчик модели (download_*.py) со стримингом прогресса: строки "PROGRESS x/y MB"
+// (наш загрузчик Whisper) и бары tqdm huggingface_hub ("model.safetensors:  45%|███ | …").
+function runDownloader(script: string, args: string[], startLine: string, failMsg: string): Promise<{ ok: true } | { error: string }> {
   return new Promise((resolve) => {
-    sendProgress({ line: 'Скачиваю модель распознавания (Whisper)…' });
+    sendProgress({ line: startLine });
     void (async () => {
-    const child = await spawnPython(['-u', pyScript('download_whisper.py'), '--model', 'small'], {
-      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+    const child = await spawnPython(['-u', pyScript(script), ...args], {
+      env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
     });
     const handle = (chunk: Buffer) => {
-      for (const line of chunk.toString().split(/\r?\n/)) {
+      for (const line of chunk.toString().split(/[\r\n]+/)) {
         const t = line.trim();
         if (!t) continue;
         const mb = /PROGRESS\s+([\d.]+)\/([\d.]+)\s*MB/.exec(t);
@@ -116,33 +124,35 @@ function downloadWhisperModel(): Promise<{ ok: true } | { error: string }> {
           const done = parseFloat(mb[1]);
           const total = parseFloat(mb[2]);
           if (total > 0) sendProgress({ percent: Math.min(100, (done / total) * 100), line: `Модель: ${Math.round(done)}/${Math.round(total)} МБ` });
-        } else if (t !== 'MODEL_READY') {
-          sendProgress({ line: t });
+          continue;
         }
+        if (t.includes('|')) {
+          const pct = parsePercent(t);
+          if (pct != null) sendProgress({ percent: pct, phase: t.split(':')[0].trim().slice(0, 40) });
+          continue;
+        }
+        if (t !== 'MODEL_READY') sendProgress({ line: t });
       }
     };
     child.stdout.on('data', handle);
     child.stderr.on('data', handle);
     child.on('error', (err) => resolve({ error: `Загрузчик модели недоступен: ${err.message}` }));
-    child.on('close', (code) =>
-      code === 0 ? resolve({ ok: true }) : resolve({ error: `Не удалось скачать модель Whisper (код ${code})` })
-    );
+    child.on('close', (code) => (code === 0 ? resolve({ ok: true }) : resolve({ error: `${failMsg} (код ${code})` })));
     })().catch((err) => resolve({ error: (err as Error).message }));
   });
 }
 
-// Установка движка через pip (стриминг прогресса в renderer).
-function installEngine(engine: string): Promise<{ ok: true } | { error: string }> {
+function downloadWhisperModel() {
+  return runDownloader('download_whisper.py', ['--model', 'small'], 'Скачиваю модель распознавания (Whisper)…', 'Не удалось скачать модель Whisper');
+}
+
+// pip install со стримингом прогресса в renderer.
+function runPip(pkgs: string[], extra: string[] = []): Promise<{ ok: true } | { error: string }> {
   return new Promise((resolve) => {
-    const pkgs = PIP_PACKAGE[engine];
-    if (!pkgs) {
-      resolve({ error: `Неизвестный движок: ${engine}` });
-      return;
-    }
-    sendProgress({ line: `Устанавливаю: pip install ${pkgs.join(' ')} …` });
+    sendProgress({ line: `Устанавливаю: pip install ${[...extra, ...pkgs].join(' ')} …` });
     void (async () => {
     const child = await spawnPython(
-      ['-u', '-m', 'pip', 'install', '--upgrade', '--progress-bar', 'on', ...pkgs],
+      ['-u', '-m', 'pip', 'install', '--upgrade', '--progress-bar', 'on', ...extra, ...pkgs],
       { env: { ...process.env, PYTHONUNBUFFERED: '1', PIP_DISABLE_PIP_VERSION_CHECK: '1' } }
     );
     const handle = (chunk: Buffer) => {
@@ -165,24 +175,43 @@ function installEngine(engine: string): Promise<{ ok: true } | { error: string }
       sendProgress({ line: `Не удалось запустить Python/pip: ${err.message}` });
       resolve({ error: err.message });
     });
-    child.on('close', async (code) => {
-      if (code !== 0) {
-        resolve({ error: `pip завершился с кодом ${code}` });
-        return;
-      }
-      // Whisper: после пакета сразу скачиваем модель (иначе распознавание не заработает).
-      if (engine === 'whisper') {
-        const m = await downloadWhisperModel();
-        if ('error' in m) {
-          resolve(m);
-          return;
-        }
-      }
-      sendProgress({ line: 'Готово. Движок установлен.', percent: 100 });
-      resolve({ ok: true });
-    });
+    child.on('close', (code) => (code === 0 ? resolve({ ok: true }) : resolve({ error: `pip завершился с кодом ${code}` })));
     })().catch((err) => resolve({ error: (err as Error).message }));
   });
+}
+
+// OmniVoice: PyTorch (CUDA 12.8 при NVIDIA, иначе CPU-сборка) → пакет omnivoice → веса модели (~2.5 ГБ).
+async function installOmniVoice(): Promise<{ ok: true } | { error: string }> {
+  const nvidia = await hasNvidiaGpu();
+  sendProgress({
+    line: nvidia
+      ? 'Найдена видеокарта NVIDIA — ставлю PyTorch с CUDA 12.8 (~3 ГБ).'
+      : 'Видеокарта NVIDIA не найдена — ставлю PyTorch для процессора (озвучка будет заметно медленнее).',
+  });
+  const torch = await runPip(['torch', 'torchaudio'], nvidia ? ['--index-url', 'https://download.pytorch.org/whl/cu128'] : []);
+  if ('error' in torch) return torch;
+  const pkgs = await runPip(['omnivoice', 'soundfile', 'huggingface_hub']);
+  if ('error' in pkgs) return pkgs;
+  const model = await runDownloader('download_omnivoice.py', [], 'Скачиваю модель OmniVoice (~2.5 ГБ)…', 'Не удалось скачать модель OmniVoice');
+  if ('error' in model) return model;
+  sendProgress({ line: 'Готово. OmniVoice установлен.', percent: 100 });
+  return { ok: true };
+}
+
+// Установка движка (стриминг прогресса в renderer).
+async function installEngine(engine: string): Promise<{ ok: true } | { error: string }> {
+  if (engine === 'omnivoice') return installOmniVoice();
+  const pkgs = PIP_PACKAGE[engine];
+  if (!pkgs) return { error: `Неизвестный движок: ${engine}` };
+  const p = await runPip(pkgs);
+  if ('error' in p) return p;
+  // Whisper: после пакета сразу скачиваем модель (иначе распознавание не заработает).
+  if (engine === 'whisper') {
+    const m = await downloadWhisperModel();
+    if ('error' in m) return m;
+  }
+  sendProgress({ line: 'Готово. Движок установлен.', percent: 100 });
+  return { ok: true };
 }
 
 // Установка Python через winget (Windows). После — нужен перезапуск (обновление PATH).

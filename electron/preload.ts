@@ -178,6 +178,8 @@ const electronAPI = {
   ttsSample: (
     request: unknown
   ): Promise<{ ok: true; out: string } | { error: string }> => ipcRenderer.invoke('tts:sample', request),
+  ttsStatus: (): Promise<{ omnivoice: boolean; nvidia: boolean; defaultEngine: 'omnivoice' | 'edge'; setting: string }> =>
+    ipcRenderer.invoke('tts:status'),
 
   // Дубляж видео.
   dubRun: (request: unknown): Promise<{ ok: true; out: string } | { error: string }> =>
@@ -355,7 +357,7 @@ const electronAPI = {
     ipcRenderer.invoke('aivideo:script', topic, opts),
   aiVideoSearchClips: (query: string, format: string): Promise<{ ok: true; clips: { source: string; previewUrl: string; downloadUrl: string; width: number; height: number; duration: number }[] } | { error: string; clips: [] }> =>
     ipcRenderer.invoke('aivideo:searchClips', query, format),
-  aiVideoGenerate: (req: { scenes: { text: string; keywords: string[]; clipUrl?: string }[]; lang: string; voice: string; format: string; outputPath: string; bgmPath?: string; subtitles: boolean }): Promise<{ ok: true; path: string; durationSec: number } | { error: string }> =>
+  aiVideoGenerate: (req: { scenes: { text: string; keywords: string[]; clipUrl?: string }[]; lang: string; voice: string; engine?: string; format: string; outputPath: string; bgmPath?: string; subtitles: boolean }): Promise<{ ok: true; path: string; durationSec: number } | { error: string }> =>
     ipcRenderer.invoke('aivideo:generate', req),
   aiVideoCancel: (): Promise<{ ok: true }> => ipcRenderer.invoke('aivideo:cancel'),
 

@@ -8,7 +8,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { transcribe, transcribeWhisper } from './transcribe';
 import { getAssemblyKey } from './config';
-import { runSynth } from './tts';
+import { runSynthBatch, type SynthOpts } from './tts';
+import { isOmniVoiceSpec, resolveTtsEngine } from './omnivoice';
 import { videoEncoderOptions } from './encoder';
 import type { TranscriptWord } from '../../src/vub/types';
 import { pythonCmdSync } from './python';
@@ -28,6 +29,8 @@ export interface DubRequest {
   syncTiming?: boolean; // подгонять длину фраз под исходные тайминги
   burnSubs?: boolean; // выжечь субтитры с переводом
   asr?: 'assemblyai' | 'whisper'; // движок распознавания речи
+  engine?: string; // движок озвучки: 'auto' | 'omnivoice' | 'edge'
+  cloneVoice?: boolean; // OmniVoice: клонировать голос говорящего из самого ролика (по умолчанию да)
   outputDir: string;
 }
 
@@ -216,6 +219,57 @@ function buildSubsAss(segs: Segment[], texts: string[], w: number, h: number): s
   return file;
 }
 
+// Референс для клонирования голоса: 3–9 с непрерывной речи (без длинных пауз) с наибольшей
+// плотностью слов — чтобы OmniVoice «услышал» голос, а не тишину/музыку.
+function pickReference(words: TranscriptWord[]): { start: number; end: number; text: string } | null {
+  if (!words.length) return null;
+  const MIN = 3000;
+  const MAX = 9000;
+  const GAP = 1200;
+  let best: { start: number; end: number; text: string; score: number } | null = null;
+  for (let i = 0; i < words.length; i++) {
+    let j = i;
+    let spoken = 0;
+    while (j < words.length) {
+      if (j > i && (words[j].start - words[j - 1].end > GAP || words[j].end - words[i].start > MAX)) break;
+      spoken += words[j].end - words[j].start;
+      j++;
+    }
+    const end = words[j - 1].end;
+    const span = end - words[i].start;
+    if (span < MIN) continue;
+    const score = spoken / span + Math.min(span, 6000) / 60000; // плотность речи + лёгкий бонус за длину
+    if (!best || score > best.score) {
+      best = { start: words[i].start, end, text: words.slice(i, j).map((w) => w.text).join(' '), score };
+    }
+  }
+  if (!best) {
+    // Речи мало — берём всё, что есть (до MAX).
+    const cut = words.findIndex((w) => w.end - words[0].start > MAX);
+    const slice = cut <= 0 ? words : words.slice(0, cut);
+    best = { start: words[0].start, end: slice[slice.length - 1].end, text: slice.map((w) => w.text).join(' '), score: 0 };
+  }
+  return { start: best.start, end: best.end, text: best.text };
+}
+
+// Вырезать референс голоса из ролика: моно WAV 24 кГц (формат самой модели).
+function extractReference(video: string, startMs: number, endMs: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const out = path.join(os.tmpdir(), `pulsar_dub_ref_${Date.now()}.wav`);
+    ffmpeg(video)
+      .seekInput(Math.max(0, startMs - 150) / 1000)
+      .duration((endMs - startMs + 300) / 1000)
+      .noVideo()
+      .audioChannels(1)
+      .audioFrequency(24000)
+      .audioCodec('pcm_s16le')
+      .output(out)
+      .on('end', () => resolve(out))
+      .on('error', (e) => reject(e))
+      .run();
+  });
+}
+
 // Цепочка atempo для ускорения в factor раз (atempo поддерживает 0.5..2.0 — чейним).
 function atempoChain(factor: number): string {
   let f = Math.min(4, Math.max(1, factor));
@@ -308,19 +362,37 @@ export async function runDub(
     const translated = await translateBatch(segs.map((s) => s.text), req.sourceLang, req.targetLang);
     if ('error' in translated) return translated;
 
-    // Озвучка каждого сегмента переведённым текстом.
-    const clips: DubClip[] = [];
-    for (let i = 0; i < segs.length; i++) {
-      const txt = (translated[i] || '').trim();
-      if (!txt) continue;
-      const f = path.join(os.tmpdir(), `pulsar_dub_${Date.now()}_${i}.mp3`);
-      const r = await runSynth(txt, f, req.targetLang, 'edge', 1, req.voice || '');
-      if ('error' in r) return r;
-      tmpClips.push(f);
-      clips.push({ file: f, startMs: segs[i].start, targetMs: segs[i].end - segs[i].start });
-      onProgress(`Озвучка ${i + 1}/${segs.length}…`, 30 + Math.round((i / segs.length) * 55));
+    // Озвучка переведённых сегментов одним пакетом (модель грузится один раз).
+    // OmniVoice: голос говорящего клонируется с референса из самого ролика (если не выбран
+    // пресет голоса); Edge TTS: выбранный/дефолтный нейроголос.
+    const engine = resolveTtsEngine(req.engine);
+    const opts: SynthOpts = {};
+    if (engine === 'omnivoice' && !isOmniVoiceSpec(req.voice || '') && req.cloneVoice !== false) {
+      const ref = pickReference(words);
+      if (ref) {
+        try {
+          opts.refAudio = await extractReference(req.videoPath, ref.start, ref.end);
+          opts.refText = ref.text;
+          tmpClips.push(opts.refAudio);
+        } catch (e) {
+          console.warn('[dub] референс голоса не вырезан, авто-голос:', e instanceof Error ? e.message : e);
+        }
+      }
     }
-    if (!clips.length) return { error: 'Не удалось озвучить ни одного сегмента.' };
+    const jobs: { text: string; out: string; idx: number }[] = [];
+    segs.forEach((s, i) => {
+      const txt = (translated[i] || '').trim();
+      if (txt) jobs.push({ text: txt, out: path.join(os.tmpdir(), `pulsar_dub_${Date.now()}_${i}.wav`), idx: i });
+    });
+    if (!jobs.length) return { error: 'Не удалось озвучить ни одного сегмента.' };
+    jobs.forEach((j) => tmpClips.push(j.out));
+    onProgress(engine === 'omnivoice' ? 'Озвучка (OmniVoice: загрузка модели)…' : 'Озвучка…', 30);
+    const synth = await runSynthBatch(jobs, req.targetLang, req.engine || 'auto', 1, req.voice || '', {
+      ...opts,
+      onProgress: (d, n) => onProgress(`Озвучка ${Math.min(d + 1, n)}/${n}…`, 30 + Math.round((d / n) * 55)),
+    });
+    if ('error' in synth) return synth;
+    const clips: DubClip[] = jobs.map((j) => ({ file: j.out, startMs: segs[j.idx].start, targetMs: segs[j.idx].end - segs[j.idx].start }));
 
     // Субтитры с переводом (опц.).
     let assPath: string | null = null;

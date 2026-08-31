@@ -243,7 +243,7 @@ const CATEGORIES: { name: string; items: ModeDef[] }[] = [
       },
       {
         title: 'Озвучка (TTS)',
-        description: 'Генерация речи из текста и наложение на видео',
+        description: 'Речь из текста офлайн (OmniVoice): клон голоса из файла, 646 языков, наложение на видео',
         mode: 'tts',
         icon: (
           <svg {...I(24)}>
@@ -256,7 +256,7 @@ const CATEGORIES: { name: string; items: ModeDef[] }[] = [
       },
       {
         title: 'Дубляж (AI)',
-        description: 'Перевод и озвучка видео на другой язык по таймингам',
+        description: 'Перевод и озвучка видео на другой язык голосом самого говорящего, по таймингам',
         mode: 'dub',
         icon: (
           <svg {...I(24)}>

@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import { showToast } from '../store/toastStore';
 import { EDGE_VOICES } from '../tts/TtsApp';
+import { ENGINE_OPTIONS, OMNI_PRESETS, type TtsEngineChoice } from '../tts/omniVoices';
 import ExplorerLayout from '../components/ExplorerLayout';
+
+type TtsStatus = { omnivoice: boolean; nvidia: boolean; defaultEngine: 'omnivoice' | 'edge'; setting: string };
+
+// Для дубляжа пустой голос OmniVoice = клонировать голос говорящего из самого ролика.
+const DUB_OMNI_VOICES = [{ value: '', label: 'Голос говорящего (клон из ролика)' }, ...OMNI_PRESETS.filter((p) => p.value)];
 
 const SRC_LANGS = [
   { value: 'auto', label: 'Авто-определение' },
@@ -34,6 +40,8 @@ export default function DubApp() {
   const [sourceLang, setSourceLang] = useState('auto');
   const [targetLang, setTargetLang] = useState('en');
   const [voice, setVoice] = useState('');
+  const [engine, setEngine] = useState<TtsEngineChoice>('auto');
+  const [status, setStatus] = useState<TtsStatus | null>(null);
   const [keepOriginal, setKeepOriginal] = useState(true);
   const [syncTiming, setSyncTiming] = useState(true);
   const [burnSubs, setBurnSubs] = useState(false);
@@ -46,6 +54,7 @@ export default function DubApp() {
 
   useEffect(() => {
     window.electronAPI.getSetting('defaultOutputDir').then((d) => d && setOutputDir(d as string));
+    window.electronAPI.ttsStatus().then(setStatus).catch(() => {});
     const off = window.electronAPI.onDubProgress((e) => {
       setStage(e.stage);
       setPercent(e.percent);
@@ -74,6 +83,8 @@ export default function DubApp() {
         sourceLang,
         targetLang,
         voice: voice || undefined,
+        engine,
+        cloneVoice: true,
         keepOriginal,
         originalVolume: 0.12,
         syncTiming,
@@ -119,6 +130,15 @@ export default function DubApp() {
   };
   const label: React.CSSProperties = { fontSize: 13, color: 'var(--text-secondary)', marginBottom: 6, display: 'block' };
   const voices = EDGE_VOICES[targetLang] ?? [];
+  const effective: 'omnivoice' | 'edge' = engine === 'auto' ? (status?.defaultEngine ?? 'edge') : engine;
+  const omni = effective === 'omnivoice';
+  const statusLine = !status
+    ? ''
+    : omni
+      ? status.omnivoice
+        ? `OmniVoice установлен · ${status.nvidia ? 'NVIDIA GPU — быстро' : 'без NVIDIA GPU — на процессоре, медленно'}`
+        : 'OmniVoice не установлен — поставьте в «Настройки → Компоненты» (≈5 ГБ). Пока сработает резерв Edge TTS.'
+      : 'Edge TTS: голоса Microsoft, нужен интернет; голос говорящего не сохраняется';
 
   return (
     <ExplorerLayout onPickFile={(p) => setVideoPath(p)}>
@@ -128,7 +148,7 @@ export default function DubApp() {
           Дубляж
         </h1>
         <p style={{ fontSize: 14, color: 'var(--text-secondary)', marginBottom: 24 }}>
-          Видео → распознавание речи → перевод → озвучка на другом языке → подкладка под видео по таймингам.
+          Видео → распознавание речи → перевод → озвучка на другом языке голосом самого говорящего (OmniVoice) → подкладка под видео по таймингам.
         </p>
 
         <div style={{ marginBottom: 16 }}>
@@ -153,13 +173,23 @@ export default function DubApp() {
           </div>
         </div>
 
-        <div style={{ marginBottom: 16 }}>
-          <label style={label}>Голос дубляжа ({voices.length})</label>
-          <select value={voice} onChange={(e) => setVoice(e.target.value)} style={field}>
-            <option value="">По умолчанию</option>
-            {voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}
-          </select>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 6 }}>
+          <div>
+            <label style={label}>Движок озвучки</label>
+            <select value={engine} onChange={(e) => { setEngine(e.target.value as TtsEngineChoice); setVoice(''); }} style={field}>
+              {ENGINE_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={label}>{omni ? 'Голос дубляжа' : `Голос дубляжа (${voices.length})`}</label>
+            <select value={voice} onChange={(e) => setVoice(e.target.value)} style={field}>
+              {omni
+                ? DUB_OMNI_VOICES.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)
+                : <><option value="">По умолчанию</option>{voices.map((v) => <option key={v.value} value={v.value}>{v.label}</option>)}</>}
+            </select>
+          </div>
         </div>
+        {statusLine && <div style={{ fontSize: 12, color: omni && !status?.omnivoice ? 'var(--danger)' : 'var(--text-secondary)', marginBottom: 16 }}>{statusLine}</div>}
 
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, cursor: 'pointer', marginBottom: 12 }}>
           <input type="checkbox" checked={keepOriginal} onChange={(e) => setKeepOriginal(e.target.checked)} />
@@ -209,7 +239,7 @@ export default function DubApp() {
         )}
 
         <p style={{ fontSize: 12, color: 'var(--text-secondary)', marginTop: 20, lineHeight: 1.5 }}>
-          Нужен ключ AssemblyAI (Настройки) для распознавания речи и движок Edge TTS. Перевод — бесплатный (deep-translator).
+          Распознавание — Whisper офлайн или AssemblyAI (ключ в Настройках). Перевод — deep-translator. Озвучка — OmniVoice (офлайн, клон голоса говорящего) либо Edge TTS (онлайн).
         </p>
       </div>
     </div>
