@@ -170,8 +170,10 @@ class OmniSynth:
         if lang and lang != "auto":
             try:
                 return self.model.generate(language=lang, **kw)[0]
-            except Exception:  # noqa: BLE001 — код языка не распознан, пусть определит сама
-                pass
+            except Exception as e:  # noqa: BLE001 — код языка не распознан, пусть определит сама
+                if "out of memory" in str(e).lower():
+                    raise
+                sys.stderr.write(f"[tts] language={lang!r} отклонён ({str(e)[:80]}), авто-определение\n")
         return self.model.generate(**kw)[0]
 
     def _pin_voice(self, audio, text):
