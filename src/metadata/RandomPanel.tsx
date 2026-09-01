@@ -9,7 +9,7 @@ export type RandOpts = {
 export const DEFAULT_RAND: RandOpts = { device: true, shot: true, gps: true, date: true, city: null, deviceModel: null, dateFrom: '', dateTo: '' };
 
 // Каталог телефонов/городов живёт в main — тянем один раз и кэшируем на модуль.
-let cache: { devices: string[]; cities: string[] } | null = null;
+let cache: { devices: string[]; cities: string[]; encoders: string[]; genres: string[] } | null = null;
 
 export function useMetaCatalog() {
   const [cat, setCat] = useState(cache);
@@ -17,12 +17,53 @@ export function useMetaCatalog() {
     if (cache) return;
     window.electronAPI.metaCatalog().then((c) => { cache = c; setCat(c); });
   }, []);
-  return cat ?? { devices: [], cities: [] };
+  return cat ?? { devices: [], cities: [], encoders: [], genres: [] };
 }
 
-export function RandomOptions({ value, onChange }: { value: RandOpts; onChange: (v: RandOpts) => void }) {
+export function RandomOptions({ value, onChange, kind = 'image' }: {
+  value: RandOpts;
+  onChange: (v: RandOpts) => void;
+  kind?: 'image' | 'video' | 'audio';
+}) {
   const cat = useMetaCatalog();
   const set = (patch: Partial<RandOpts>) => onChange({ ...value, ...patch });
+
+  // У звука те же переключатели означают другое: телефон и координаты к музыке
+  // отношения не имеют, вместо них — кодировщик и жанр. Поля переиспользуются
+  // (device → кодировщик, shot → жанр, deviceModel/city → конкретные значения),
+  // чтобы не заводить второй набор настроек ради трёх опций.
+  if (kind === 'audio') {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+          <Check label="Кодировщик" checked={value.device} onChange={(v) => set({ device: v })} hint="чем собран файл: LAME, FL Studio, Ableton…" />
+          <Check label="Жанр" checked={value.shot} onChange={(v) => set({ shot: v })} hint="жанр из стандартного списка ID3" />
+          <Check label="Год" checked={value.date} onChange={(v) => set({ date: v })} hint="случайный год в диапазоне" />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <select value={value.deviceModel ?? ''} onChange={(e) => set({ deviceModel: e.target.value || null })} style={select} disabled={!value.device}>
+            <option value="">🎛 Кодировщик: случайный</option>
+            {cat.encoders.map((d) => <option key={d} value={d}>{d}</option>)}
+          </select>
+          <select value={value.city ?? ''} onChange={(e) => set({ city: e.target.value || null })} style={select} disabled={!value.shot}>
+            <option value="">🎵 Жанр: случайный</option>
+            {cat.genres.map((g) => <option key={g} value={g}>{g}</option>)}
+          </select>
+          <label style={dateLbl}>
+            с <input type="date" value={value.dateFrom || ''} onChange={(e) => set({ dateFrom: e.target.value })} style={dateInp} disabled={!value.date} />
+          </label>
+          <label style={dateLbl}>
+            по <input type="date" value={value.dateTo || ''} onChange={(e) => set({ dateTo: e.target.value })} style={dateInp} disabled={!value.date} />
+          </label>
+        </div>
+
+        <div style={{ fontSize: 10.5, color: 'var(--text-secondary)' }}>
+          Исполнитель, название и альбом не подставляются: это авторство, его вы заполняете сами.
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>

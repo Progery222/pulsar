@@ -4,6 +4,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { ExifTool } from 'exiftool-vendored';
 import { jitterCoords, formatCoords } from '../../src/metadata/geo';
+import {
+  AUD_EXT, WRITABLE_AUDIO_EXT, AUDIO_EXIFTOOL_EXT, AUDIO_FIELDS, AUDIO_LABELS,
+  AUDIO_ALIAS_TAGS, AUDIO_TECH_TAGS, AUDIO_FORMAT_NOTES, AUDIO_ENCODERS, AUDIO_GENRES,
+  isAudioField, pickAudio, audioAiSignal, audioWriteBlockReason, writeAudioTags,
+  randomAudioTags,
+} from './metadata-audio';
 
 // Модуль «Метаданные» — инспектор + редактор: загрузил фото или видео → видишь всё (EXIF, GPS,
 // XMP, QuickTime, C2PA, вердикт ИИ/реал) и можешь править любое поле, удалять, чистить всё.
@@ -11,10 +17,15 @@ import { jitterCoords, formatCoords } from '../../src/metadata/geo';
 
 const IMG_EXT = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'tif', 'tiff', 'avif', 'gif'];
 const VID_EXT = ['mp4', 'mov', 'm4v', '3gp', '3g2', 'mkv', 'webm', 'avi', 'mpg', 'mpeg', 'wmv', 'flv', 'm2ts', 'ts'];
-const MEDIA_EXT = [...IMG_EXT, ...VID_EXT];
+const MEDIA_EXT = [...IMG_EXT, ...VID_EXT, ...AUD_EXT];
 
-type Kind = 'image' | 'video';
-const kindOf = (file: string): Kind => (VID_EXT.includes(path.extname(file).slice(1).toLowerCase()) ? 'video' : 'image');
+type Kind = 'image' | 'video' | 'audio';
+const kindOf = (file: string): Kind => {
+  const ext = path.extname(file).slice(1).toLowerCase();
+  if (VID_EXT.includes(ext)) return 'video';
+  if (AUD_EXT.includes(ext)) return 'audio';
+  return 'image';
+};
 
 const exiftoolBin = (require('exiftool-vendored.exe') as string).replace('app.asar', 'app.asar.unpacked');
 let et: ExifTool | null = null;
@@ -71,6 +82,12 @@ interface MetaResult {
 
 // В какие форматы exiftool умеет писать метаданные.
 // Фото: у AVIF/GIF поддержка неполная. Видео: только семейство QuickTime — MKV/WEBM/AVI читаются, но не пишутся.
+// Общая проверка: фото и видео пишет exiftool, звук — ffmpeg (кроме m4a).
+const isWritableFile = (file: string): boolean => {
+  const ext = path.extname(file).toLowerCase();
+  return WRITABLE_EXT.has(ext) || WRITABLE_AUDIO_EXT.has(ext);
+};
+
 const WRITABLE_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff', '.heic', '.heif', '.avif', '.mp4', '.mov', '.m4v', '.3gp', '.3g2']);
 
 // QuickTime хранит время в UTC. С этим флагом exiftool помечает его зоной, а мы показываем и
@@ -221,7 +238,7 @@ async function readVideoMeta(file: string): Promise<MetaResult> {
   else if (stripped) { verdictText = 'Камера/GPS/дата отсутствуют — метаданные, похоже, вырезаны при перекодировании или пересылке.'; }
 
   const summary: MetaSummary = { camera, gps: gps ? `${gps.lat.toFixed(6)}, ${gps.lon.toFixed(6)}` : null, shotDate, c2pa: c2pa.present, stripped };
-  return { file, name, sizeKB, verdict, verdictText, summary, groups, gps, kind: 'video', writable: WRITABLE_EXT.has(path.extname(file).toLowerCase()) };
+  return { file, name, sizeKB, verdict, verdictText, summary, groups, gps, kind: 'video', writable: isWritableFile(file) };
 }
 
 async function readMeta(file: string): Promise<MetaResult> {
@@ -307,7 +324,7 @@ async function readMeta(file: string): Promise<MetaResult> {
   else if (stripped) { verdictText = 'Камера/GPS/дата отсутствуют — метаданные, похоже, вырезаны (пересылка через мессенджер/соцсеть).'; }
 
   const summary: MetaSummary = { camera, gps: gps ? `${gps.lat.toFixed(6)}, ${gps.lon.toFixed(6)}` : null, shotDate, c2pa: c2pa.present, stripped };
-  const writable = WRITABLE_EXT.has(path.extname(file).toLowerCase());
+  const writable = isWritableFile(file);
 
   return { file, name, sizeKB, verdict, verdictText, summary, groups, gps, kind: 'image', writable };
 }
@@ -418,7 +435,12 @@ interface WriteReq {
 async function writeMeta(req: WriteReq): Promise<MetaResult> {
   const src = req.file;
   if (!src || !fs.existsSync(src)) return emptyResult(src, 'Файл не найден');
-  if (!WRITABLE_EXT.has(path.extname(src).toLowerCase())) return emptyResult(src, 'В этот формат запись метаданных не поддерживается');
+  if (!isWritableFile(src)) return emptyResult(src, 'В этот формат запись метаданных не поддерживается');
+  {
+    // У звука причина отказа бывает содержательной — говорим её прямо.
+    const blocked = kindOf(src) === 'audio' ? audioWriteBlockReason(src) : null;
+    if (blocked) return emptyResult(src, blocked);
+  }
 
   const tags = buildTags(req.edits, req.deletes, kindOf(src));
   if (typeof tags === 'string') return emptyResult(src, tags);
@@ -612,10 +634,10 @@ function freeName(dir: string, name: string): string {
 async function runBatch(req: BatchReq, send: (ev: { done: number; total: number; name: string }) => void): Promise<BatchResult> {
   batchCancel = false;
   const all = req.files || [];
-  const files = all.filter((f) => WRITABLE_EXT.has(path.extname(f).toLowerCase()));
+  const files = all.filter((f) => isWritableFile(f));
   // Неподдерживаемые не выбрасываем молча — они попадают в отчёт с причиной.
   const failed: BatchResult['failed'] = all
-    .filter((f) => !WRITABLE_EXT.has(path.extname(f).toLowerCase()))
+    .filter((f) => !isWritableFile(f))
     .map((f) => ({ name: path.basename(f), error: 'в этот формат запись не поддерживается' }));
   let ok = 0;
 
@@ -727,7 +749,7 @@ export function registerMetadataHandlers() {
   ipcMain.handle('meta:pick', async () => {
     const r = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: [{ name: 'Фото и видео', extensions: MEDIA_EXT }, { name: 'Фото', extensions: IMG_EXT }, { name: 'Видео', extensions: VID_EXT }, { name: 'Все файлы', extensions: ['*'] }],
+      filters: [{ name: 'Медиафайлы', extensions: MEDIA_EXT }, { name: 'Фото', extensions: IMG_EXT }, { name: 'Видео', extensions: VID_EXT }, { name: 'Музыка', extensions: AUD_EXT }, { name: 'Все файлы', extensions: ['*'] }],
     });
     return r.canceled ? null : (r.filePaths[0] ?? null);
   });
@@ -735,7 +757,7 @@ export function registerMetadataHandlers() {
   ipcMain.handle('meta:pickMany', async () => {
     const r = await dialog.showOpenDialog({
       properties: ['openFile', 'multiSelections'],
-      filters: [{ name: 'Фото и видео', extensions: MEDIA_EXT }, { name: 'Фото', extensions: IMG_EXT }, { name: 'Видео', extensions: VID_EXT }],
+      filters: [{ name: 'Медиафайлы', extensions: MEDIA_EXT }, { name: 'Фото', extensions: IMG_EXT }, { name: 'Видео', extensions: VID_EXT }, { name: 'Музыка', extensions: AUD_EXT }],
     });
     return r.canceled ? [] : r.filePaths;
   });

@@ -13,7 +13,7 @@ type Summary = { camera: string | null; gps: string | null; shotDate: string | n
 type Meta = {
   file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
   summary: Summary; groups: Group[]; gps: { lat: number; lon: number } | null;
-  kind: 'image' | 'video'; writable: boolean; error?: string;
+  kind: 'image' | 'video' | 'audio'; writable: boolean; notice?: string; error?: string;
 };
 
 const VERDICT: Record<Meta['verdict'], { label: string; fg: string }> = {
@@ -27,13 +27,24 @@ const GPS = '__gps';
 // «Главное» — поля, ради которых сюда и приходят. Показываются всегда, даже если
 // в файле их нет: пустая строка сразу готова к заполнению. Раньше отсутствующее
 // поле просто не рисовалось, и добавлять его приходилось вручную по имени тега.
-const KEY_FIELDS: { tag: string; label: string; placeholder?: string; kind?: 'image' | 'video' }[] = [
-  { tag: 'Make', label: 'Производитель', placeholder: 'Apple' },
-  { tag: 'Model', label: 'Модель', placeholder: 'iPhone 15 Pro' },
-  { tag: GPS, label: 'Координаты', placeholder: '55.751244, 37.618423' },
+const KEY_FIELDS: { tag: string; label: string; placeholder?: string; kind?: 'image' | 'video' | 'audio' }[] = [
+  { tag: 'Make', label: 'Производитель', placeholder: 'Apple', kind: 'image' },
+  { tag: 'Model', label: 'Модель', placeholder: 'iPhone 15 Pro', kind: 'image' },
+  { tag: 'Make', label: 'Производитель', placeholder: 'Apple', kind: 'video' },
+  { tag: 'Model', label: 'Модель', placeholder: 'iPhone 15 Pro', kind: 'video' },
+  { tag: GPS, label: 'Координаты', placeholder: '55.751244, 37.618423', kind: 'image' },
+  { tag: GPS, label: 'Координаты', placeholder: '55.751244, 37.618423', kind: 'video' },
   { tag: 'DateTimeOriginal', label: 'Дата съёмки', placeholder: '2024:05:01 13:45:07', kind: 'image' },
   { tag: 'CreateDate', label: 'Дата съёмки', placeholder: '2024:05:01 13:45:07', kind: 'video' },
-  { tag: 'Software', label: 'Прошивка / софт', placeholder: '17.5.1' },
+  { tag: 'Software', label: 'Прошивка / софт', placeholder: '17.5.1', kind: 'image' },
+  { tag: 'Software', label: 'Прошивка / софт', placeholder: '17.5.1', kind: 'video' },
+  // У звука ключевое — не камера и координаты, а то, что показывает плеер.
+  { tag: 'Title', label: 'Название', placeholder: 'Ночной рейс', kind: 'audio' },
+  { tag: 'Artist', label: 'Исполнитель', placeholder: 'Кто исполняет', kind: 'audio' },
+  { tag: 'Album', label: 'Альбом', placeholder: 'Название альбома', kind: 'audio' },
+  { tag: 'Genre', label: 'Жанр', placeholder: 'Electronic', kind: 'audio' },
+  { tag: 'Year', label: 'Год', placeholder: '2024', kind: 'audio' },
+  { tag: 'Encoder', label: 'Кодировщик', placeholder: 'LAME 3.100', kind: 'audio' },
 ];
 
 const COMMON_TAGS = [
@@ -244,7 +255,12 @@ export default function MetadataApp() {
             {/* Файл */}
             <div style={{ width: 250, flexShrink: 0 }}>
               <div className="img-outline" style={{ background: '#000', borderRadius: 8, overflow: 'hidden' }}>
-                {meta.kind === 'video' ? (
+                {meta.kind === 'audio' ? (
+                  <div style={{ padding: '18px 14px', display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'center' }}>
+                    <div style={{ fontSize: 30, lineHeight: 1 }} aria-hidden>♫</div>
+                    <audio key={meta.file} src={mediaUrl(meta.file)} controls style={{ width: '100%' }} />
+                  </div>
+                ) : meta.kind === 'video' ? (
                   <video key={meta.file} src={mediaUrl(meta.file)} controls muted style={{ width: '100%', maxHeight: 210, display: 'block' }} />
                 ) : (
                   <img src={mediaUrl(meta.file)} alt="" style={{ width: '100%', maxHeight: 210, objectFit: 'contain', display: 'block' }} />
@@ -260,6 +276,11 @@ export default function MetadataApp() {
                   {/* Причина вердикта была только в подсказке при наведении — из-за
                       этого было непонятно, почему после правки полей он не меняется. */}
                   <div style={{ fontSize: 11, color: 'var(--text-secondary)', marginTop: 3, lineHeight: 1.4 }}>{meta.verdictText}</div>
+                  {/* Ограничение формата (в WAV нет Юникода, в AIFF теги не пишутся)
+                      показываем до правки, а не после неудачного сохранения. */}
+                  {meta.notice && (
+                    <div style={{ fontSize: 10.5, color: 'var(--accent-orange, #ffa23a)', marginTop: 6, lineHeight: 1.4 }}>{meta.notice}</div>
+                  )}
                 </div>
               )}
 
@@ -332,7 +353,7 @@ export default function MetadataApp() {
                         <button onClick={fillRandom} className="btn-primary" style={{ padding: '6px 14px', fontSize: 12.5 }}>Заполнить</button>
                         <span style={{ fontSize: 11, color: 'var(--text-secondary)' }}>значения попадут в поля, записи ещё не будет</span>
                       </div>
-                      <RandomOptions value={rand} onChange={setRand} />
+                      <RandomOptions value={rand} onChange={setRand} kind={meta?.kind ?? 'image'} />
                     </Panel>
                   )}
 
