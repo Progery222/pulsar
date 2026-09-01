@@ -7,7 +7,7 @@ import { jitterCoords, formatCoords } from '../../src/metadata/geo';
 import {
   AUD_EXT, WRITABLE_AUDIO_EXT, AUDIO_EXIFTOOL_EXT, AUDIO_FIELDS, AUDIO_LABELS,
   AUDIO_ALIAS_TAGS, AUDIO_TECH_TAGS, AUDIO_FORMAT_NOTES, AUDIO_ENCODERS, AUDIO_GENRES,
-  isAudioField, pickAudio, audioAiSignal, audioWriteBlockReason, writeAudioTags,
+  isAudioField, pickAudio, audioAiSignal, audioAiFields, audioWriteBlockReason, writeAudioTags,
   randomAudioTags,
 } from './metadata-audio';
 
@@ -64,6 +64,9 @@ interface MetaSummary {
   gps: string | null;
   shotDate: string | null;
   c2pa: boolean;
+  // След генератора в тегах звука («Encoder: Suno»). У фото и видео эту роль
+  // играет манифест C2PA, у музыки его нет — пометка живёт в обычных тегах.
+  aiMarks?: string | null;
   stripped: boolean; // EXIF/GPS/дата отсутствуют — похоже, вырезаны (мессенджер/соцсеть)
 }
 interface MetaResult {
@@ -241,8 +244,81 @@ async function readVideoMeta(file: string): Promise<MetaResult> {
   return { file, name, sizeKB, verdict, verdictText, summary, groups, gps, kind: 'video', writable: isWritableFile(file) };
 }
 
+// ─── Аудио ───────────────────────────────────────────────────────────────────
+// Читает exiftool (exifr про звук не знает). Поля приводятся к каноническим
+// именам: иначе пользователю пришлось бы знать, что год в MP3 зовётся
+// RecordingTime, а в WAV DateCreated.
+
+async function readAudioMeta(file: string): Promise<MetaResult> {
+  const name = path.basename(file);
+  const sizeKB = Math.round((await fs.promises.stat(file)).size / 1024);
+  const groups: MetaGroup[] = [];
+
+  let tags: Record<string, unknown> = {};
+  try {
+    tags = (await tool().read(file)) as unknown as Record<string, unknown>;
+  } catch (err) {
+    return emptyResult(file, (err as Error).message);
+  }
+
+  const trackRows: MetaRow[] = AUDIO_FIELDS.map((f) => row(f, fmt(pickAudio(tags, f)), true, AUDIO_LABELS[f]));
+  groups.push({ title: 'Теги трека', rows: trackRows });
+
+  const used = new Set<string>([...SKIP_TAGS, ...AUDIO_ALIAS_TAGS]);
+  const techRows: MetaRow[] = [];
+  for (const k of AUDIO_TECH_TAGS) {
+    if (used.has(k)) continue;
+    const val = fmt(tags[k]);
+    if (val === '') continue;
+    techRows.push(row(k, val, false));
+    used.add(k);
+  }
+  if (techRows.length) groups.push({ title: 'Звук', rows: techRows });
+
+  const rest: MetaRow[] = [];
+  for (const k of Object.keys(tags)) {
+    if (used.has(k)) continue;
+    const val = fmt(tags[k]);
+    if (val === '' || val.length > 200) continue;
+    rest.push(row(k, val, false));
+  }
+  if (rest.length) groups.push({ title: 'Прочие поля', rows: rest.slice(0, 60) });
+
+  const artist = fmt(pickAudio(tags, 'Artist')) || null;
+  const title = fmt(pickAudio(tags, 'Title')) || null;
+  const year = fmt(pickAudio(tags, 'Year')) || null;
+  const encoder = fmt(pickAudio(tags, 'Encoder')) || null;
+  const ai = audioAiSignal(tags);
+  const stripped = !artist && !title && !year && !encoder;
+
+  let verdict: MetaResult['verdict'] = 'unknown';
+  let verdictText = 'Недостаточно данных, чтобы уверенно судить.';
+  if (ai) {
+    verdict = 'ai';
+    verdictText = `Похоже на сгенерированный звук — в служебных полях есть след генератора (${ai}).`;
+  } else if (encoder) {
+    verdict = 'camera';
+    verdictText = `Похоже на обычную запись или сведение: файл собран программой «${encoder}».`;
+  } else if (stripped) {
+    verdictText = 'Теги отсутствуют — похоже, они вырезаны при перекодировании или пересылке.';
+  }
+
+  const blocked = audioWriteBlockReason(file);
+  const notice = blocked ?? AUDIO_FORMAT_NOTES[path.extname(file).toLowerCase()];
+
+  return {
+    file, name, sizeKB, verdict, verdictText,
+    // «Камера» у звука — это исполнитель и название, «дата съёмки» — год.
+    summary: { camera: [artist, title].filter(Boolean).join(' — ') || encoder, gps: null, shotDate: year, c2pa: false, aiMarks: ai, stripped },
+    groups, gps: null, kind: 'audio', writable: isWritableFile(file) && !blocked,
+    ...(notice ? { notice } : {}),
+  };
+}
+
 async function readMeta(file: string): Promise<MetaResult> {
-  if (kindOf(file) === 'video') return readVideoMeta(file);
+  const kind = kindOf(file);
+  if (kind === 'video') return readVideoMeta(file);
+  if (kind === 'audio') return readAudioMeta(file);
   const name = path.basename(file);
   const buf = await fs.promises.readFile(file);
   const sizeKB = Math.round(buf.length / 1024);
@@ -383,10 +459,14 @@ const writableTag = (tag: string): boolean =>
 // edits/deletes из UI → набор тегов для exiftool. Строка в ответе = текст ошибки валидации.
 function buildTags(edits: Record<string, string> = {}, deletes: string[] = [], kind: Kind = 'image'): Record<string, unknown> | string {
   const video = kind === 'video';
+  const audio = kind === 'audio';
   const name = (t: string) => (video ? VIDEO_TAG_GROUP[t] ?? t : t);
+  // У звука набор полей закрытый: ffmpeg пишет по своему словарю ключей и всё
+  // остальное молча проигнорирует. Отсеиваем здесь, чтобы правка не терялась тихо.
+  const allowed = (t: string) => (audio ? isAudioField(t) : writableTag(t));
   const tags: Record<string, unknown> = {};
   for (const [tag, raw] of Object.entries(edits)) {
-    if (!writableTag(tag)) continue;
+    if (!allowed(tag)) continue;
     if (tag === GPS_KEY) {
       const g = gpsTags(raw, kind);
       if (typeof g === 'string') return g;
@@ -397,7 +477,7 @@ function buildTags(edits: Record<string, string> = {}, deletes: string[] = [], k
     tags[name(tag)] = v === '' ? null : v;
   }
   for (const tag of deletes) {
-    if (!writableTag(tag)) continue;
+    if (!allowed(tag)) continue;
     if (tag === GPS_KEY) { for (const t of (video ? VIDEO_GPS_TAGS : GPS_TAGS)) tags[t] = null; continue; }
     tags[name(tag)] = null;
   }
@@ -411,7 +491,29 @@ const C2PA_REMOVE_ARGS = ['-jumbf:all='];
 
 // Записать теги в конкретный файл. Бросает исключение с текстом от exiftool.
 async function applyTags(target: string, tags: Record<string, unknown>, stripAll?: boolean) {
-  const extra = kindOf(target) === 'video' ? QT_ARGS : [];
+  const kind = kindOf(target);
+
+  if (kind === 'audio') {
+    // Пометку генератора вычищаем так же, как у фото и видео удаляется манифест
+    // C2PA: она не должна пережить редактирование метаданных. Поля, которые
+    // пользователь задаёт сам в этой же операции, не трогаем — его значение важнее.
+    if (!stripAll) {
+      try {
+        const cur = (await tool().read(target)) as unknown as Record<string, unknown>;
+        for (const f of audioAiFields(cur)) if (!(f in tags)) tags[f] = null;
+      } catch { /* не прочитали — пишем что просили */ }
+    }
+
+    // Звук пишет ffmpeg: exiftool отказывается писать в mp3, wav, flac, ogg и opus.
+    // M4A — исключение: это контейнер QuickTime, его exiftool пишет напрямую,
+    // а ffmpeg подставил бы туда собственное «Lavf…».
+    if (!AUDIO_EXIFTOOL_EXT.has(path.extname(target).toLowerCase())) {
+      if (stripAll || Object.keys(tags).length) await writeAudioTags(target, tags, stripAll);
+      return;
+    }
+  }
+
+  const extra = kind === 'video' || kind === 'audio' ? QT_ARGS : [];
   // Сначала полная очистка (отдельным проходом: в одном вызове «-all=» затрёт и новые значения),
   // потом запись правок. «-overwrite_original» — чтобы не плодить файлы *_original рядом.
   if (stripAll) await tool().write(target, {}, { writeArgs: ['-all=', ...C2PA_REMOVE_ARGS, '-overwrite_original', ...extra] });
@@ -557,6 +659,14 @@ export interface RandOpts {
 const dayMs = 86400000;
 
 function randomTags(o: RandOpts, kind: Kind = 'image'): Record<string, string> {
+  if (kind === 'audio') {
+    return randomAudioTags({
+      device: o.device, shot: o.shot, date: o.date,
+      dateFrom: o.dateFrom, dateTo: o.dateTo,
+      encoder: o.deviceModel ?? null, genre: o.city ?? null,
+    });
+  }
+
   const out: Record<string, string> = {};
   const dev = (o.deviceModel && DEVICES.find((d) => `${d.Make} ${d.Model}` === o.deviceModel)) || pick(DEVICES);
   const video = kind === 'video';

@@ -119,6 +119,29 @@ export function audioAiSignal(tags: Record<string, unknown>): string | null {
   return null;
 }
 
+/**
+ * Поля, в которых генераторы оставляют свой след. Их и чистим при сохранении —
+ * ровно так же, как у фото и видео удаляется манифест C2PA: пометка о том, что
+ * файл сгенерирован, не должна пережить редактирование метаданных.
+ *
+ * Технические поля (Vendor, EncoderSettings) сюда не входят: они приходят из
+ * заголовка потока и тегами не являются, ffmpeg их не перепишет.
+ */
+const AI_CLEANABLE: AudioField[] = ['Encoder', 'Comment', 'Publisher', 'Copyright', 'Title', 'Artist', 'Album'];
+
+/**
+ * Какие канонические поля несут след генератора. Возвращает имена полей,
+ * чтобы вызывающий мог их очистить.
+ */
+export function audioAiFields(tags: Record<string, unknown>): AudioField[] {
+  const hit: AudioField[] = [];
+  for (const f of AI_CLEANABLE) {
+    const v = pickAudio(tags, f);
+    if (v != null && AI_AUDIO_RE.test(String(v))) hit.push(f);
+  }
+  return hit;
+}
+
 /** Ограничения контейнеров, о которых честнее сказать заранее. */
 export const AUDIO_FORMAT_NOTES: Record<string, string> = {
   '.wav': 'WAV хранит теги в RIFF INFO, где нет Юникода: кириллица в них портится. Для русских названий берите MP3, FLAC или M4A.',

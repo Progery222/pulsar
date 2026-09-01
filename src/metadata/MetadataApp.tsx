@@ -3,13 +3,13 @@ import { useUIStore } from '../store/uiStore';
 import { showToast } from '../store/toastStore';
 import { mediaUrl, fileName } from '../utils/media';
 import BatchPanel from './BatchPanel';
-import { RandomOptions, DEFAULT_RAND, type RandOpts } from './RandomPanel';
+import { RandomOptions, DEFAULT_RAND, useMetaCatalog, type RandOpts } from './RandomPanel';
 import PresetBar, { usePresets, presetFields, type MetaPreset } from './PresetBar';
 import LocationPicker from './LocationPicker';
 
 type Row = { tag: string; label: string; value: string; editable: boolean };
 type Group = { title: string; rows: Row[] };
-type Summary = { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; stripped: boolean };
+type Summary = { camera: string | null; gps: string | null; shotDate: string | null; c2pa: boolean; aiMarks?: string | null; stripped: boolean };
 type Meta = {
   file: string; name: string; sizeKB: number; verdict: 'ai' | 'camera' | 'unknown'; verdictText: string;
   summary: Summary; groups: Group[]; gps: { lat: number; lon: number } | null;
@@ -27,7 +27,7 @@ const GPS = '__gps';
 // «Главное» — поля, ради которых сюда и приходят. Показываются всегда, даже если
 // в файле их нет: пустая строка сразу готова к заполнению. Раньше отсутствующее
 // поле просто не рисовалось, и добавлять его приходилось вручную по имени тега.
-const KEY_FIELDS: { tag: string; label: string; placeholder?: string; kind?: 'image' | 'video' | 'audio' }[] = [
+const KEY_FIELDS: { tag: string; label: string; placeholder?: string; kind?: 'image' | 'video' | 'audio'; list?: 'encoders' | 'genres' }[] = [
   { tag: 'Make', label: 'Производитель', placeholder: 'Apple', kind: 'image' },
   { tag: 'Model', label: 'Модель', placeholder: 'iPhone 15 Pro', kind: 'image' },
   { tag: 'Make', label: 'Производитель', placeholder: 'Apple', kind: 'video' },
@@ -42,9 +42,9 @@ const KEY_FIELDS: { tag: string; label: string; placeholder?: string; kind?: 'im
   { tag: 'Title', label: 'Название', placeholder: 'Ночной рейс', kind: 'audio' },
   { tag: 'Artist', label: 'Исполнитель', placeholder: 'Кто исполняет', kind: 'audio' },
   { tag: 'Album', label: 'Альбом', placeholder: 'Название альбома', kind: 'audio' },
-  { tag: 'Genre', label: 'Жанр', placeholder: 'Electronic', kind: 'audio' },
+  { tag: 'Genre', label: 'Жанр', placeholder: 'Electronic', kind: 'audio', list: 'genres' },
   { tag: 'Year', label: 'Год', placeholder: '2024', kind: 'audio' },
-  { tag: 'Encoder', label: 'Кодировщик', placeholder: 'LAME 3.100', kind: 'audio' },
+  { tag: 'Encoder', label: 'Программа', placeholder: 'FL Studio 21', kind: 'audio', list: 'encoders' },
 ];
 
 const COMMON_TAGS = [
@@ -220,6 +220,7 @@ export default function MetadataApp() {
   const v = meta ? VERDICT[meta.verdict] : null;
   const ro = !!meta && !meta.writable;
   const keyFields = KEY_FIELDS.filter((f) => !f.kind || f.kind === meta?.kind);
+  const catalog = useMetaCatalog();
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: 'var(--bg-primary)' }}>
@@ -323,9 +324,19 @@ export default function MetadataApp() {
                     readOnly={ro}
                     zebra={i % 2 === 1}
                     onChange={(val) => setVal(f.tag, val)}
+                    options={f.list ? catalog[f.list] : undefined}
                     onMap={f.tag === GPS && !ro ? () => setMapOpen(true) : undefined}
                   />
                 ))}
+                {meta.summary.aiMarks && (
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 10px', background: 'var(--bg-tertiary)', fontSize: 11.5 }}>
+                    <span style={{ width: 130, flexShrink: 0, color: 'var(--text-secondary)' }}>AI-метки</span>
+                    <span style={{ color: '#ff6b6b', lineHeight: 1.45 }}>
+                      есть — в тегах остался след генератора ({meta.summary.aiMarks}). При сохранении
+                      изменений или «Стереть всё» такие поля очищаются автоматически.
+                    </span>
+                  </div>
+                )}
                 {meta.summary.c2pa && (
                   <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start', padding: '6px 10px', background: 'var(--bg-tertiary)', fontSize: 11.5 }}>
                     <span style={{ width: 130, flexShrink: 0, color: 'var(--text-secondary)' }}>C2PA / AI-метки</span>
@@ -506,13 +517,22 @@ export default function MetadataApp() {
   );
 }
 
-function KeyRow({ label, value, placeholder, changed, deleted, readOnly, zebra, onChange, onMap }: {
+function KeyRow({ label, value, placeholder, changed, deleted, readOnly, zebra, onChange, onMap, options }: {
   label: string; value: string; placeholder?: string; changed: boolean; deleted: boolean;
   readOnly: boolean; zebra: boolean; onChange: (v: string) => void; onMap?: () => void;
+  // Готовые варианты (музыкальные программы, жанры). Поле остаётся текстовым:
+  // подсказка помогает, но не мешает вписать своё значение.
+  options?: string[];
 }) {
+  const listId = options?.length ? `dl-${label}` : undefined;
   return (
     <div style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '5px 10px', background: zebra ? 'var(--bg-secondary)' : 'var(--bg-tertiary)' }}>
       <span style={{ width: 130, flexShrink: 0, fontSize: 12, color: 'var(--text-secondary)' }}>{label}</span>
+      {listId && (
+        <datalist id={listId}>
+          {options!.map((o) => <option key={o} value={o} />)}
+        </datalist>
+      )}
       {readOnly ? (
         <span style={{ flex: 1, fontSize: 12.5, color: value ? 'var(--text-primary)' : 'var(--text-secondary)' }}>{value || '—'}</span>
       ) : (
@@ -521,6 +541,7 @@ function KeyRow({ label, value, placeholder, changed, deleted, readOnly, zebra, 
           disabled={deleted}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder ?? '—'}
+          list={listId}
           style={{
             ...input,
             flex: 1,
