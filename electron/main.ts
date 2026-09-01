@@ -59,6 +59,20 @@ app.on('child-process-gone', (_e, details) => {
   console.error('[CRASH] child-process-gone:', JSON.stringify(details));
 });
 
+/**
+ * Ошибки интерфейса в терминал не попадают: React ломает дерево, окно чернеет,
+ * а причина остаётся в консоли самого окна, куда без мышки не заглянуть.
+ * Пробрасываем ошибки и предупреждения рендерера в общий лог.
+ */
+function pipeRendererLogs(wc: Electron.WebContents): void {
+  wc.on('console-message', (_e, level, message, line, sourceId) => {
+    if (level < 2) return; // 0 — verbose, 1 — info: шум
+    const where = sourceId ? ` (${sourceId}:${line})` : '';
+    console.error(`[UI] ${message}${where}`);
+  });
+  wc.on('unresponsive', () => console.error('[UI] окно перестало отвечать'));
+}
+
 const VITE_DEV_SERVER_URL = process.env['VITE_DEV_SERVER_URL'];
 const MAIN_DIST = path.join(process.env.APP_ROOT, 'dist-electron');
 const RENDERER_DIST = path.join(process.env.APP_ROOT, 'dist');
@@ -104,6 +118,8 @@ function createWindow() {
       backgroundThrottling: false,
     },
   });
+
+  pipeRendererLogs(win.webContents);
 
   win.once('ready-to-show', () => {
     win?.show();

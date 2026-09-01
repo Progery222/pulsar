@@ -11,13 +11,18 @@ export const DEFAULT_RAND: RandOpts = { device: true, shot: true, gps: true, dat
 // Каталог телефонов/городов живёт в main — тянем один раз и кэшируем на модуль.
 let cache: { devices: string[]; cities: string[]; encoders: string[]; genres: string[] } | null = null;
 
+const EMPTY_CATALOG = { devices: [], cities: [], encoders: [], genres: [] };
+
 export function useMetaCatalog() {
   const [cat, setCat] = useState(cache);
   useEffect(() => {
     if (cache) return;
     window.electronAPI.metaCatalog().then((c) => { cache = c; setCat(c); });
   }, []);
-  return cat ?? { devices: [], cities: [], encoders: [], genres: [] };
+  // Подставляем недостающие списки, а не отдаём то, что пришло, как есть:
+  // старая сборка main могла не знать про новые поля, и перебор undefined
+  // ронял бы весь интерфейс в чёрный экран вместо пустого выпадающего списка.
+  return { ...EMPTY_CATALOG, ...(cat ?? {}) };
 }
 
 export function RandomOptions({ value, onChange, kind = 'image' }: {

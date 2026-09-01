@@ -922,6 +922,8 @@ export function registerMetadataHandlers() {
   ipcMain.handle('meta:catalog', () => ({
     devices: DEVICES.map((d) => `${d.Make} ${d.Model}`),
     cities: CITIES.map((c) => c.name),
+    encoders: [...AUDIO_ENCODERS],
+    genres: [...AUDIO_GENRES],
   }));
 
   ipcMain.handle('meta:batch', async (e, req: BatchReq): Promise<BatchResult> => {
