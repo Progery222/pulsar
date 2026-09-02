@@ -71,7 +71,7 @@ export function registerProExportHandlers() {
 
   // Запись одного кадра PNG (только внутрь temp-папки).
   ipcMain.handle('pro:writeFrame', async (_e, dir: string, index: number, data: ArrayBuffer) => {
-    if (!isTempDir(dir)) return { error: 'bad dir' };
+    if (!isTempDir(dir)) return { error: 'Недопустимая папка' };
     const idx = Math.max(0, Math.floor(Number(index) || 0));
     const name = `frame_${String(idx).padStart(6, '0')}.jpg`;
     await fs.promises.writeFile(path.join(dir, name), Buffer.from(data));
@@ -120,7 +120,7 @@ export function registerProExportHandlers() {
   ipcMain.handle('pro:encode', async (_e, opts: EncodeOpts) => {
     if (!ffmpegBin) return { error: 'ffmpeg не найден' };
     const { dir, fps, audio, outPath } = opts;
-    if (!isTempDir(dir)) return { error: 'bad dir' };
+    if (!isTempDir(dir)) return { error: 'Недопустимая папка' };
     const args = ['-y', '-framerate', String(Number(fps) || 30), '-i', path.join(dir, 'frame_%06d.jpg')];
     for (const a of audio) {
       const sp = Number(a.speed) || 1;

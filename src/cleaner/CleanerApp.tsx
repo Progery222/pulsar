@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { showError } from '../store/toastStore';
 import { useCleanerStore, type CoverMethod } from './store';
 import { useVubStore } from '../vub/store';
 import { useUIStore } from '../store/uiStore';
@@ -34,10 +35,17 @@ export default function CleanerApp() {
     setDetecting(true);
     try {
       const r = await window.electronAPI.detectCleanerOne({ videoPath: videos[0].path, detectTitles, detectWatermarks, dynamicTextOnly });
-      if (r.error) { setZones([]); return; }
+      // Раньше ошибка детектора глоталась: зоны пустые, и человек решал, что
+      // видео чистое. Теперь причина видна — чаще всего это отсутствие Python.
+      if (r.error) {
+        setZones([]);
+        showError('Автопоиск плашек не сработал. Обычно не установлен компонент распознавания — Настройки → Компоненты.', r.error);
+        return;
+      }
       setZones((r.boxes || []).filter((b) => (b.conf ?? 1) >= minConf).map((b) => ({ x: b.x, y: b.y, w: b.w, h: b.h })));
-    } catch {
+    } catch (err) {
       setZones([]);
+      showError('Автопоиск плашек не сработал.', err instanceof Error ? err.message : String(err));
     } finally {
       setDetecting(false);
     }

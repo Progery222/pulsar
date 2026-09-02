@@ -20,9 +20,9 @@ export default function StudioHost() {
   if (ready === false) {
     return (
       <div style={{ height: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, background: 'var(--bg-primary)', color: 'var(--text-primary)', padding: 30, textAlign: 'center' }}>
-        <div style={{ fontSize: 18, fontWeight: 600 }}>Студия ещё не собрана</div>
+        <div style={{ fontSize: 18, fontWeight: 600 }}>Студия недоступна в этой сборке</div>
         <div style={{ fontSize: 13.5, color: 'var(--text-secondary)', maxWidth: 520, lineHeight: 1.5 }}>
-          Модуль редактора подключается отдельной сборкой (кладётся в <code>public/studio/</code>). Как соберём — плитка откроет его здесь.
+          Ручной редактор не установлен вместе с приложением. Обновите Pulsar до последней версии — или соберите ролик в Быстром режиме.
         </div>
         <button onClick={() => setAppMode('select')} style={{ marginTop: 8, padding: '8px 16px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-tertiary)', color: 'var(--text-primary)', cursor: 'pointer', fontSize: 13 }}>← На главную</button>
       </div>

@@ -14,10 +14,12 @@ const STATUS_LABEL: Record<string, string> = {
   processing: 'Обработка',
   done: 'Готово',
   error: 'Ошибка',
+  cancelled: 'Отменено',
 };
 
 function statusColor(s: string): string {
   if (s === 'error') return 'var(--danger)';
+  if (s === 'cancelled') return 'var(--accent-orange, #ffa23a)';
   if (s === 'done') return 'var(--accent-green)';
   return 'var(--text-secondary)';
 }
@@ -63,7 +65,7 @@ export default function QueuePanel() {
                 Отменить всё
               </button>
             )}
-            {jobs.some((j) => j.status === 'done' || j.status === 'error') && (
+            {jobs.some((j) => j.status === 'done' || j.status === 'error' || j.status === 'cancelled') && (
               <button onClick={clearFinished} style={{ ...smallBtn, color: 'var(--text-secondary)' }}>
                 Очистить завершённые
               </button>

@@ -946,11 +946,24 @@ export function registerMetadataHandlers() {
     return { ok: true };
   });
 
+  // Коды ОС наружу не показываем: «ENOENT: no such file or directory, open 'C:\…'»
+  // пользователю ничего не говорит, а путь на диске в тосте ещё и не помещается.
+  const humanize = (err: unknown): string => {
+    const m = (err as Error)?.message ?? String(err);
+    if (/ENOENT/.test(m)) return 'Файл не найден — его переместили или удалили';
+    if (/EPERM|EBUSY|EACCES/.test(m)) return 'Файл занят другой программой или защищён от записи';
+    if (/Not a valid (\w+) \(looks more like a (\w+)\)/.test(m)) {
+      const [, ext, real] = m.match(/Not a valid (\w+) \(looks more like a (\w+)\)/) ?? [];
+      return `Файл не подходит: это ${real}, хотя расширение говорит ${ext}`;
+    }
+    return m.replace(/^Error:\s*/, '');
+  };
+
   ipcMain.handle('meta:read', async (_e, file: string): Promise<MetaResult> => {
     try {
       return await readMeta(file);
     } catch (err) {
-      return emptyResult(file, (err as Error).message);
+      return emptyResult(file, humanize(err));
     }
   });
 
@@ -958,7 +971,7 @@ export function registerMetadataHandlers() {
     try {
       return await writeMeta(req);
     } catch (err) {
-      return emptyResult(req?.file || '', (err as Error).message);
+      return emptyResult(req?.file || '', humanize(err));
     }
   });
 

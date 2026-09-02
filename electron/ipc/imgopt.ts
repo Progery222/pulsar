@@ -63,7 +63,7 @@ export function registerImgOptHandlers() {
       const safe = String(name).replace(/[\\/:*?"<>|]/g, '_').slice(0, 200) || 'image';
       const out = path.join(dir, safe);
       // Не даём выйти за пределы папки.
-      if (!path.resolve(out).startsWith(path.resolve(dir))) return { error: 'bad path' };
+      if (!path.resolve(out).startsWith(path.resolve(dir))) return { error: 'Недопустимый путь сохранения' };
       await fs.promises.writeFile(out, Buffer.from(data));
       return { ok: true as const, path: out };
     } catch (err) {

@@ -525,6 +525,7 @@ export default function EditorScreen() {
           className="btn-primary"
           style={{ width: 120, height: 36, borderRadius: 18, fontSize: 14 }}
           onClick={() => setShowExport(true)}
+          title="Сохранить · Ctrl+S"
         >
           Сохранить
         </button>
@@ -550,7 +551,7 @@ export default function EditorScreen() {
               className="flex items-center justify-center rounded-full bg-bg-tertiary text-text-primary"
               style={{ width: 40, height: 40 }}
               onClick={togglePlay}
-              title="Play / Pause"
+              title="Воспроизведение / пауза · Пробел"
             >
               {playing ? '⏸' : '▶'}
             </button>

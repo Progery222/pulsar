@@ -396,14 +396,14 @@ export default function ModeSelector() {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
               <ChooserCard
                 title="Быстрый"
-                sub="beat-sync"
-                description="Авто-нарезка в ритм за 1–2 клика. Один видеоряд, стили и эффекты."
+                sub="готовый ролик за пару минут"
+                description="Нарезка под музыку автоматом, стили и эффекты — за 1–2 клика."
                 onClick={() => setAppMode('editor')}
               />
               <ChooserCard
                 title="Студия"
-                sub="WebGPU"
-                description="Проф. редактор: цветокор, эффекты, маски, ключи, экспорт до 4K."
+                sub="ручной монтаж по слоям"
+                description="Дольше, но полный контроль: цвет, эффекты, маски, анимация, экспорт до 4K."
                 onClick={() => setAppMode('studio')}
               />
             </div>

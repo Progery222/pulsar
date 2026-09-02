@@ -6,7 +6,7 @@ import { applyEffects } from '../utils/effectsEngine';
 import { showToast } from '../store/toastStore';
 
 const STEPS = [
-  'Анализируем аудио...',
+  'Анализируем ритм трека — до 30 секунд…',
   'Нарезаем клипы...',
   'Применяем эффекты...',
   'Готово!',
@@ -35,9 +35,13 @@ export default function ProcessingScreen() {
       // равномерную сетку сразу (не ждём Python/таймаут).
       setStepIdx(0);
       setProgress(10);
+      // Анализ — самый долгий этап (до 30 с), и полоса на нём стояла на 10 %:
+      // выглядело как зависание. Пусть ползёт, пока ждём, но не до конца этапа.
+      const ticker = setInterval(() => setProgress((p) => Math.min(35, p + 1)), 800);
       const beatData = s.selectedTrack
         ? await analyzeBeat(s.selectedTrack.file, s.selectedTrack.duration ?? 0)
         : fallbackBeatData(s.duration && s.duration > 0 ? s.duration : 30);
+      clearInterval(ticker);
       // Подмена ритма равномерной сеткой раньше проходила молча — человек
       // получал ролик не в такт под надписью «Готово!». Теперь говорим.
       if (s.selectedTrack && beatData.fallback) {
