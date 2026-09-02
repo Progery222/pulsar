@@ -372,3 +372,10 @@ input[type='radio']:checked::after {
   border-radius: 50%;
   background: var(--accent-green);
 }
+
+/* Фокус с клавиатуры был невидим во всём приложении — мастер монтажа нельзя
+   было пройти без мыши. Только :focus-visible: мышиный клик рамку не рисует. */
+:focus-visible {
+  outline: 2px solid var(--accent-green);
+  outline-offset: 2px;
+}

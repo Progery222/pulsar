@@ -9,16 +9,16 @@ import TweakModal from './TweakModal';
 type ToolKey = 'videos' | 'style' | 'tweak' | 'duration' | 'segment' | 'mood' | 'transition' | 'text' | 'fade' | 'format';
 
 const TOOLS: { key: ToolKey; icon: string; label: string }[] = [
-  { key: 'videos', icon: '▦', label: 'Videos' },
+  { key: 'videos', icon: '▦', label: 'Видео' },
   { key: 'style', icon: '🎞', label: 'Шаблоны' },
-  { key: 'tweak', icon: '🎚', label: 'Tweak' },
-  { key: 'duration', icon: '⏱', label: 'Duration' },
-  { key: 'segment', icon: '〜', label: 'Segment' },
-  { key: 'mood', icon: '☺', label: 'Mood' },
+  { key: 'tweak', icon: '🎚', label: 'Подгонка' },
+  { key: 'duration', icon: '⏱', label: 'Длина' },
+  { key: 'segment', icon: '〜', label: 'Фрагмент' },
+  { key: 'mood', icon: '☺', label: 'Ритм' },
   { key: 'transition', icon: '⇄', label: 'Переходы' },
   { key: 'text', icon: 'T', label: 'Текст' },
-  { key: 'fade', icon: '▣', label: 'Fade' },
-  { key: 'format', icon: '▭', label: 'Format' },
+  { key: 'fade', icon: '▣', label: 'Затемнение' },
+  { key: 'format', icon: '▭', label: 'Формат' },
 ];
 
 const TEXT_COLORS = ['#FFFFFF', '#FFE000', '#00E0FF', '#FF3B6B', '#0D0D0D', '#CCFF00'];
@@ -37,32 +37,32 @@ const TRANSITIONS: { key: 'none' | 'dissolve' | 'slide' | 'zoom' | 'mix'; title:
 ];
 
 const DURATION_PRESETS: { label: string; time: string; seconds: number }[] = [
-  { label: 'Snap', time: '0:10', seconds: 10 },
-  { label: 'Story', time: '0:15', seconds: 15 },
+  { label: 'Короткий', time: '0:10', seconds: 10 },
+  { label: 'Stories', time: '0:15', seconds: 15 },
   { label: 'Reels', time: '0:30', seconds: 30 },
   { label: 'TikTok', time: '1:00', seconds: 60 },
-  { label: 'Facebook', time: '1:30', seconds: 90 },
-  { label: 'Popular', time: '3:00', seconds: 180 },
-  { label: 'Полный трек', time: '—', seconds: -1 },
+  { label: 'Длинный', time: '1:30', seconds: 90 },
+  { label: 'YouTube', time: '3:00', seconds: 180 },
+  { label: 'Весь трек', time: '—', seconds: -1 },
 ];
 
 const MOODS: { key: 'mellow' | 'natural' | 'energetic'; title: string; desc: string }[] = [
-  { key: 'mellow', title: 'Mellow', desc: 'Склейки редко (каждый 4-й бит). Спокойные, атмосферные видео.' },
-  { key: 'natural', title: 'Natural', desc: 'Склейки на каждый 2-й бит. Сбалансированный ритм.' },
-  { key: 'energetic', title: 'Energetic', desc: 'Склейки на каждый бит и onset. Динамичные видео.' },
+  { key: 'mellow', title: 'Спокойный', desc: 'Склейки редко (каждый 4-й бит). Спокойные, атмосферные видео.' },
+  { key: 'natural', title: 'Обычный', desc: 'Склейки на каждый 2-й бит. Сбалансированный ритм.' },
+  { key: 'energetic', title: 'Энергичный', desc: 'Склейки на каждый бит и акцент. Динамичные видео.' },
 ];
 
 const FADES: { key: 'none' | 'in' | 'out' | 'all'; label: string }[] = [
-  { key: 'none', label: 'None' },
-  { key: 'in', label: 'In' },
-  { key: 'out', label: 'Out' },
-  { key: 'all', label: 'All' },
+  { key: 'none', label: 'Нет' },
+  { key: 'in', label: 'В начале' },
+  { key: 'out', label: 'В конце' },
+  { key: 'all', label: 'В начале и в конце' },
 ];
 
 const FORMATS: { key: '9:16' | '1:1' | '16:9'; title: string; sub: string }[] = [
-  { key: '9:16', title: 'Portrait', sub: '9:16' },
-  { key: '1:1', title: 'Square', sub: '1:1' },
-  { key: '16:9', title: 'Landscape', sub: '16:9' },
+  { key: '9:16', title: 'Вертикальное', sub: '9:16 · TikTok, Reels' },
+  { key: '1:1', title: 'Квадрат', sub: '1:1' },
+  { key: '16:9', title: 'Горизонтальное', sub: '16:9 · YouTube' },
 ];
 
 // §6.1: модальное окно Videos (функционал MediaPicker, кнопки Отмена/Применить).

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { useUIStore } from '../store/uiStore';
 import { buildAndRender } from '../utils/ffmpegBuilder';
-import { showToast } from '../store/toastStore';
+import { showToast, showError } from '../store/toastStore';
 import { PLATFORM_PRESETS } from '../data/platformPresets';
 import { useQueueStore } from '../store/queueStore';
 import UniqualizerPanel from './UniqualizerPanel';
@@ -64,7 +64,9 @@ export default function ExportModal() {
         setExportProgress(p);
         queue.updateJob(jobId, { percent: p });
       });
-      queue.updateJob(jobId, ok ? { status: 'done', percent: 100 } : { status: 'error' });
+      // Отмена — не ошибка: раньше она ложилась в очередь красной строкой.
+      queue.updateJob(jobId, ok ? { status: 'done', percent: 100 } : { status: 'cancelled' });
+      if (!ok) showToast('Экспорт отменён');
       if (ok) {
         const count = useProjectStore.getState().uniqualizerCount;
         window.electronAPI.historyAdd({
@@ -85,11 +87,10 @@ export default function ExportModal() {
     } catch (err) {
       queue.updateJob(jobId, { status: 'error' });
       // §14: ошибка FFmpeg — диалоговое окно (с технической причиной для диагностики).
+      // Раньше — системный alert со stderr FFmpeg внутри: без прокрутки и без
+      // копирования. Теперь — своё уведомление, подробности под раскрытием.
       const detail = err instanceof Error ? err.message : String(err);
-      window.alert(
-        'Ошибка при обработке видео. Попробуйте другой файл или проверьте, что видеофайл не повреждён.\n\n' +
-          `Детали: ${detail}`
-      );
+      showError('Не удалось обработать видео. Попробуйте другой файл или проверьте, что он не повреждён.', detail);
     } finally {
       setIsExporting(false);
       setExportProgress(0);

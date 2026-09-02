@@ -3,6 +3,7 @@ import { useProjectStore } from '../store/projectStore';
 import { analyzeBeat, fallbackBeatData } from '../utils/beatDetection';
 import { generateClips } from '../utils/videoSlicer';
 import { applyEffects } from '../utils/effectsEngine';
+import { showToast } from '../store/toastStore';
 
 const STEPS = [
   'Анализируем аудио...',
@@ -37,6 +38,11 @@ export default function ProcessingScreen() {
       const beatData = s.selectedTrack
         ? await analyzeBeat(s.selectedTrack.file, s.selectedTrack.duration ?? 0)
         : fallbackBeatData(s.duration && s.duration > 0 ? s.duration : 30);
+      // Подмена ритма равномерной сеткой раньше проходила молча — человек
+      // получал ролик не в такт под надписью «Готово!». Теперь говорим.
+      if (s.selectedTrack && beatData.fallback) {
+        showToast(`Ритм не определён: ${beatData.fallbackReason ?? 'анализ не удался'}. Нарезка равномерная, каждые 0,5 с.`);
+      }
       setProgress(40);
 
       // 2. Нарезка клипов
@@ -70,6 +76,7 @@ export default function ProcessingScreen() {
     // «Синхронизируем...» навсегда. При ошибке логируем и всё равно уходим в редактор.
     run().catch((err) => {
       console.error('processing failed:', err);
+      showToast(`Не удалось собрать монтаж: ${err instanceof Error ? err.message : String(err)}`);
       s.setIsProcessing(false);
       s.setCurrentScreen('editor');
     });

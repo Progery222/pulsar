@@ -16,7 +16,7 @@ export default function UpdateBanner() {
     return off;
   }, []);
 
-  if (status.state === 'none' || status.state === 'error') return null;
+  if (status.state === 'none') return null;
 
   const wrap: React.CSSProperties = {
     position: 'fixed',
@@ -34,6 +34,15 @@ export default function UpdateBanner() {
     fontSize: 13,
     color: 'var(--text-primary)',
   };
+  const ghostBtn: React.CSSProperties = {
+    background: 'transparent',
+    color: 'var(--text-primary)',
+    border: '1px solid var(--border)',
+    borderRadius: 8,
+    padding: '6px 10px',
+    fontSize: 13,
+    cursor: 'pointer',
+  };
   const greenBtn: React.CSSProperties = {
     background: 'var(--accent-green)',
     color: '#0D0D0D',
@@ -45,6 +54,17 @@ export default function UpdateBanner() {
     cursor: 'pointer',
   };
 
+  // Ошибку раньше выбрасывали: без сети — тишина, обрыв загрузки — замерший
+  // процент навсегда. Теперь она видна, и её можно повторить или скрыть.
+  if (status.state === 'error') {
+    return (
+      <div style={{ ...wrap, borderColor: 'var(--accent-orange, #ffa23a)' }}>
+        <span>Не удалось загрузить обновление — нет связи с сервером.</span>
+        <button style={ghostBtn} onClick={() => window.electronAPI.downloadUpdate()}>Повторить</button>
+        <button style={ghostBtn} onClick={() => setStatus({ state: 'none' })} aria-label="Скрыть">✕</button>
+      </div>
+    );
+  }
   if (status.state === 'available') {
     return (
       <div style={wrap}>

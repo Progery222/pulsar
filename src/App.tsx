@@ -80,8 +80,10 @@ function App() {
       }
       if (e.ctrlKey && key === 'n') {
         e.preventDefault();
-        if (window.confirm('Начать новый проект? Текущий прогресс будет потерян.')) {
-          useProjectStore.getState().setCurrentScreen('home');
+        // Раньше здесь только менялся экран: «потерянный» проект оставался в store
+        // и тут же предлагался кнопкой «Продолжить проект».
+        if (window.confirm('Начать новый проект? Текущие видео и монтаж будут сброшены.')) {
+          useProjectStore.getState().resetProject();
         }
         return;
       }

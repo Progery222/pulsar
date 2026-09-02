@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export type JobMode = 'editor' | 'vub' | 'cleaner';
-export type JobStatus = 'queued' | 'detecting' | 'processing' | 'done' | 'error';
+export type JobStatus = 'queued' | 'detecting' | 'processing' | 'done' | 'error' | 'cancelled';
 
 export interface Job {
   id: string;
@@ -34,6 +34,6 @@ export const useQueueStore = create<QueueState>((set, get) => ({
   updateJob: (id, patch) =>
     set((s) => ({ jobs: s.jobs.map((j) => (j.id === id ? { ...j, ...patch } : j)) })),
   removeJob: (id) => set((s) => ({ jobs: s.jobs.filter((j) => j.id !== id) })),
-  clearFinished: () => set((s) => ({ jobs: s.jobs.filter((j) => j.status !== 'done' && j.status !== 'error') })),
+  clearFinished: () => set((s) => ({ jobs: s.jobs.filter((j) => j.status !== 'done' && j.status !== 'error' && j.status !== 'cancelled') })),
   activeCount: () => get().jobs.filter((j) => j.status === 'queued' || j.status === 'processing').length,
 }));

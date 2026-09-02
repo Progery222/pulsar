@@ -470,8 +470,10 @@ export default function EditorScreen() {
     applyVisuals(t);
   }
 
+  // Проект в store остаётся — на стартовом экране будет «Продолжить проект».
+  // Раньше здесь стоял confirm «Прогресс будет потерян», и это была неправда.
   function goHome() {
-    if (window.confirm('Вернуться на главную? Прогресс будет потерян.')) setScreen('home');
+    setScreen('home');
   }
   function cancelExport() {
     window.electronAPI.cancelRender();

@@ -16,6 +16,8 @@ import type { UniqualizerSettings } from '../types/uniqualizer';
 
 // Полный интерфейс состояния проекта (§15 ТЗ).
 export interface ProjectState {
+  /** Новый проект: сбросить материал и результат, настройки монтажа оставить. */
+  resetProject: () => void;
   // Медиа
   mediaFiles: MediaFile[]; // Список загруженных видеофайлов
   mediaOrder: string[]; // Порядок ID файлов
@@ -194,6 +196,17 @@ export const useProjectStore = create<ProjectState & ProjectActions>((set) => ({
 
   // --- Экшены ---
   setCurrentScreen: (screen) => set({ currentScreen: screen }),
+  resetProject: () =>
+    set({
+      mediaFiles: [],
+      mediaOrder: [],
+      selectedTrack: null,
+      segmentStart: 0,
+      generatedClips: [],
+      beatData: null,
+      isProcessing: false,
+      currentScreen: 'home',
+    }),
   setMediaFiles: (files) =>
     set({ mediaFiles: files, mediaOrder: files.map((f) => f.id) }),
   setSelectedTrack: (track) => set({ selectedTrack: track }),

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, protocol } from 'electron';
+import { app, BrowserWindow, dialog, Menu, protocol } from 'electron';
 import fs from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns';
@@ -52,8 +52,41 @@ import { registerImgOptHandlers } from './ipc/imgopt';
 process.env.APP_ROOT = path.join(__dirname, '..');
 
 // Диагностика краша Студии: логируем причину гибели рендер/дочерних процессов.
-app.on('render-process-gone', (_e, _wc, details) => {
+/**
+ * Падения — с объяснением, а не молча.
+ *
+ * Без этих обработчиков исключение в main тихо убивало процесс (окно просто
+ * исчезало), а крэш рендерера оставлял чёрное окно без единой надписи.
+ * Отклонённые промисы только логируем: диалог на каждый был бы шумом.
+ */
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH] uncaughtException:', err);
+  try {
+    dialog.showErrorBox(
+      'Pulsar остановился',
+      `Произошёл сбой, приложение будет закрыто.
+
+${err?.stack ?? String(err)}`.slice(0, 2000),
+    );
+  } finally {
+    app.exit(1);
+  }
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRASH] unhandledRejection:', reason);
+});
+
+app.on('render-process-gone', (_e, wc, details) => {
   console.error('[CRASH] render-process-gone:', JSON.stringify(details));
+  // Окно не должно оставаться чёрным: перезагружаем и говорим, что случилось.
+  if (details.reason !== 'clean-exit' && !wc.isDestroyed()) {
+    wc.reload();
+    wc.once('did-finish-load', () => {
+      void wc.executeJavaScript(
+        `window.dispatchEvent(new CustomEvent('pulsar:recovered', { detail: ${JSON.stringify(details.reason)} }))`,
+      ).catch(() => {});
+    });
+  }
 });
 app.on('child-process-gone', (_e, details) => {
   console.error('[CRASH] child-process-gone:', JSON.stringify(details));
@@ -127,6 +160,10 @@ function createWindow() {
 
   if (VITE_DEV_SERVER_URL) {
     win.loadURL(VITE_DEV_SERVER_URL);
+    // Меню снято ради Ctrl+R; DevTools в разработке — по F12.
+    win.webContents.on('before-input-event', (_e, input) => {
+      if (input.type === 'keyDown' && input.key === 'F12') win?.webContents.toggleDevTools();
+    });
   } else {
     win.loadFile(path.join(RENDERER_DIST, 'index.html'));
   }
@@ -146,6 +183,12 @@ const MIME: Record<string, string> = {
 };
 
 app.whenReady().then(() => {
+  // Меню приложения не нужно, а дефолтное меню Electron — вредно: у него
+  // Ctrl+R = перезагрузка окна, и она срабатывала раньше нашего Ctrl+R
+  // «перемешать», теряя проект. Живы были и Ctrl+Shift+I, Ctrl+±.
+  // В разработке DevTools остаются на F12.
+  Menu.setApplicationMenu(null);
+
   // media:///<encoded-abs-path> -> потоковая отдача локального файла с поддержкой Range.
   protocol.handle('media', async (request) => {
     const encoded = request.url.slice('media://'.length).replace(/^\/+/, '');

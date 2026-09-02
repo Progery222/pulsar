@@ -89,6 +89,9 @@ export interface BeatData {
   beat_times: number[];
   onset_times: number[];
   duration: number;
+  /** Ритм не определён — сетка равномерная. Пользователь обязан это увидеть. */
+  fallback?: boolean;
+  fallbackReason?: string;
 }
 
 // Эффект, привязанный к временной метке внутри фрагмента.

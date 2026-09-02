@@ -28,17 +28,14 @@ function getAudioDuration(audioPath: string): Promise<number> {
 }
 
 // Fallback (§14): равномерное разбиение трека на фрагменты по 0.5 секунды.
-export function fallbackBeatData(duration: number): BeatData {
+// Помечается явно: результат — не ритм, и пользователь обязан об этом узнать,
+// иначе он получает ролик не в такт под экраном «Готово!».
+export function fallbackBeatData(duration: number, reason = 'нет трека'): BeatData {
   const beat_times: number[] = [];
   for (let t = 0; t < duration; t += 0.5) {
     beat_times.push(Number(t.toFixed(3)));
   }
-  return {
-    tempo: 120,
-    beat_times,
-    onset_times: [],
-    duration,
-  };
+  return { tempo: 120, beat_times, onset_times: [], duration, fallback: true, fallbackReason: reason };
 }
 
 // analyzeBeat — вызывает IPC analyze-audio; при ошибке активирует fallback.
@@ -68,8 +65,14 @@ export async function analyzeBeat(
       return result as BeatData;
     }
     throw new Error('error' in (result ?? {}) ? (result as { error: string }).error : 'no beat data');
-  } catch {
+  } catch (err) {
     const duration = fallbackDuration > 0 ? fallbackDuration : await getAudioDuration(audioPath);
-    return fallbackBeatData(duration);
+    const message = err instanceof Error ? err.message : String(err);
+    const reason = /timeout/i.test(message)
+      ? 'анализ ритма не уложился в 30 секунд'
+      : /python/i.test(message)
+        ? 'не установлен анализ ритма (Python)'
+        : 'анализ ритма не удался';
+    return fallbackBeatData(duration, reason);
   }
 }
