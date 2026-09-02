@@ -12,6 +12,8 @@ const GPS_KEY = '__gps';
 const LABEL: Record<string, string> = { [GPS_KEY]: 'Координаты (широта, долгота)' };
 const VID_RE = /\.(mp4|mov|m4v|3gp|3g2|mkv|webm|avi|mpg|mpeg|wmv|flv|m2ts|ts)$/i;
 const isVideo = (f: string) => VID_RE.test(f);
+const AUD_RE = /\.(mp3|wav|flac|m4a|ogg|opus|aac|aiff?|wma)$/i;
+const isAudio = (f: string) => AUD_RE.test(f);
 // В MKV/WEBM/AVI exiftool писать не умеет — предупреждаем до запуска, а не в отчёте.
 const NOT_WRITABLE_RE = /\.(mkv|webm|avi|mpg|mpeg|wmv|flv|m2ts|ts|gif)$/i;
 
@@ -60,7 +62,10 @@ export default function BatchPanel() {
   async function rollSame() {
     // Набор тегов зависит от типа: у видео нет выдержки/ISO, зато даты дублируются в дорожки.
     const allVideo = files.length > 0 && files.every(isVideo);
-    const gen = await window.electronAPI.metaRandom(rand, allVideo ? 'video' : 'image');
+    const allAudio = files.length > 0 && files.every(isAudio);
+    // Для звука фото-теги отсеиваются целиком: с очисткой пачка получала бы
+    // пустые файлы, без неё — молча ничего.
+    const gen = await window.electronAPI.metaRandom(rand, allVideo ? 'video' : allAudio ? 'audio' : 'image');
     // Сгенерённое можно править руками перед запуском — это просто заготовка.
     setPairs(Object.entries(gen).map(([tag, value]) => ({ tag, value })));
   }
