@@ -21,3 +21,4 @@ screen-recorder/
 # public/studio — собранный бандл Студии коммитим в репо, чтобы облачный
 # авторелиз не собирал OpenReel в CI (pnpm/wasm фрагильны). Обновлять через
 # `npm run studio:build` перед релизом.
+.claude/worktrees/
