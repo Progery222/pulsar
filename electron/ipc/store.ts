@@ -5,7 +5,9 @@ import path from 'node:path';
 // Персистентная история выполненных задач (userData/history.json).
 export interface HistoryEntry {
   id: string;
-  mode: 'editor' | 'vub' | 'cleaner';
+  mode:
+    | 'editor' | 'vub' | 'cleaner'
+    | 'tts' | 'dub' | 'download' | 'recorder' | 'transcribe' | 'imgopt' | 'split' | 'aivideo' | 'templates' | 'metadata';
   title: string;
   createdAt: number; // мс (передаётся из renderer)
   outputDir: string;

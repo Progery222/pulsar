@@ -160,7 +160,9 @@ export const useVubStore = create<VubState>((set, get) => ({
 
   effects: {
     darken: { enabled: false, duration: 3, audioFadeIn: false },
-    mirror: { enabled: true, mode: 'always' }, // ON — самый сильный слом content fingerprint
+    // Выключено по умолчанию: включённое зеркало переворачивало все надписи
+    // в первом же прогоне новичка, который этой вкладки ещё не видел.
+    mirror: { enabled: false, mode: 'random' },
     grid: { enabled: false, opacityMin: 5, opacityMax: 15 },
     gridColor: { enabled: false, colors: [] },
     gridSize: { enabled: false, size: 32 },

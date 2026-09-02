@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 
-export type JobMode = 'editor' | 'vub' | 'cleaner';
+export type JobMode =
+  | 'editor' | 'vub' | 'cleaner'
+  | 'tts' | 'dub' | 'download' | 'recorder' | 'transcribe' | 'imgopt' | 'split' | 'aivideo' | 'templates' | 'metadata';
 export type JobStatus = 'queued' | 'detecting' | 'processing' | 'done' | 'error' | 'cancelled';
 
 export interface Job {

@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { useUIStore } from '../store/uiStore';
+import { useUIStore, type AppMode } from '../store/uiStore';
+import type { JobMode } from '../store/queueStore';
 import FloatingWindow from './FloatingWindow';
 
 interface HistoryEntry {
   id: string;
-  mode: 'editor' | 'vub' | 'cleaner';
+  mode: JobMode;
   title: string;
   createdAt: number;
   outputDir: string;
@@ -13,10 +14,13 @@ interface HistoryEntry {
 }
 
 const MODE_LABEL: Record<HistoryEntry['mode'], string> = {
-  editor: 'Монтаж',
-  vub: 'Уникализатор',
-  cleaner: 'Замена титров',
+  editor: 'Монтаж', vub: 'Уникализатор', cleaner: 'Замена титров', tts: 'Озвучка', dub: 'Дубляж',
+  download: 'Скачивание', recorder: 'Запись экрана', transcribe: 'Субтитры', imgopt: 'Изображения',
+  split: 'Сплит-монтаж', aivideo: 'AI-ролик', templates: 'Шаблоны', metadata: 'Метаданные',
 };
+
+// Режимы истории совпадают с режимами приложения, кроме сплит-монтажа.
+const toAppMode = (m: HistoryEntry['mode']): AppMode => (m === 'split' ? 'splitmerge' : m);
 
 function fmtDate(ts: number): string {
   return new Date(ts).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
@@ -93,7 +97,7 @@ export default function HistoryPanel() {
                       Открыть папку
                     </button>
                   )}
-                  <button onClick={() => { setAppMode(e.mode); setShowHistory(false); }} style={smallBtn}>
+                  <button onClick={() => { setAppMode(toAppMode(e.mode)); setShowHistory(false); }} style={smallBtn}>
                     Повторить
                   </button>
                   <button onClick={() => remove(e.id)} style={{ ...smallBtn, color: 'var(--danger)' }}>

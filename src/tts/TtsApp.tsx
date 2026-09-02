@@ -103,7 +103,8 @@ export default function TtsApp() {
     const id = `tts_${Date.now()}`;
     const name = text.trim().slice(0, 40).replace(/\s+/g, '_') || 'voice';
     const queue = useQueueStore.getState();
-    queue.addJobs([{ id, mode: 'editor', name: `Озвучка • ${name}`, status: 'processing', percent: 50 }]);
+    // Своё имя модуля и честный ноль вместо фиктивных 50 % под именем «Монтаж».
+    queue.addJobs([{ id, mode: 'tts', name: `Озвучка • ${name}`, status: 'processing', percent: 0 }]);
     try {
       const r = await window.electronAPI.ttsSynth({
         text,
@@ -124,7 +125,7 @@ export default function TtsApp() {
         queue.updateJob(id, { status: 'done', percent: 100 });
         window.electronAPI.historyAdd({
           id,
-          mode: 'editor',
+          mode: 'tts',
           title: `Озвучка • ${lang} • ${effective}${voice ? ' • ' + (isCloneVoice(voice) ? 'клон' : voice.replace(/^design:/, '')) : ''}`,
           createdAt: Date.now(),
           outputDir,

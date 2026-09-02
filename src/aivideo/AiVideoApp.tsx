@@ -141,7 +141,7 @@ export default function AiVideoApp() {
     <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border)', borderRadius: 12, padding: 16, marginBottom: 18 }}>
       <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 4 }}>API-ключи</div>
       <div style={{ fontSize: 12, color: 'var(--text-secondary)', marginBottom: 10 }}>
-        Нужны бесплатные ключи стока: <b>Pexels</b> (pexels.com/api) и/или <b>Pixabay</b> (pixabay.com/api/docs). Ключ LLM берётся из «Воронки» (OpenRouter){keys.openrouter ? ' — задан ✓' : ' — не задан!'}.
+        Нужны бесплатные ключи стока: <b>Pexels</b> (pexels.com/api) и/или <b>Pixabay</b> (pixabay.com/api/docs). Ключ OpenRouter для сценария задаётся в Настройках{keys.openrouter ? ' — задан ✓' : ' — пока не задан'}.
       </div>
       <input value={keys.pexels} onChange={(e) => setKeys({ ...keys, pexels: e.target.value })} placeholder="Pexels API key" style={inp} />
       <input value={keys.pixabay} onChange={(e) => setKeys({ ...keys, pixabay: e.target.value })} placeholder="Pixabay API key" style={{ ...inp, marginTop: 8 }} />

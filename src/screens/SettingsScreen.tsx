@@ -209,14 +209,14 @@ export default function SettingsScreen() {
           </p>
         </div>
 
-        {/* API-ключ OpenRouter + модель (AI-классификация в модуле «Воронка») */}
+        {/* API-ключ OpenRouter + модель — нужен AI-ролику (сценарий); «Воронка» из интерфейса убрана */}
         <div style={section}>
           <label style={label}>Ключ API OpenRouter</label>
           <input
             type="password"
             value={orKey}
             onChange={(e) => setOrKey(e.target.value)}
-            placeholder="sk-or-… — ключ для модуля «Воронка»"
+            placeholder="sk-or-… — нужен для AI-ролика"
             style={input}
           />
           <label style={{ ...label, marginTop: 12 }}>Модель классификации</label>

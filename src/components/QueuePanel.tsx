@@ -6,6 +6,16 @@ const MODE_LABEL: Record<Job['mode'], string> = {
   editor: 'Монтаж',
   vub: 'Уникализатор',
   cleaner: 'Замена титров',
+  tts: 'Озвучка',
+  dub: 'Дубляж',
+  download: 'Скачивание',
+  recorder: 'Запись экрана',
+  transcribe: 'Субтитры',
+  imgopt: 'Изображения',
+  split: 'Сплит-монтаж',
+  aivideo: 'AI-ролик',
+  templates: 'Шаблоны',
+  metadata: 'Метаданные',
 };
 
 const STATUS_LABEL: Record<string, string> = {

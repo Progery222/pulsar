@@ -187,6 +187,10 @@ export default function FirstRunSetup() {
               <div style={{ fontSize: 12, color: status?.pythonOk ? 'var(--accent-green)' : 'var(--danger)' }}>
                 {status === null ? 'Проверка…' : status.pythonOk ? `Найден ${status.pythonVersion ?? ''}` : 'Не найден — нужен для движков озвучки'}
               </div>
+              {/* Ошибку проверки main возвращает, а мастер её раньше не показывал. */}
+              {status?.error && (
+                <div style={{ fontSize: 12, color: 'var(--danger)', marginTop: 4, maxWidth: 420, lineHeight: 1.4 }}>{status.error}</div>
+              )}
             </div>
             {needsRestart ? (
               <button onClick={() => window.electronAPI.relaunchApp()} className="btn-primary" style={{ padding: '7px 16px', fontSize: 13 }}>
@@ -231,6 +235,14 @@ export default function FirstRunSetup() {
             style={{ width: '100%', padding: '12px 16px', fontSize: 15, fontWeight: 600, marginBottom: 16, opacity: !status?.pythonOk || busy ? 0.5 : 1 }}
           >
             {installingAll ? `Устанавливаю всё… ${installing ? `(${installing})` : ''}` : '⬇ Установить всё'}
+          </button>
+        )}
+        {busy && (
+          <button
+            onClick={() => void window.electronAPI.setupCancel()}
+            style={{ width: '100%', padding: '9px 16px', fontSize: 13, marginBottom: 16, marginTop: -8, background: 'transparent', border: '1px solid var(--border)', borderRadius: 8, color: 'var(--text-primary)', cursor: 'pointer' }}
+          >
+            Остановить установку
           </button>
         )}
         {!status?.pythonOk && (

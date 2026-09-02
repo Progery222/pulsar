@@ -8,8 +8,10 @@ import numpy as np
 def analyze_audio(audio_path):
     # sr=22050 (стандарт librosa для beat tracking): заметно быстрее загрузки на
     # нативной частоте и стабильнее по детекту, чем sr=None.
-    # res_type=kaiser_fast — быстрый ресемплинг (для бит-детекта качества хватает).
-    y, sr = librosa.load(audio_path, sr=22050, mono=True, res_type="kaiser_fast")
+    # Ресемплер по умолчанию (soxr): kaiser_fast требует resampy, которого
+    # в librosa >= 0.10 больше нет — любой трек 44,1/48 кГц падал с
+    # «No module named 'resampy'», и монтаж молча уходил в равномерную сетку.
+    y, sr = librosa.load(audio_path, sr=22050, mono=True)
     duration = float(librosa.get_duration(y=y, sr=sr))
 
     # librosa>=0.10 возвращает tempo как np.ndarray — приводим к скаляру.

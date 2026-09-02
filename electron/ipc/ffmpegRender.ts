@@ -102,8 +102,11 @@ function fontsDir(): string {
     ? path.join(process.resourcesPath, 'assets', 'fonts')
     : path.join(process.env.APP_ROOT ?? process.cwd(), 'assets', 'fonts');
 }
+// Процент не экранируем: парсер filtergraph снимает обратный слэш, drawtext
+// видит «Stray %» и рисует пустую подложку. Вместо этого фильтр получает
+// expansion=none — текст берётся буквально, без подстановок вроде %{…}.
 function escDrawtext(t: string): string {
-  return t.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "’").replace(/%/g, '\\%');
+  return t.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "’");
 }
 function escFilterPath(p: string): string {
   return p.replace(/\\/g, '/').replace(/:/g, '\\:');
@@ -120,7 +123,7 @@ function buildTitleFilter(title: RenderTitle, h: number, duration: number): stri
   const dur = Math.max(1, duration);
   const alpha = `'if(lt(t,0.3),t/0.3,if(gt(t,${(dur - 0.3).toFixed(2)}),max(0,(${dur.toFixed(2)}-t)/0.3),1))'`;
   const box = title.box ? `:box=1:boxcolor=black@0.4:boxborderw=${Math.round(fontsize * 0.35)}` : '';
-  return `drawtext=${fontPart}text='${escDrawtext(text)}':fontsize=${fontsize}:fontcolor=${color}:x=(w-text_w)/2:y=${y}:alpha=${alpha}${box}`;
+  return `drawtext=${fontPart}expansion=none:text='${escDrawtext(text)}':fontsize=${fontsize}:fontcolor=${color}:x=(w-text_w)/2:y=${y}:alpha=${alpha}${box}`;
 }
 
 export interface RenderHooks {

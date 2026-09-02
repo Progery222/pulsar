@@ -3,6 +3,7 @@ import { killAll } from './ipc/procRegistry';
 import fs from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns';
+import { Readable } from 'node:stream';
 
 // Node 18 fetch (undici) без Happy Eyeballs падает «fetch failed», если хост
 // резолвится в IPv6, а IPv6 не работает. Глобально предпочитаем IPv4 для всех
@@ -181,6 +182,14 @@ const MIME: Record<string, string> = {
   '.mp3': 'audio/mpeg',
   '.wav': 'audio/wav',
   '.aac': 'audio/aac',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.gif': 'image/gif',
   '.ttf': 'font/ttf',
   '.otf': 'font/otf',
 };
@@ -206,7 +215,10 @@ app.whenReady().then(() => {
     try {
       const stat = await fs.promises.stat(filePath);
       const total = stat.size;
-      const type = MIME[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
+      const type = MIME[path.extname(filePath).toLowerCase()];
+      // Схема отдаёт только медиа и шрифты: произвольный файл диска через
+      // media:// читать нельзя, даже если рендерер попросит.
+      if (!type) return new Response('unsupported', { status: 404 });
       const rangeHeader = request.headers.get('Range');
       // Ограничение размера чанка: для открытых range (bytes=0-) не тянем весь
       // файл в память — отдаём кусок, <video> дозапросит остальное.
@@ -230,14 +242,12 @@ app.whenReady().then(() => {
         partial = true;
       }
       const len = end - start + 1;
-      const data = new Uint8Array(len);
-      const fd = await fs.promises.open(filePath, 'r');
-      try {
-        await fd.read(data, 0, len, start);
-      } finally {
-        await fd.close();
-      }
-      return new Response(data, {
+      // Поток, а не буфер: fd.read одним вызовом падал нативным assert на файле
+      // ≥ 2 ГиБ (длина не влезала в int32) и ронял main мимо всех обработчиков,
+      // а на меньших держал весь файл в памяти до конца ответа.
+      const stream = fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
+      const body = Readable.toWeb(stream) as unknown as ReadableStream;
+      return new Response(body, {
         status: partial ? 206 : 200,
         headers: {
           'Content-Type': type,

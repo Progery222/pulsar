@@ -98,7 +98,7 @@ export default function DubApp() {
       } else {
         window.electronAPI.historyAdd({
           id: `dub_${Date.now()}`,
-          mode: 'cleaner',
+          mode: 'dub',
           title: `Дубляж • ${sourceLang}→${targetLang}`,
           createdAt: Date.now(),
           outputDir,

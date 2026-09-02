@@ -1,6 +1,7 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 // spawn через реестр: дочерние процессы гасятся при выходе и крэше (procRegistry).
-import { spawnTracked as spawn } from './procRegistry';
+import type { ChildProcess } from 'node:child_process';
+import { killTree, spawnTracked as spawn } from './procRegistry';
 import path from 'node:path';
 import { resolvePython, forgetPython, spawnPython } from './python';
 import { hasNvidiaGpu } from './omnivoice';
@@ -113,9 +114,9 @@ function runDownloader(script: string, args: string[], startLine: string, failMs
   return new Promise((resolve) => {
     sendProgress({ line: startLine });
     void (async () => {
-    const child = await spawnPython(['-u', pyScript(script), ...args], {
+    const child = (current = await spawnPython(['-u', pyScript(script), ...args], {
       env: { ...process.env, PYTHONUNBUFFERED: '1', PYTHONUTF8: '1', PYTHONIOENCODING: 'utf-8' },
-    });
+    }));
     const handle = (chunk: Buffer) => {
       for (const line of chunk.toString().split(/[\r\n]+/)) {
         const t = line.trim();
@@ -147,15 +148,18 @@ function downloadWhisperModel() {
   return runDownloader('download_whisper.py', ['--model', 'small'], 'Скачиваю модель распознавания (Whisper)…', 'Не удалось скачать модель Whisper');
 }
 
+/** Текущий процесс установки — чтобы пользователь мог её остановить. */
+let current: ChildProcess | null = null;
+
 // pip install со стримингом прогресса в renderer.
 function runPip(pkgs: string[], extra: string[] = []): Promise<{ ok: true } | { error: string }> {
   return new Promise((resolve) => {
     sendProgress({ line: `Устанавливаю: pip install ${[...extra, ...pkgs].join(' ')} …` });
     void (async () => {
-    const child = await spawnPython(
+    const child = (current = await spawnPython(
       ['-u', '-m', 'pip', 'install', '--upgrade', '--progress-bar', 'on', ...extra, ...pkgs],
       { env: { ...process.env, PYTHONUNBUFFERED: '1', PIP_DISABLE_PIP_VERSION_CHECK: '1' } }
-    );
+    ));
     const handle = (chunk: Buffer) => {
       const s = chunk.toString();
       const pct = parsePercent(s);
@@ -260,6 +264,15 @@ export function registerSetupHandlers() {
   ipcMain.handle('setup:status', () => checkStatus());
   ipcMain.handle('setup:install', (_e, engine: string) => installEngine(engine));
   ipcMain.handle('setup:installPython', () => installPython());
+  // Отмена установки: раньше 5 ГБ PyTorch нельзя было остановить — только ждать.
+  ipcMain.handle('setup:cancel', () => {
+    if (current) {
+      killTree(current);
+      current = null;
+      sendProgress({ line: 'Установка остановлена.' });
+    }
+    return { ok: true };
+  });
   ipcMain.handle('setup:openPythonSite', () => shell.openExternal('https://www.python.org/downloads/'));
   ipcMain.handle('app:relaunch', () => {
     app.relaunch();

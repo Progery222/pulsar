@@ -748,6 +748,14 @@ export function registerVubHandlers() {
     watcher = fs.watch(watchFolder, (_e, name) => {
       if (name) onNew(name.toString());
     });
+    // Без обработчика ошибок удаление наблюдаемой папки давало шторм событий
+    // (десятки тысяч в секунду) и 100 % CPU у main до ручной остановки.
+    watcher.on('error', () => {
+      watcher?.close();
+      watcher = null;
+      watchQueue.length = 0;
+      notify('Папка наблюдения недоступна — наблюдение остановлено.');
+    });
     notify(`Watch включён: ${watchFolder}. Новые видео будут обработаны автоматически.`);
     return { ok: true };
   });
