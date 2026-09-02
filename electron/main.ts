@@ -1,4 +1,5 @@
 import { app, BrowserWindow, dialog, Menu, protocol } from 'electron';
+import { killAll } from './ipc/procRegistry';
 import fs from 'node:fs';
 import path from 'node:path';
 import dns from 'node:dns';
@@ -61,6 +62,8 @@ process.env.APP_ROOT = path.join(__dirname, '..');
  */
 process.on('uncaughtException', (err) => {
   console.error('[CRASH] uncaughtException:', err);
+  // Дочерние ffmpeg/python иначе переживут нас и продолжат писать в файлы.
+  killAll();
   try {
     dialog.showErrorBox(
       'Pulsar остановился',
@@ -273,6 +276,10 @@ app.whenReady().then(() => {
   registerMetadataHandlers();
   createWindow();
 });
+
+// Единственная точка, где гасятся все дочерние процессы: закрытие окна,
+// app.quit(), relaunch после установки, quitAndInstall — всё проходит здесь.
+app.on('before-quit', () => killAll());
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {

@@ -1,5 +1,6 @@
 import { app, ipcMain } from 'electron';
-import { spawn } from 'node:child_process';
+// spawn через реестр: дочерние процессы гасятся при выходе и крэше (procRegistry).
+import { spawnTracked as spawn } from './procRegistry';
 import ffmpegStatic from 'ffmpeg-static';
 import fs from 'node:fs';
 import path from 'node:path';

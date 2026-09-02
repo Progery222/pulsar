@@ -1,7 +1,8 @@
 import { app, dialog, ipcMain, shell } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
 import { transcribeWhisper } from './transcribe';
-import { spawn } from 'node:child_process';
+// spawn через реестр: дочерние процессы гасятся при выходе и крэше (procRegistry).
+import { spawnTracked as spawn } from './procRegistry';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -147,7 +148,12 @@ export function registerFileHandlers() {
   });
 
   // Открыть папку в проводнике Windows (§11).
-  ipcMain.handle('shell:openPath', async (_event, folderPath: string) => {
+  // Только существующий каталог: shell.openPath на .exe/.bat/.lnk — это запуск
+  // файла, а путь приходит из рендерера.
+  ipcMain.handle('shell:openPath', async (_event, folderPath: unknown) => {
+    if (typeof folderPath !== 'string' || !folderPath) return 'bad path';
+    const st = await fs.promises.stat(folderPath).catch(() => null);
+    if (!st?.isDirectory()) return 'not a directory';
     return shell.openPath(folderPath);
   });
 
@@ -197,7 +203,12 @@ export function registerFileHandlers() {
   });
 
   // Показать файл в проводнике (с выделением).
-  ipcMain.handle('shell:showItem', async (_event, filePath: string) => {
+  // Показать в проводнике — только существующий файл. Выделение ничего не
+  // запускает, но произвольная строка сюда тоже не нужна.
+  ipcMain.handle('shell:showItem', async (_event, filePath: unknown) => {
+    if (typeof filePath !== 'string' || !filePath) return { ok: false };
+    const st = await fs.promises.stat(filePath).catch(() => null);
+    if (!st?.isFile()) return { ok: false };
     shell.showItemInFolder(filePath);
     return { ok: true };
   });

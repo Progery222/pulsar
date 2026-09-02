@@ -1,12 +1,22 @@
 import { app, BrowserWindow, desktopCapturer, globalShortcut, ipcMain, screen, session, shell } from 'electron';
 import ffmpegStatic from 'ffmpeg-static';
 import ffprobeStatic from 'ffprobe-static';
-import { spawn } from 'node:child_process';
+// spawn через реестр: дочерние процессы гасятся при выходе и крэше (procRegistry).
+import { spawnTracked as spawn } from './procRegistry';
 import fs from 'node:fs';
 import https from 'node:https';
 import os from 'node:os';
 import path from 'node:path';
 import { getOpenRouterKey } from './config';
+
+/** Только внутри системной temp — как в proExport. */
+function isTempDir(dir: string): boolean {
+  try {
+    return path.resolve(dir).startsWith(path.resolve(os.tmpdir()));
+  } catch {
+    return false;
+  }
+}
 
 // Запись экрана (нативный модуль Pulsar). Захват через desktopCapturer + getDisplayMedia
 // в renderer (MediaRecorder), трекинг курсора для авто-зума в редакторе, ремукс в mp4
@@ -171,9 +181,17 @@ function displayForSource(sourceId: string | null): RecordedDisplay {
 }
 
 export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | null) {
-  // Разрешения на захват экрана/микрофона (локальное доверенное приложение — разрешаем всё).
-  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) => callback(true));
-  session.defaultSession.setPermissionCheckHandler(() => true);
+  // Разрешения — только те, что нужны записи (экран и микрофон), и только
+  // нашему окну. Раньше вся сессия отдавала всё: камеру, геолокацию, буфер
+  // обмена, HID — любому содержимому, попавшему в окно.
+  const ownUrl = (u: string) => u.startsWith('file://') || u.startsWith('http://localhost') || u.startsWith('http://127.0.0.1');
+  const allowed = new Set(['media', 'display-capture']);
+  session.defaultSession.setPermissionRequestHandler((wc, permission, callback, details) =>
+    callback(allowed.has(permission) && ownUrl(details.requestingUrl ?? wc.getURL())),
+  );
+  session.defaultSession.setPermissionCheckHandler((wc, permission, origin) =>
+    allowed.has(permission) && ownUrl(origin || wc?.getURL() || ''),
+  );
 
   // Источник захвата фулфилится нашим выбором (без OS-пикера).
   session.defaultSession.setDisplayMediaRequestHandler(
@@ -489,10 +507,14 @@ export function registerRecorderHandlers(getMainWindow: () => BrowserWindow | nu
       }
     }
 
-    try {
-      await fs.promises.rm(opts.dir, { recursive: true, force: true });
-    } catch {
-      /* не критично */
+    // Папку с кадрами удаляем только внутри системной temp: путь приходит из
+    // рендерера, и без проверки это был rm -rf любого каталога пользователя.
+    if (isTempDir(opts.dir)) {
+      try {
+        await fs.promises.rm(opts.dir, { recursive: true, force: true });
+      } catch {
+        /* не критично */
+      }
     }
     return 'error' in result ? result : { ok: true as const, path: opts.outPath };
   });
