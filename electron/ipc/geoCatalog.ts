@@ -61,7 +61,10 @@ export function loadCatalog(): GeoCity[] {
   return catalog;
 }
 
-const norm = (s: string): string => s.trim().toLowerCase().replace(/ё/g, 'е');
+// Дефис и пробел в названиях взаимозаменяемы: в GeoNames «Джалал Абад» и
+// «Алма-Ата», пользователь напишет как привык.
+const norm = (s: string): string =>
+  s.toLowerCase().replace(/ё/g, 'е').replace(/[-\s’'ʼ]+/g, ' ').trim();
 
 /** Точное совпадение по русскому или английскому имени; из одноимённых — крупнейший. */
 export function findCity(name: string): GeoCity | null {

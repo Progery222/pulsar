@@ -2,7 +2,9 @@ cities.json — производная от GeoNames cities15000 (https://www.ge
 данные распространяются по лицензии Creative Commons Attribution 4.0
 (https://creativecommons.org/licenses/by/4.0/).
 
-Собирается скриптом scripts/build-cities.py из cities15000.zip:
-https://download.geonames.org/export/dump/cities15000.zip
+Собирается скриптом scripts/build-cities.py из двух архивов GeoNames:
+https://download.geonames.org/export/dump/cities15000.zip (города от 15 тысяч жителей)
+https://download.geonames.org/export/dump/alternateNamesV2.zip (русские названия
+с пометкой языка; ~200 МБ, нужен только при сборке каталога, в репозиторий не кладём)
 
 Формат записи: [en, ru, lat, lon, countryCode, population, isCapital].
