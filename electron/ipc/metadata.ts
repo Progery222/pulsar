@@ -852,6 +852,10 @@ async function geocode(query: string): Promise<GeoHit[]> {
       .map((c) => ({ name: cityLabel(c), lat: c.lat, lon: c.lon })),
   ];
 
+  // Каталог ответил уверенно — в сеть не идём: быстрее, без лимитов Nominatim
+  // и без утечки запроса наружу. Nominatim остаётся для адресов и мелких сёл.
+  if (local.length >= 5) return local;
+
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=8&accept-language=ru&q=${encodeURIComponent(q)}`;
     const res = await fetch(url, {
