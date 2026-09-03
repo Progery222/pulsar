@@ -84,10 +84,19 @@ export function RandomOptions({ value, onChange, kind = 'image' }: {
           <option value="">📱 Телефон: случайный</option>
           {cat.devices.map((d) => <option key={d} value={d}>{d}</option>)}
         </select>
-        <select value={value.city ?? ''} onChange={(e) => set({ city: e.target.value || null })} style={select} disabled={!value.gps}>
-          <option value="">📍 Город: случайный</option>
-          {cat.cities.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
+        {/* Текстовое поле с подсказками вместо списка: в каталоге 34 тысячи
+            городов, и любой из них можно просто напечатать — «Ош», «Бишкек», «Osh». */}
+        <input
+          list="meta-cities"
+          value={value.city ?? ''}
+          onChange={(e) => set({ city: e.target.value || null })}
+          placeholder="📍 Город: случайный — или введите свой"
+          style={{ ...select, minWidth: 220 }}
+          disabled={!value.gps}
+        />
+        <datalist id="meta-cities">
+          {cat.cities.map((c) => <option key={c} value={c} />)}
+        </datalist>
         <label style={dateLbl}>
           с <input type="date" value={value.dateFrom || ''} onChange={(e) => set({ dateFrom: e.target.value })} style={dateInp} disabled={!value.date} />
         </label>

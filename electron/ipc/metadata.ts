@@ -10,6 +10,7 @@ import {
   isAudioField, pickAudio, audioAiSignal, audioAiFields, audioWriteBlockReason, writeAudioTags,
   randomAudioTags,
 } from './metadata-audio';
+import { cityLabel, configureGeoCatalog, findCity, majorCityNames, searchCities } from './geoCatalog';
 
 // Модуль «Метаданные» — инспектор + редактор: загрузил фото или видео → видишь всё (EXIF, GPS,
 // XMP, QuickTime, C2PA, вердикт ИИ/реал) и можешь править любое поле, удалять, чистить всё.
@@ -638,6 +639,12 @@ const CITIES: { name: string; lat: number; lon: number; r: number }[] = [
   { name: 'Mexico City', lat: 19.4326, lon: -99.1332, r: 0.15 },
   { name: 'Sao Paulo', lat: -23.5505, lon: -46.6333, r: 0.15 },
   { name: 'Sydney', lat: -33.8688, lon: 151.2093, r: 0.12 },
+  // Кыргызстан — по запросу пользователя; радиус по площади города.
+  { name: 'Бишкек', lat: 42.8746, lon: 74.5698, r: 0.07 },
+  { name: 'Ош', lat: 40.5283, lon: 72.7985, r: 0.05 },
+  { name: 'Джалал-Абад', lat: 40.9339, lon: 72.9846, r: 0.04 },
+  { name: 'Узген', lat: 40.7697, lon: 73.3014, r: 0.03 },
+  { name: 'Каракол', lat: 42.4907, lon: 78.3936, r: 0.04 },
 ];
 
 const pick = <T,>(a: T[]): T => a[Math.floor(Math.random() * a.length)];
@@ -691,7 +698,9 @@ function randomTags(o: RandOpts, kind: Kind = 'image'): Record<string, string> {
     out.ColorSpace = 'sRGB';
   }
   if (o.gps) {
-    const c = (o.city && CITIES.find((x) => x.name === o.city)) || pick(CITIES);
+    // Сначала встроенный список, потом каталог GeoNames (34 тысячи городов) —
+    // пользователь может ввести любой город, не только из выпадающего списка.
+    const c = (o.city && (CITIES.find((x) => x.name === o.city) ?? findCity(o.city))) || pick(CITIES);
     const lat = c.lat + rnd(-c.r, c.r);
     const lon = c.lon + rnd(-c.r, c.r);
     out[GPS_KEY] = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
@@ -829,12 +838,19 @@ async function geocode(query: string): Promise<GeoHit[]> {
   const q = query.trim();
   if (q.length < 2) return [];
 
-  // Сначала встроенный список — он работает офлайн и мгновенно.
-  const local = CITIES.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c) => ({
+  // Сначала офлайн: встроенный список и каталог GeoNames — мгновенно и без сети.
+  const builtin = CITIES.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())).map((c) => ({
     name: c.name,
     lat: c.lat,
     lon: c.lon,
   }));
+  const seenLocal = new Set(builtin.map((l) => `${l.lat.toFixed(2)},${l.lon.toFixed(2)}`));
+  const local = [
+    ...builtin,
+    ...searchCities(q, 10)
+      .filter((c) => !seenLocal.has(`${c.lat.toFixed(2)},${c.lon.toFixed(2)}`))
+      .map((c) => ({ name: cityLabel(c), lat: c.lat, lon: c.lon })),
+  ];
 
   try {
     const url = `https://nominatim.openstreetmap.org/search?format=json&limit=8&accept-language=ru&q=${encodeURIComponent(q)}`;
@@ -856,6 +872,11 @@ async function geocode(query: string): Promise<GeoHit[]> {
 }
 
 export function registerMetadataHandlers() {
+  // Каталог городов лежит в assets: в сборке это resources, в разработке —
+  // корень проекта. Настраиваем здесь, а не при импорте: APP_ROOT main.ts
+  // выставляет уже после загрузки модулей.
+  configureGeoCatalog(app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd()));
+
   ipcMain.handle('meta:pick', async () => {
     const r = await dialog.showOpenDialog({
       properties: ['openFile'],
@@ -921,7 +942,9 @@ export function registerMetadataHandlers() {
 
   ipcMain.handle('meta:catalog', () => ({
     devices: DEVICES.map((d) => `${d.Make} ${d.Model}`),
-    cities: CITIES.map((c) => c.name),
+    // Встроенные первыми (в том числе добавленные по просьбе пользователя),
+    // дальше столицы и города от полумиллиона из каталога.
+    cities: [...new Set([...CITIES.map((c) => c.name), ...majorCityNames()])],
     encoders: [...AUDIO_ENCODERS],
     genres: [...AUDIO_GENRES],
   }));
