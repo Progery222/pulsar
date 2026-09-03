@@ -2,11 +2,7 @@ import { useRef } from 'react';
 import { useProjectStore } from '../store/projectStore';
 import { regenerateMontage } from '../utils/regenerate';
 import { formatTime } from '../utils/media';
-
-// Псевдо-waveform (детерминированные столбцы) — как в SegmentTool.
-const BARS = Array.from({ length: 160 }, (_, i) =>
-  0.2 + 0.8 * Math.abs(Math.sin(i * 0.5) * Math.cos(i * 0.13))
-);
+import { placeholderBars, useWaveform } from '../utils/waveform';
 
 // Таймлайн музыки под клипами: показывает выбранный сегмент трека и
 // позволяет двигать музыку — перетаскивание окна меняет segmentStart,
@@ -19,8 +15,11 @@ export default function MusicTimeline() {
   const setSegmentStart = useProjectStore((s) => s.setSegmentStart);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const drag = useRef<{ grabPct: number } | null>(null);
+  // Хук — до раннего выхода: порядок хуков между рендерами меняться не должен.
+  const wave = useWaveform(selectedTrack?.file ?? null, 160);
 
   if (!selectedTrack) return null;
+  const bars = wave ?? placeholderBars(160);
 
   const trackDur = selectedTrack.duration || beatData?.duration || duration || 1;
   const windowPct = Math.min(1, duration / trackDur);
@@ -71,8 +70,8 @@ export default function MusicTimeline() {
         onPointerMove={onMove}
         onPointerUp={onUp}
       >
-        {BARS.map((h, i) => (
-          <div key={i} style={{ flex: 1, height: `${h * 100}%`, backgroundColor: 'var(--text-secondary)', opacity: 0.4 }} />
+        {bars.map((h, i) => (
+          <div key={i} style={{ flex: 1, height: `${h * 100}%`, backgroundColor: 'var(--text-secondary)', opacity: wave ? 0.45 : 0.2, transition: 'height 200ms ease' }} />
         ))}
         <div
           className="absolute top-0 h-full"

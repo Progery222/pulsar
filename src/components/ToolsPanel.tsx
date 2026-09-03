@@ -5,6 +5,7 @@ import { fileName, formatTime, isVideoFile, mediaUrl } from '../utils/media';
 import { regenerateMontage } from '../utils/regenerate';
 import { TEMPLATES, applyTemplate } from '../data/templates';
 import TweakModal from './TweakModal';
+import { placeholderBars, useWaveform } from '../utils/waveform';
 
 type ToolKey = 'videos' | 'style' | 'tweak' | 'duration' | 'segment' | 'mood' | 'transition' | 'text' | 'fade' | 'format';
 
@@ -175,10 +176,9 @@ function SegmentTool() {
   const windowPct = Math.min(1, duration / trackDur);
   const leftPct = Math.max(0, Math.min(1 - windowPct, segmentStart / trackDur));
 
-  // Псевдо-waveform (детерминированные столбцы).
-  const bars = Array.from({ length: 120 }, (_, i) =>
-    0.2 + 0.8 * Math.abs(Math.sin(i * 0.5) * Math.cos(i * 0.13))
-  );
+  // Настоящая волна трека; пока считается — нейтральная заглушка, а не формула.
+  const wave = useWaveform(selectedTrack?.file ?? null, 120);
+  const bars = wave ?? placeholderBars(120);
 
   function move(e: PointerEvent) {
     const rect = trackRef.current?.getBoundingClientRect();
@@ -211,7 +211,7 @@ function SegmentTool() {
           <div
             key={i}
             className="flex-1"
-            style={{ height: `${h * 100}%`, backgroundColor: 'var(--text-secondary)', opacity: 0.5 }}
+            style={{ height: `${h * 100}%`, backgroundColor: 'var(--text-secondary)', opacity: wave ? 0.55 : 0.25, transition: 'height 200ms ease' }}
           />
         ))}
         <div

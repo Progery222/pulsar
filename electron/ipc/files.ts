@@ -215,8 +215,13 @@ export function registerFileHandlers() {
 
   // Пики аудиодорожки для вейвформ на таймлайне (Pulsar Pro §3.3). Кэш JSON по src.
   // Декодируем в моно PCM 8кГц, считаем ~60 пиков/сек (0..1) на всю длину файла.
-  ipcMain.handle('media:waveform', async (_event, src: string) => {
-    if (!ffmpegBin || !src) return null;
+  ipcMain.handle('media:waveform', async (_event, rawSrc: string) => {
+    if (!ffmpegBin || !rawSrc) return null;
+    // Встроенные треки заданы относительным путём (assets/music/…) — резолвим
+    // от корня приложения, как это делает рендер; иначе ffmpeg их не находит.
+    const src = path.isAbsolute(rawSrc)
+      ? rawSrc
+      : path.join(app.isPackaged ? process.resourcesPath : (process.env.APP_ROOT ?? process.cwd()), rawSrc);
     const dir = path.join(app.getPath('userData'), 'waveforms');
     fs.mkdirSync(dir, { recursive: true });
     const key = crypto.createHash('md5').update(src).digest('hex');
