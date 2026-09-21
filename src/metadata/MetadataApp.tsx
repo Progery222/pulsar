@@ -55,7 +55,8 @@ const COMMON_TAGS = [
 
 type Popover = 'none' | 'random' | 'preset' | 'clean' | 'field';
 
-export default function MetadataApp() {
+// standalone — отдельное приложение «Метаданные»: главного экрана Pulsar там нет.
+export default function MetadataApp({ standalone = false }: { standalone?: boolean }) {
   const setAppMode = useUIStore((s) => s.setAppMode);
   const [tab, setTab] = useState<'one' | 'batch'>('one');
   const [meta, setMeta] = useState<Meta | null>(null);
@@ -234,7 +235,9 @@ export default function MetadataApp() {
         {tab === 'one' && (
           <button onClick={() => load()} className="btn-primary" style={{ padding: '8px 16px', fontSize: 13 }}>Загрузить</button>
         )}
-        <button onClick={() => setAppMode('select')} className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }}>На главную</button>
+        {!standalone && (
+          <button onClick={() => setAppMode('select')} className="btn-secondary" style={{ padding: '8px 14px', fontSize: 13 }}>На главную</button>
+        )}
       </div>
 
       <div onDragOver={(e) => e.preventDefault()} onDrop={onDrop} style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: 18 }}>

@@ -28,9 +28,15 @@ const kindOf = (file: string): Kind => {
   return 'image';
 };
 
-const exiftoolBin = (require('exiftool-vendored.exe') as string).replace('app.asar', 'app.asar.unpacked');
+// На Windows — exiftool.exe из exiftool-vendored.exe. На macOS пакета .exe нет:
+// там perl-версия (exiftool-vendored.pl), её exiftool-vendored находит сам,
+// в том числе распакованную из asar копию.
+const exiftoolBin = process.platform === 'win32'
+  ? (require('exiftool-vendored.exe') as string).replace('app.asar', 'app.asar.unpacked')
+  : undefined;
 let et: ExifTool | null = null;
-const tool = (): ExifTool => (et ??= new ExifTool({ exiftoolPath: exiftoolBin, taskTimeoutMillis: 300000 }));
+const tool = (): ExifTool =>
+  (et ??= new ExifTool({ ...(exiftoolBin ? { exiftoolPath: exiftoolBin } : {}), taskTimeoutMillis: 300000 }));
 
 // Ключ псевдо-поля координат: правится одной строкой «широта, долгота».
 const GPS_KEY = '__gps';
@@ -316,7 +322,7 @@ async function readAudioMeta(file: string): Promise<MetaResult> {
   };
 }
 
-async function readMeta(file: string): Promise<MetaResult> {
+export async function readMeta(file: string): Promise<MetaResult> {
   const kind = kindOf(file);
   if (kind === 'video') return readVideoMeta(file);
   if (kind === 'audio') return readAudioMeta(file);
@@ -526,7 +532,7 @@ async function applyTags(target: string, tags: Record<string, unknown>, stripAll
   }
 }
 
-interface WriteReq {
+export interface WriteReq {
   file: string;
   edits: Record<string, string>; // тег → новое значение
   deletes: string[];             // теги на удаление
@@ -535,7 +541,7 @@ interface WriteReq {
   dest?: string;                 // для mode='saveAs' — путь, выбранный в диалоге
 }
 
-async function writeMeta(req: WriteReq): Promise<MetaResult> {
+export async function writeMeta(req: WriteReq): Promise<MetaResult> {
   const src = req.file;
   if (!src || !fs.existsSync(src)) return emptyResult(src, 'Файл не найден');
   if (!isWritableFile(src)) return emptyResult(src, 'В этот формат запись метаданных не поддерживается');
@@ -665,7 +671,7 @@ export interface RandOpts {
 
 const dayMs = 86400000;
 
-function randomTags(o: RandOpts, kind: Kind = 'image'): Record<string, string> {
+export function randomTags(o: RandOpts, kind: Kind = 'image'): Record<string, string> {
   if (kind === 'audio') {
     return randomAudioTags({
       device: o.device, shot: o.shot, date: o.date,

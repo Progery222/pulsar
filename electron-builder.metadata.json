@@ -1,0 +1,50 @@
+{
+  "appId": "com.pulsar.metadata",
+  "productName": "Pulsar Метаданные",
+  "artifactName": "Pulsar-Metadata-${version}-${arch}.${ext}",
+  "directories": {
+    "output": "release-metadata"
+  },
+  "extraMetadata": {
+    "main": "dist-metadata-electron/metadata-main.js"
+  },
+  "files": [
+    "dist-metadata",
+    "dist-metadata-electron",
+    "!node_modules/**",
+    "node_modules/ffmpeg-static/{index.js,package.json,ffmpeg,ffmpeg.exe}",
+    "node_modules/exiftool-vendored/**",
+    "node_modules/exiftool-vendored.pl/**",
+    "node_modules/exiftool-vendored.exe/**",
+    "node_modules/batch-cluster/**",
+    "node_modules/he/**",
+    "node_modules/luxon/**",
+    "node_modules/@photostructure/tz-lookup/**"
+  ],
+  "asarUnpack": [
+    "node_modules/ffmpeg-static/**",
+    "node_modules/exiftool-vendored/**",
+    "node_modules/exiftool-vendored.pl/**",
+    "node_modules/exiftool-vendored.exe/**",
+    "node_modules/batch-cluster/**"
+  ],
+  "extraResources": [
+    {
+      "from": "assets/geo",
+      "to": "assets/geo"
+    }
+  ],
+  "mac": {
+    "target": [
+      "dmg"
+    ],
+    "category": "public.app-category.photography",
+    "icon": "assets/icon.png",
+    "identity": "-",
+    "hardenedRuntime": false
+  },
+  "win": {
+    "target": "dir",
+    "icon": "assets/icon.ico"
+  }
+}

@@ -2,6 +2,9 @@ node_modules/
 dist/
 dist-electron/
 release/
+dist-metadata/
+dist-metadata-electron/
+release-metadata/
 *.log
 .DS_Store
 .env

@@ -1,0 +1,78 @@
+name: metadata-mac
+
+# Отдельное приложение «Pulsar Метаданные» под macOS — .dmg для Apple Silicon и Intel.
+# Собрать .dmg с Windows нельзя, поэтому собирает облачный мак GitHub.
+#
+# Запуск вручную (Actions → metadata-mac → Run workflow): .dmg — в артефактах сборки.
+# Тег meta-v<версия package.json>, например meta-v1.8.0: ещё и релиз на GitHub с .dmg.
+# Релиз помечается «не последним» — иначе обновление Pulsar под Windows
+# (electron-updater смотрит latest-релиз) нашло бы там вместо себя этот.
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'meta-v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15        # Apple Silicon (M1 и новее)
+            arch: arm64
+          - runner: macos-15-intel  # Intel
+            arch: x64
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      # На маке npm ставит perl-версию exiftool и ffmpeg под архитектуру раннера.
+      - name: Install deps
+        run: npm ci
+
+      - name: Build
+        run: npm run meta:build
+
+      - name: Package
+        run: npx electron-builder --config electron-builder.metadata.json --mac --${{ matrix.arch }} --publish never
+
+      # Собранное приложение само пишет и читает метаданные фото, видео и звука,
+      # открывает окно и отдаёт превью; любой сбой — красная сборка.
+      - name: Smoke test
+        run: |
+          set -e
+          T="$RUNNER_TEMP/smoke"; mkdir -p "$T"
+          FF=node_modules/ffmpeg-static/ffmpeg
+          $FF -v error -f lavfi -i testsrc=size=320x240:rate=1 -frames:v 1 "$T/photo.jpg"
+          $FF -v error -f lavfi -i testsrc=size=320x240:rate=25 -t 1 -pix_fmt yuv420p "$T/clip.mp4"
+          $FF -v error -f lavfi -i sine=frequency=440:duration=1 "$T/track.mp3"
+          $FF -v error -f lavfi -i sine=frequency=440:duration=1 -c:a aac "$T/track.m4a"
+          APP=$(ls -d release-metadata/mac*/*.app | head -1)
+          echo "Проверяю $APP"
+          "$APP/Contents/MacOS/$(basename "$APP" .app)" --smoke "$T"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Pulsar-Metadata-mac-${{ matrix.arch }}
+          path: release-metadata/*.dmg
+          if-no-files-found: error
+
+      - name: Release
+        if: startsWith(github.ref, 'refs/tags/meta-v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Обе архитектуры собираются параллельно: релиз создаёт первая, вторая дозаливает.
+          gh release create "$GITHUB_REF_NAME" --latest=false \
+            --title "Pulsar Метаданные ${GITHUB_REF_NAME#meta-v} для macOS" \
+            --notes "Apple Silicon (M1 и новее) — файл arm64, Intel — x64. Приложение без подписи Apple: при первом запуске откройте его через Системные настройки → Конфиденциальность и безопасность → «Всё равно открыть»." \
+            || true
+          gh release upload "$GITHUB_REF_NAME" release-metadata/*.dmg --clobber

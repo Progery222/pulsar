@@ -11,7 +11,10 @@
     "build:dir": "vite build && electron-builder --dir",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
-    "studio:build": "node scripts/build-studio.mjs"
+    "studio:build": "node scripts/build-studio.mjs",
+    "meta:dev": "vite --config vite.metadata.config.ts",
+    "meta:build": "tsc --noEmit && vite build --config vite.metadata.config.ts",
+    "meta:dist": "npm run meta:build && electron-builder --config electron-builder.metadata.json --publish never"
   },
   "dependencies": {
     "@imgly/background-removal": "^1.7.0",

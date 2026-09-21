@@ -1,9 +1,8 @@
-import { app, BrowserWindow, dialog, Menu, protocol } from 'electron';
+import { app, BrowserWindow, dialog, Menu } from 'electron';
 import { killAll } from './ipc/procRegistry';
-import fs from 'node:fs';
+import { handleMediaProtocol, registerMediaScheme } from './mediaProtocol';
 import path from 'node:path';
 import dns from 'node:dns';
-import { Readable } from 'node:stream';
 
 // Node 18 fetch (undici) без Happy Eyeballs падает «fetch failed», если хост
 // резолвится в IPv6, а IPv6 не работает. Глобально предпочитаем IPv4 для всех
@@ -119,16 +118,7 @@ process.env.VITE_PUBLIC = VITE_DEV_SERVER_URL
   : RENDERER_DIST;
 
 // Привилегированная схема для загрузки локальных медиафайлов в renderer.
-protocol.registerSchemesAsPrivileged([
-  {
-    scheme: 'media',
-    privileges: {
-      supportFetchAPI: true,
-      stream: true,
-      bypassCSP: true,
-    },
-  },
-]);
+registerMediaScheme();
 
 let win: BrowserWindow | null = null;
 
@@ -173,27 +163,6 @@ function createWindow() {
   }
 }
 
-const MIME: Record<string, string> = {
-  '.mp4': 'video/mp4',
-  '.mov': 'video/quicktime',
-  '.avi': 'video/x-msvideo',
-  '.webm': 'video/webm',
-  '.mkv': 'video/x-matroska',
-  '.mp3': 'audio/mpeg',
-  '.wav': 'audio/wav',
-  '.aac': 'audio/aac',
-  '.m4a': 'audio/mp4',
-  '.ogg': 'audio/ogg',
-  '.flac': 'audio/flac',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-  '.ttf': 'font/ttf',
-  '.otf': 'font/otf',
-};
-
 app.whenReady().then(() => {
   // Меню приложения не нужно, а дефолтное меню Electron — вредно: у него
   // Ctrl+R = перезагрузка окна, и она срабатывала раньше нашего Ctrl+R
@@ -201,66 +170,7 @@ app.whenReady().then(() => {
   // В разработке DevTools остаются на F12.
   Menu.setApplicationMenu(null);
 
-  // media:///<encoded-abs-path> -> потоковая отдача локального файла с поддержкой Range.
-  protocol.handle('media', async (request) => {
-    const encoded = request.url.slice('media://'.length).replace(/^\/+/, '');
-    let filePath = decodeURIComponent(encoded);
-    // Относительные пути (assets/music/...) резолвим от корня приложения/ресурсов.
-    if (!path.isAbsolute(filePath)) {
-      const base = app.isPackaged
-        ? process.resourcesPath
-        : (process.env.APP_ROOT ?? process.cwd());
-      filePath = path.join(base, filePath);
-    }
-    try {
-      const stat = await fs.promises.stat(filePath);
-      const total = stat.size;
-      const type = MIME[path.extname(filePath).toLowerCase()];
-      // Схема отдаёт только медиа и шрифты: произвольный файл диска через
-      // media:// читать нельзя, даже если рендерер попросит.
-      if (!type) return new Response('unsupported', { status: 404 });
-      const rangeHeader = request.headers.get('Range');
-      // Ограничение размера чанка: для открытых range (bytes=0-) не тянем весь
-      // файл в память — отдаём кусок, <video> дозапросит остальное.
-      const MAX_CHUNK = 4 * 1024 * 1024;
-
-      let start = 0;
-      let end = total - 1;
-      let partial = false;
-      // Только для Range-запросов (нативный <video> стримит чанками) ограничиваем
-      // размер куска. Запрос без Range (fetch(...).blob() в превью/аудио) означает
-      // «отдай файл целиком» — иначе blob получится обрезанным до MAX_CHUNK и битым.
-      if (rangeHeader) {
-        const match = /bytes=(\d+)-(\d*)/.exec(rangeHeader);
-        start = match ? parseInt(match[1], 10) : 0;
-        const openEnded = !(match && match[2]);
-        end = openEnded ? total - 1 : parseInt(match![2], 10);
-        if (!Number.isFinite(start) || start < 0) start = 0;
-        if (!Number.isFinite(end) || end >= total) end = total - 1;
-        if (end < start) end = start;
-        if (openEnded && end - start + 1 > MAX_CHUNK) end = start + MAX_CHUNK - 1;
-        partial = true;
-      }
-      const len = end - start + 1;
-      // Поток, а не буфер: fd.read одним вызовом падал нативным assert на файле
-      // ≥ 2 ГиБ (длина не влезала в int32) и ронял main мимо всех обработчиков,
-      // а на меньших держал весь файл в памяти до конца ответа.
-      const stream = fs.createReadStream(filePath, { start, end, highWaterMark: 1024 * 1024 });
-      const body = Readable.toWeb(stream) as unknown as ReadableStream;
-      return new Response(body, {
-        status: partial ? 206 : 200,
-        headers: {
-          'Content-Type': type,
-          'Content-Length': String(len),
-          ...(partial ? { 'Content-Range': `bytes ${start}-${end}/${total}` } : {}),
-          'Accept-Ranges': 'bytes',
-        },
-      });
-    } catch (err) {
-      console.error('[media protocol] error', filePath, err);
-      return new Response('Not found', { status: 404 });
-    }
-  });
+  handleMediaProtocol();
 
   registerFileHandlers();
   registerAudioHandlers();
